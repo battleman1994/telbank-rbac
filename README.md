@@ -100,7 +100,7 @@ java -version
 >
 > - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`、导入 `db/manual/*.sql`（表结构 + 示例数据），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
 > - 已有 MySQL：去掉 `--temp-db`；首次建库用 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db`（脚本会自动把 `MYSQL_*` 映射为后端 `RBAC_DB_*`）；之后直接 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh`。
-> - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.4 为分步说明。
+> - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.5 为分步说明。
 
 ### 4.1 初始化数据库
 
@@ -150,7 +150,23 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/me/systems
 | `13700137000` | 已过期用户 | 授权已过期，用于验证自动收回与时效过滤 |
 | `platform-admin-001` | 平台超管 | 命中 `rbac.platform-admin-ids`，跳过权限校验 |
 
-### 4.4 生产 profile
+### 4.4 时间权限演示（1 分钟过期）
+
+`demo-temp-permission.sh` 给指定账号授予一条 N 分钟（默认 1 分钟）的临时权限，用于验证「刷新后权限消失、点击提示无权限」：
+
+```bash
+# 默认：demo-1min 账号 + rbac:audit:view + 1 分钟
+MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/demo-temp-permission.sh
+
+# 自定义：账号 / 权限码 / 系统 / 分钟数
+MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/demo-temp-permission.sh 13700137000 order:delete crm 1
+```
+
+- **1 分钟内**：按脚本提示生成 `TOKEN=$(./scripts/gen-demo-jwt.sh demo-1min)` 登录管理前端，可见「审批授权记录 / 即将到期授权」，对应接口 200；
+- **1 分钟后**：刷新页面菜单消失，直接访问 `/approval-grants` 显示无权限页（后端返回 403）；
+- 重新计时：再执行一次脚本；清理演示角色：`./scripts/demo-temp-permission.sh --clean`。
+
+### 4.5 生产 profile
 
 ```bash
 export RBAC_JWK_SET_URI=https://auth.example.com/.well-known/jwks.json
@@ -387,6 +403,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - **权限中心自接入（rbac 系统）**：V1+V2+V3 迁移；管理员 bootstrap 返回 5 个 `rbac:*`、operator 空集、平台超管 `["*"]`；管理端 `X-System-Code: rbac` 200 / 业务系统上下文 403；管理前端按权限码过滤菜单与路由、无权限 403 页。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
 - 第 9 节全量验收：**65/65 PASS**（JDK 21 运行 + 干净库 + JDK 8/JDK 21 两个 SDK 端到端各 4/4）。
+- **权限时效演示（本机实测）**：`demo-1min` 临时授予 `rbac:audit:view`（1 分钟），有效期内 bootstrap 含该码、`/api/approval-grants` 200；65 秒后 `permissions=[]`、接口 403（`scripts/demo-temp-permission.sh`）。
 - 管理前端：`tsc -b && vite build` 通过（3257 modules），dist 1.4 MB（JS 1,410.82 kB / gzip 444.74 kB）；与真实后端的浏览器人工联调待补（当前为 build + mock 冒烟，见验收文档）。
 - 一键验证：`./scripts/verify-all.sh` → **全部通过（8 项检查）**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 
