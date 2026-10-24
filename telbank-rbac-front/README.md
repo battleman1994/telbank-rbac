@@ -116,7 +116,7 @@ cd telbank-rbac-front && npm run dev
 | 权限管理 | `/permissions` | `permission:manage` | 权限码树（type/is_public/method/api_pattern） |
 | 角色授权 | `/role-permissions` | `role:manage` | 角色-权限授权（树勾选 + 时效） |
 | 用户授权 | `/user-roles` | `user:manage` | 用户-角色分配（含时效） |
-| 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点资源上报与权限码关联 |
+| 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点上报与权限码关联；未关联端点显式标记「未生效」 |
 | 页面元素 | `/page-actions` | `page:manage` | 页面元素标识：pageCode/code/text/type（语义类型） |
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
 
@@ -230,6 +230,7 @@ dist/assets/index-*.js          1,399.10 kB │ gzip: 442.35 kB
 - 后端新契约（系统隔离、`platform:admin` 数据驱动超管、系统接入管理员字段）由 api-dev 并行改造；联调阶段若字段名有差异需要对齐。
 - 未做路由级 code splitting：生产包单 chunk 约 1.4 MB（gzip 约 442 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
 - 授权记录按契约仅提供查询（只读）；「到期提醒」菜单/路由已移除（后端 `/api/expiring-grants` 接口保留）。
+- 资源管理：未关联权限码的端点显示「未生效/未关联」并有当前页提示，行背景高亮；关联后才进入 SDK mappings 生效。
 
 ## 本地验证记录
 

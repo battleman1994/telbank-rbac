@@ -186,3 +186,8 @@ body {
 .ant-modal .ant-form .ant-form-item-control-input {
   min-height: 32px;
 }
+
+/* 资源管理中未生效的端点轻微高亮，便于和已生效端点区分 */
+.endpoint-row-unlinked > td {
+  background: #fffbe6 !important;
+}

@@ -180,64 +180,91 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
   }
 
   const columns: TableProps<SdkEndpointVO>['columns'] = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
     {
       title: '方法',
       dataIndex: 'method',
-      width: 90,
+      width: 75,
       render: (value: string) => <Tag color="purple">{value}</Tag>,
     },
     {
       title: '路径 path',
       dataIndex: 'path',
-      width: 210,
-      render: (value: string) => <span className="mono-text">{value}</span>,
+      width: 220,
+      ellipsis: true,
+      render: (value: string) => (
+        <span className="mono-text" title={value}>
+          {value}
+        </span>
+      ),
     },
     {
       title: '候选权限码',
       dataIndex: 'candidateCode',
-      width: 190,
+      width: 150,
       render: (value: string | null) =>
         value ? <Tag color="blue">{value}</Tag> : <Tag>无</Tag>,
     },
     {
       title: '来源',
       dataIndex: 'source',
-      width: 115,
-      render: (value: string) => <Tag color={value === 'ANNOTATION' ? 'gold' : 'cyan'}>{value}</Tag>,
+      width: 80,
+      render: (value: string) => (
+        <Tag color={value === 'ANNOTATION' ? 'gold' : 'cyan'} title={value}>
+          {value === 'ANNOTATION' ? '注解' : '自动生成'}
+        </Tag>
+      ),
+    },
+    {
+      title: '生效状态',
+      key: 'effective',
+      width: 90,
+      render: (_, record) =>
+        record.permissionId ? (
+          <Tag color="green" title="已关联权限码并写入 mappings；若该权限后续停用，映射会停止下发">
+            已生效
+          </Tag>
+        ) : (
+          <Tag color="default" title="未关联权限码，不会写入 mappings；SDK 对未命中映射的请求默认放行">
+            未生效
+          </Tag>
+        ),
     },
     {
       title: '已关联权限码',
       dataIndex: 'permissionCode',
-      width: 190,
+      width: 150,
       render: (value: string | null) =>
-        value ? <Tag color="green">{value}</Tag> : <Tag color="orange">未关联（默认 public）</Tag>,
+        value ? <Tag color="green">{value}</Tag> : <Tag color="default">未关联</Tag>,
     },
     {
       title: '上报时间',
       dataIndex: 'reportedAt',
-      width: 165,
+      width: 140,
       render: (value: string | null) => formatDateTime(value),
     },
     {
       title: '操作',
       key: 'action',
-      width: 170,
+      width: 145,
       render: (_, record) => (
         <Space size={4}>
-          <Button type="link" size="small" onClick={() => openLinkModal(record)}>
-            {record.permissionId ? '改关联' : '关联权限码'}
+          <Button
+            type={record.permissionId ? 'link' : 'primary'}
+            size="small"
+            onClick={() => openLinkModal(record)}
+          >
+            {record.permissionId ? '改关联' : '关联'}
           </Button>
           <Popconfirm
             title="解除端点关联"
-            description="解除后该端点视为 public，不阻塞任何请求；权限码本身的 method/api_pattern 不会被修改。"
+            description="解除后该端点不再关联权限码、不会进入 SDK mappings，默认放行；权限码本身的 method/api_pattern 不会被修改。"
             okText="确认解除"
             cancelText="取消"
             disabled={!record.permissionId}
             onConfirm={() => unlinkMutation.mutate(record.id)}
           >
             <Button type="link" size="small" danger disabled={!record.permissionId}>
-              解除关联
+              解除
             </Button>
           </Popconfirm>
         </Space>
@@ -248,7 +275,7 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
   return (
     <PageShell
       title="资源管理"
-      description="接口资源管理：SDK 启动时全量上报受控端点；未配置权限码的端点默认 public，管理员可在此关联或新建权限码（写入 method/api_pattern 进入映射表）。"
+      description="接口资源管理：SDK 启动时全量上报受控端点。未关联权限码的端点标记为「未生效」，不会写入 SDK mappings、默认放行；关联或新建权限码后才按对应权限拦截。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void endpointsQuery.refetch()}>
@@ -305,9 +332,23 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
             />
           ) : null}
 
+          {(() => {
+            const unlinkCount = (endpointsQuery.data?.items ?? []).filter((item) => !item.permissionId).length
+            if (unlinkCount === 0) return null
+            return (
+              <Alert
+                type="warning"
+                showIcon
+                title={`当前页有 ${unlinkCount} 个端点未生效`}
+                description="未关联权限码的端点不会写入 SDK mappings，SDK 对未命中映射的请求默认放行。点击行尾「关联权限码」后才会按权限拦截。"
+              />
+            )
+          })()}
+
           <Table<SdkEndpointVO>
             rowKey="id"
             columns={columns}
+            rowClassName={(record) => (record.permissionId ? '' : 'endpoint-row-unlinked')}
             dataSource={endpointsQuery.data?.items ?? []}
             loading={endpointsQuery.isLoading || endpointsQuery.isFetching}
             pagination={createPaginationConfig(page, size, endpointsQuery.data?.total ?? 0, (nextPage, nextSize) => {
