@@ -34,7 +34,7 @@ public class UserRoleController {
     }
 
     @GetMapping
-    public ApiResponse<List<UserRoleVO>> list(@RequestParam Long systemId,
+    public ApiResponse<List<UserRoleVO>> list(@RequestParam(required = false) Long systemId,
                                               @RequestParam String externalUserId) {
         return ApiResponse.ok(userRoleService.list(systemId, externalUserId));
     }

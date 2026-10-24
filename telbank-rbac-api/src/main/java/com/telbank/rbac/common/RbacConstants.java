@@ -50,12 +50,20 @@ public final class RbacConstants {
     // ------------------------------------------------------------------
     // 权限码
     // ------------------------------------------------------------------
-    public static final String PLATFORM_ADMIN_PERMISSION_CODE = "*";
+    /** 通配权限码：匹配任意权限（A 方案）。 */
+    public static final String PERM_WILDCARD = "*";
+
+    /** 平台超管在 /api/me、bootstrap 中返回的权限码（通配）。 */
+    public static final String PLATFORM_ADMIN_PERMISSION_CODE = PERM_WILDCARD;
 
     // ------------------------------------------------------------------
     // 管理端权限码（系统隔离模型：各系统内短码，契约 §3）
     // ------------------------------------------------------------------
-    /** 平台超管权限码（平台系统内，数据驱动超管判定）。 */
+    /**
+     * @deprecated A 方案（05 迁移）已用 {@link #PERM_WILDCARD} 取代平台系统内的
+     *             {@code platform:admin}，保留常量仅为兼容旧代码/数据排查。
+     */
+    @Deprecated
     public static final String PERM_PLATFORM_ADMIN = "platform:admin";
 
     public static final String PERM_ROLE_MANAGE = "role:manage";

@@ -66,10 +66,7 @@ public class SdkEndpointService {
 
     @Transactional(readOnly = true)
     public PageResult<SdkEndpointVO> page(Long systemId, String keyword, PageQuery pageQuery) {
-        if (systemId == null) {
-            throw ApiException.badRequest("systemId is required");
-        }
-        systemScopeGuard.requireAccess(systemId);
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         Page<SysSdkEndpoint> page = endpointRepository.search(systemId, normalizedKeyword,
                 pageQuery.toPageable());

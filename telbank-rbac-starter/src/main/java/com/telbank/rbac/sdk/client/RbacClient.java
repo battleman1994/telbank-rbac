@@ -32,9 +32,13 @@ public interface RbacClient {
      * 查询用户在指定系统下的有效权限码集合（权限中心不可用且无旧缓存时抛出
      * {@link RbacRemoteException}；有旧缓存时返回旧缓存中当前有效的权限码）。
      *
+     * <p>A 方案下返回集合可能包含通配条目：{@code *}（当前系统全部权限，此时返回 {@code ["*"]}）
+     * 或 {@code 前缀:*}（如 {@code order:*}）；调用方需用
+     * {@link com.telbank.rbac.sdk.util.RbacPermissionMatcher} 或等价口径匹配单个权限码。</p>
+     *
      * @param externalUserId 外部用户 ID
      * @param systemCode     业务系统编码，必须等于 {@code rbac-sdk.system-code}
-     * @return 有效权限码集合，平台超管返回 {@code ["*"]}，不返回 null
+     * @return 有效权限码集合，包含 {@code *} 时返回 {@code ["*"]}，不返回 null
      */
     Set<String> getPermissions(String externalUserId, String systemCode);
 

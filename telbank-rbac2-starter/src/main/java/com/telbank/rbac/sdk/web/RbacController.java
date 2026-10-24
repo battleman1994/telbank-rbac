@@ -19,6 +19,7 @@ import com.telbank.rbac.sdk.client.PageAction;
 import com.telbank.rbac.sdk.client.RbacOpenApiClient;
 import com.telbank.rbac.sdk.client.SystemInfo;
 import com.telbank.rbac.sdk.config.RbacSdkProperties;
+import com.telbank.rbac.sdk.util.RbacPermissionMatcher;
 import com.telbank.rbac.sdk.util.RbacRequestUtils;
 
 /**
@@ -34,6 +35,10 @@ import com.telbank.rbac.sdk.util.RbacRequestUtils;
  * <p>v2.0 系统隔离语义：{@code /rbac/me/systems} 返回「用户有有效角色的业务系统」（由权限中心
  * 按有效 user_role 推导并排除 platform 平台系统），用户无有效角色时返回空数组；不再有
  * 「用户-系统开通」概念。仅回源失败时降级为当前配置系统单例。</p>
+ *
+ * <p>A 方案通配权限：{@code /rbac/me/bootstrap} 的 permissions 原样返回缓存中的有效权限码，
+ * 可能包含 {@code *}（全量）或 {@code 前缀:*}（如 {@code order:*}）；前端 {@code hasPerm}
+ * 需按「精确 / * / 前缀:*」同一口径匹配。</p>
  *
  * <p>调用 {@code /rbac/me/bootstrap} 会预热用户权限集缓存（命中缓存则不会额外回源）。</p>
  */
@@ -105,7 +110,9 @@ public class RbacController {
         try {
             // 预热用户权限集缓存：命中缓存时不回源
             Set<String> validPermissions = userPermissionCache.getValidPermissions(externalUserId, systemCode);
-            if (validPermissions.contains(RbacUserPermissionCache.PLATFORM_ADMIN_CODE)) {
+            // A 方案：全量通配 * 表示当前系统全部权限（平台超管/系统 admin 均下发 *）；
+            // 前缀通配（如 order:*）仍原样放入 permissions，由前端 hasPerm 用同一口径匹配。
+            if (RbacPermissionMatcher.hasWildcardAll(validPermissions)) {
                 platformAdmin = true;
                 permissions = new ArrayList<String>(
                         Collections.singletonList(RbacUserPermissionCache.PLATFORM_ADMIN_CODE));

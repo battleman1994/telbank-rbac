@@ -200,7 +200,7 @@ export default function AdminLayout() {
     <Header className="app-header">
       <Space size={16} wrap>
         <Space size={8}>
-          <Text type="secondary">当前系统</Text>
+          {canSwitchSystem ? <Text type="secondary">当前系统</Text> : null}
           {canSwitchSystem ? (
             <Select
               value={currentSystemCode ?? undefined}

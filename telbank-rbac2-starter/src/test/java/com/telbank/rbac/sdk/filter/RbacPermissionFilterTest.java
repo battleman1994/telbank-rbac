@@ -252,6 +252,63 @@ class RbacPermissionFilterTest {
         assertThat(remote.userPermissionCalls.get()).isZero();
     }
 
+    @Test
+    void matchedRequestAllowedByPrefixWildcard() throws Exception {
+        RbacMappingCache mappings = mappingCache(new MappingEntry("DELETE", "/api/order/{id}", "order:delete"));
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(now(),
+                StubRbacOpenApiClient.permission("order:*", null, null));
+        MockFilterChain chain = new MockFilterChain();
+
+        filter(properties(false), mappings, userCache(remote)).doFilter(
+                requestWithUser("DELETE", "/api/order/123"), new MockHttpServletResponse(), chain);
+
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void matchedRequestAllowedByWildcardAll() throws Exception {
+        RbacMappingCache mappings = mappingCache(new MappingEntry("DELETE", "/api/order/{id}", "order:delete"));
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(now(),
+                StubRbacOpenApiClient.permission("*", null, null));
+        MockFilterChain chain = new MockFilterChain();
+
+        filter(properties(false), mappings, userCache(remote)).doFilter(
+                requestWithUser("DELETE", "/api/order/123"), new MockHttpServletResponse(), chain);
+
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void prefixWildcardDoesNotCoverOtherPermission() throws Exception {
+        RbacMappingCache mappings = mappingCache(new MappingEntry("GET", "/api/purchase/**", "purchase:create"));
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(now(),
+                StubRbacOpenApiClient.permission("order:*", null, null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter(properties(false), mappings, userCache(remote)).doFilter(
+                requestWithUser("GET", "/api/purchase/1"), response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void expiredPrefixWildcardIsRejected() throws Exception {
+        long nowMillis = System.currentTimeMillis();
+        RbacMappingCache mappings = mappingCache(new MappingEntry("DELETE", "/api/order/{id}", "order:delete"));
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(now(),
+                StubRbacOpenApiClient.permission("order:*", null, iso(nowMillis - 1L)));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter(properties(false), mappings, userCache(remote)).doFilter(
+                requestWithUser("DELETE", "/api/order/123"), response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
     private static RbacSdkProperties properties(boolean denyUnmatched) {
         RbacSdkProperties properties = new RbacSdkProperties();
         properties.setEnabled(true);
@@ -293,6 +350,10 @@ class RbacPermissionFilterTest {
 
     private static String now() {
         return Instant.ofEpochMilli(System.currentTimeMillis()).toString();
+    }
+
+    private static String iso(long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).toString();
     }
 
     private static String jwt(String subject) {

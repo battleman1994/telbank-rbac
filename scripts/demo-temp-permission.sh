@@ -5,14 +5,14 @@
 #       直接访问对应路由显示「无权限」（后端 API 也会返回 403）。
 #
 # 用法:
-#   ./scripts/demo-temp-permission.sh                    # 默认 demo-1min / audit:view / crm / 1 分钟
-#   ./scripts/demo-temp-permission.sh demo-1min audit:view crm 1
+#   ./scripts/demo-temp-permission.sh                    # 默认 demo-1min / 通配 * / crm / 1 分钟
+#   ./scripts/demo-temp-permission.sh demo-1min \* crm 1
 #   ./scripts/demo-temp-permission.sh 13700137000 order:delete crm 1   # 业务权限（需示例业务系统在跑）
 #   ./scripts/demo-temp-permission.sh --clean            # 清理演示角色/授权
 #
 # 参数:
 #   $1 账号 external_user_id（默认 demo-1min）
-#   $2 权限码（默认 audit:view；系统内必须已存在）
+#   $2 权限码（默认 *；系统内必须已存在）
 #   $3 系统 code（默认 crm）
 #   $4 有效分钟数（默认 1，建议 1）
 #
@@ -46,15 +46,19 @@ if [ "${1:-}" = "--clean" ]; then
 fi
 
 ACCOUNT="${1:-demo-1min}"
-PERM_CODE="${2:-audit:view}"
+PERM_CODE="${2:-*}"
 SYSTEM_CODE="${3:-crm}"
 MINUTES="${4:-1}"
 
-for v in "$ACCOUNT" "$PERM_CODE" "$SYSTEM_CODE" "$MINUTES"; do
+for v in "$ACCOUNT" "$SYSTEM_CODE"; do
   case "$v" in
     *[!A-Za-z0-9_.:-]*) echo "❌ 参数包含非法字符：$v" >&2; exit 1 ;;
   esac
 done
+# 权限码允许通配：* 或 前缀:* 或精确码
+case "$PERM_CODE" in
+  ""|*[!A-Za-z0-9_.:*]*) echo "❌ 权限码包含非法字符：$PERM_CODE" >&2; exit 1 ;;
+esac
 case "$MINUTES" in
   ''|*[!0-9]*) echo "❌ 分钟数必须是正整数：$MINUTES" >&2; exit 1 ;;
 esac
@@ -105,7 +109,7 @@ cat <<EOF
 验证方式（管理前端，示例）：
   TOKEN=\$(./scripts/gen-demo-jwt.sh ${ACCOUNT})
   浏览器打开 http://localhost:5173 → 粘贴 TOKEN 登录
-  ✅ ${MINUTES} 分钟内：能看到「授权记录 / 到期提醒」菜单（直接访问 /approval-grants 也是 200）
+  ✅ ${MINUTES} 分钟内：能看到全部「权限管理」菜单（直接访问 /approval-grants 也是 200）
   ⏳ 等 ${MINUTES} 分钟后：刷新页面 → 菜单消失；直接访问 /approval-grants → 「无权限」页（后端返回 403）
 
 重新计时（再跑一次）：

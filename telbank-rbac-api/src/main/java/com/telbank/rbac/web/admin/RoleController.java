@@ -36,7 +36,7 @@ public class RoleController {
     }
 
     @GetMapping
-    public ApiResponse<PageResult<RoleVO>> page(@RequestParam Long systemId,
+    public ApiResponse<PageResult<RoleVO>> page(@RequestParam(required = false) Long systemId,
                                                 @RequestParam(required = false) String keyword,
                                                 @RequestParam(required = false) Integer page,
                                                 @RequestParam(required = false) Integer size) {

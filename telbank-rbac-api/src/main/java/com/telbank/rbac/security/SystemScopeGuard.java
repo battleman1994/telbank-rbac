@@ -5,33 +5,31 @@ import org.springframework.stereotype.Component;
 import com.telbank.rbac.common.ApiException;
 
 /**
- * 系统隔离边界校验：非平台超管不得访问/查询当前管理上下文之外的系统数据。
+ * 严格系统隔离边界校验（超管同样受限）。
  *
- * <p>平台超管（数据驱动 {@code platform:admin}）可跨系统；普通用户的 {@code systemId}
- * 必须与 {@code X-System-Code} 解析出的管理上下文一致，否则 403。</p>
+ * <p>管理端任何数据查询/写入都必须限定在 {@code X-System-Code} 解析出的管理上下文系统：</p>
+ * <ul>
+ *   <li>by-id 接口加载实体后调用 {@link #requireAccess(Long)}，实体 systemId 必须等于上下文；
+ *       平台超管也不例外；</li>
+ *   <li>列表接口的 systemId 缺省时收敛为上下文系统，显式指定其他系统一律 403；</li>
+ *   <li>跨系统访问统一返回 403。</li>
+ * </ul>
  */
 @Component
 public class SystemScopeGuard {
 
     private final ManagementContextService managementContextService;
-    private final CurrentUserProvider currentUserProvider;
 
-    public SystemScopeGuard(ManagementContextService managementContextService,
-                            CurrentUserProvider currentUserProvider) {
+    public SystemScopeGuard(ManagementContextService managementContextService) {
         this.managementContextService = managementContextService;
-        this.currentUserProvider = currentUserProvider;
     }
 
     /**
      * 校验对目标系统数据的访问权限；targetSystemId 为空时不额外校验。
+     * 超管无跨系统旁路：targetSystemId 必须等于当前管理上下文。
      */
     public void requireAccess(Long targetSystemId) {
         if (targetSystemId == null) {
-            return;
-        }
-        CurrentUser currentUser = currentUserProvider.get()
-                .orElseThrow(() -> ApiException.unauthorized("unauthorized"));
-        if (currentUser.platformAdmin()) {
             return;
         }
         ManagementContext context = managementContextService.requireContext();
@@ -41,15 +39,9 @@ public class SystemScopeGuard {
     }
 
     /**
-     * 解析查询条件中的 systemId：平台超管保持原值（可跨系统）；普通用户缺省时收敛为当前上下文系统，
-     * 指定其他系统时 403。
+     * 解析查询条件中的 systemId：缺省时收敛为当前上下文系统；指定其他系统时 403（超管同样受限）。
      */
     public Long resolveQuerySystemId(Long requestedSystemId) {
-        CurrentUser currentUser = currentUserProvider.get()
-                .orElseThrow(() -> ApiException.unauthorized("unauthorized"));
-        if (currentUser.platformAdmin()) {
-            return requestedSystemId;
-        }
         ManagementContext context = managementContextService.requireContext();
         if (requestedSystemId == null) {
             return context.systemId();

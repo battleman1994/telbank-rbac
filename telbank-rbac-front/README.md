@@ -123,6 +123,7 @@ cd telbank-rbac-front && npm run dev
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。
 - `/systems` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页。
+- **通配权限（A 方案）**：`permissions` 支持 `*` 与 `前缀:*` 两种通配。权限集合含 `*` 时 `hasPerm` 恒 true（admin / superadmin 角色只授一条 `*`，因此全部菜单可见）；含 `前缀:*`（如 `role:*`）时，请求码以 `前缀:` 开头即 true；否则精确匹配。权限树 / 角色授权页会把 `code='*'` 的权限行展示为「*（全部权限）」并正常勾选、展示（名称取后端「全部权限（通配）」）。
 - 无任何管理权限：布局显示「无管理权限」空态而非白屏。
 - **已移除「用户-系统开通」**：删除路由 `/user-systems`、页面、API 封装、菜单项与类型；系统访问权限完全由「用户-角色（有效角色）」推导。
 
@@ -137,6 +138,24 @@ cd telbank-rbac-front && npm run dev
   - `DELETE /api/systems/{id}`：停用（status=0）
   - `GET /api/systems?keyword=&page=&size=`：`items[] = {id,code,name,region,status,adminExternalUserId?,adminName?,...}`
 - `/api/systems/**` 仅平台超管可调用（后端 403 兜底）。
+
+## 只查当前系统数据（前端审计）
+
+系统隔离模型下，前端所有权限相关查询都只使用「当前系统」上下文，禁止跨系统/全系统查询：
+
+| 查询 | systemId 来源 | 页面 |
+|---|---|---|
+| 权限树 `GET /api/permissions?systemId=` | 当前 `currentSystemId` | 权限管理、角色授权、资源管理（关联权限弹窗） |
+| 角色列表 `GET /api/roles?systemId=` | 当前 `currentSystemId` | 角色管理、角色授权、用户授权 |
+| 角色授权 `GET/POST /api/roles/{roleId}/permissions[/grant|/revoke]` | 当前系统的角色 id | 角色授权 |
+| 用户授权 `GET/POST /api/user-roles` | 查询参数 / 请求体 `systemId` | 用户授权 |
+| 页面元素 `GET/POST /api/page-actions` | 查询参数 / 请求体 `systemId` | 页面元素 |
+| 资源管理 `GET /api/sdk-endpoints`、`link/unlink` | 查询参数 `systemId` + 当前系统端点 | 资源管理 |
+| 授权记录 / 到期提醒 `GET /api/approval-grants`、`/api/expiring-grants` | 查询参数 `systemId` | 授权记录、到期提醒 |
+
+- `/api/me`、`/api/me/systems` 仅要求认证，不带 `X-System-Code`；其余 `/api/**` 均带 `X-System-Code: <currentSystemCode>`。
+- 切换系统（含平台超管）：更新 `currentSystemCode` + `localStorage` → 失效并重拉 `admin-session`（bootstrap 带新系统头）→ 所有数据查询按新 `systemId` 重取；角色授权页清空上一系统所选角色、资源管理页关闭关联弹窗，且授权关系查询仅在「所选角色属于当前系统角色列表」时才发起，杜绝切换瞬间用旧 roleId 跨系统查询。
+- mock 冒烟日志审计：CRM 阶段所有业务查询均为 `systemId=1` + `X-System-Code=crm`，无 `systemId=2`；superadmin 切到 ERP 后仅出现 `systemId=2` + `erp` 请求，权限树/角色/授权记录均为 ERP 数据，无 CRM 残留。
 
 ## 状态管理
 
@@ -194,7 +213,7 @@ vite v8.3.5 building client environment for production...
 ✓ 3255 modules transformed.
 dist/index.html                     0.60 kB │ gzip:   0.40 kB
 dist/assets/index-*.css             1.80 kB │ gzip:   0.84 kB
-dist/assets/index-*.js          1,398.03 kB │ gzip: 442.02 kB
+dist/assets/index-*.js          1,399.10 kB │ gzip: 442.35 kB
 ✓ built in ~0.5s
 ```
 
@@ -217,3 +236,8 @@ dist/assets/index-*.js          1,398.03 kB │ gzip: 442.02 kB
   - 非超管但拥有两个系统的管理员：可见切换器、无「系统接入」，直接访问 `/systems` 403。
   - 普通运营账号：无管理菜单，首页「无管理权限」空态；直接访问 `/roles` 显示无权限。
   - 退出登录后清空 `rbac.token` / `rbac.currentSystemCode` 并回到 `/login`。
+- 通配权限与严格系统隔离冒烟（mock 后端 + headless Chrome，零 console 错误）：
+  - `permissions=["*"]` 的 CRM admin：8 个「权限管理」菜单全部可见（无系统接入）；权限树显示 `*（全部权限）` 行；角色授权页选择 admin 后通配权限行已勾选、已授权列表展示「*（全部权限）」并提示通配授权。
+  - `permissions=["role:*"]` 前缀通配账号：仅「角色管理 / 角色授权」可见；直接访问 `/permissions` 显示缺少 `permission:manage` 的 403。
+  - 平台超管 `superadmin`：从 CRM 切到 ERP 后，权限树仅 ERP 权限（含 ERP 通配行）、角色列表为 ERP 角色、授权记录 roleId 为 ERP 角色；请求日志 100% 为 `systemId=2` + `X-System-Code=erp`，无 CRM 数据残留。
+  - 请求审计：CRM 阶段所有权限相关查询均为 `systemId=1` + `X-System-Code=crm`；全程无跨系统 `systemId`、无空 systemId 的全系统查询（`/api/me`、`/api/me/systems` 为仅认证接口，按契约不带系统头）。

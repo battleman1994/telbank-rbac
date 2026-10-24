@@ -39,6 +39,9 @@ import com.telbank.rbac.sdk.util.RbacRequestUtils;
  *   <li>任何内部异常 → 告警 + 放行（可用性优先）。</li>
  * </ol>
  *
+ * <p>权限判定支持 A 方案通配：用户权限集中的 {@code *} 匹配任意权限码，{@code 前缀:*}（如
+ * {@code order:*}）匹配该前缀下的权限码；判定由 {@link RbacUserPermissionCache} 统一实现。</p>
+ *
  * <p>注意：下游 Filter/业务异常不会被本类吞掉（chain.doFilter 在 try 之外调用）。</p>
  */
 public class RbacPermissionFilter extends OncePerRequestFilter {

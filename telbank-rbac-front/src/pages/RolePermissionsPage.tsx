@@ -45,13 +45,21 @@ function flattenTree(nodes: PermissionNode[]): PermissionNode[] {
   return nodes.flatMap((node) => [node, ...flattenTree(node.children ?? [])])
 }
 
+/** 通配权限行名称兜底（后端种子名称为「全部权限（通配）」） */
+const WILDCARD_PERMISSION_NAME = '全部权限（通配）'
+
+function permissionDisplayName(node: PermissionNode): string {
+  if (node.code === '*') return node.name || WILDCARD_PERMISSION_NAME
+  return node.name
+}
+
 function buildTreeData(nodes: PermissionNode[]): TreeDataNode[] {
   return nodes.map((node) => ({
     key: String(node.id),
     title: (
       <Space size={6} wrap>
-        <span>{node.name}</span>
-        <Tag color="blue">{node.code}</Tag>
+        <span>{permissionDisplayName(node)}</span>
+        <Tag color={node.code === '*' ? 'gold' : 'blue'}>{node.code}</Tag>
         {node.method && node.apiPattern ? <Tag>{node.method}</Tag> : null}
         {node.status !== 1 ? <Tag color="red">已停用</Tag> : null}
       </Space>
@@ -84,6 +92,14 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
   const [grantReason, setGrantReason] = useState('')
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([])
 
+  // 超管/多系统管理员切换系统后，清空上一系统的角色选择与勾选，避免带旧 roleId 跨系统查询
+  useEffect(() => {
+    setSelectedRoleId(null)
+    setCheckedKeys([])
+    setValidRange(null)
+    setGrantReason('')
+  }, [systemId])
+
   const rolesQuery = useQuery({
     queryKey: ['roles', systemId, { keyword: '', page: 1, size: 200 }],
     queryFn: () => listRoles({ systemId, page: 1, size: 200 }),
@@ -94,10 +110,19 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     queryFn: () => listPermissionTree(systemId),
   })
 
+  // 仅当所选角色属于「当前系统」（出现在本系统角色列表中）时才允许查询授权关系，
+  // 防止切换系统瞬间用上一系统的 roleId 发起跨系统请求。
+  const selectedRoleBelongsToSystem = useMemo(
+    () =>
+      selectedRoleId !== null &&
+      (rolesQuery.data?.items ?? []).some((role) => role.id === selectedRoleId),
+    [selectedRoleId, rolesQuery.data],
+  )
+
   const grantsQuery = useQuery({
     queryKey: ['role-permissions', systemId, selectedRoleId],
     queryFn: () => getRolePermissions(selectedRoleId as number),
-    enabled: selectedRoleId !== null,
+    enabled: selectedRoleBelongsToSystem,
   })
 
   const roleOptions = useMemo(
@@ -180,10 +205,21 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
 
   const grants = grantsQuery.data?.grants ?? []
   const activeGrants = grants.filter((grant) => grant.status === 1)
+  const hasWildcardGrant = activeGrants.some((grant) => grant.code === '*')
 
   const grantColumns: TableProps<PermissionGrant>['columns'] = [
     { title: '权限 ID', dataIndex: 'permissionId', width: 100 },
-    { title: '权限码', dataIndex: 'code', width: 220, render: (value: string) => <Tag color="blue">{value}</Tag> },
+    {
+      title: '权限码',
+      dataIndex: 'code',
+      width: 220,
+      render: (value: string) =>
+        value === '*' ? (
+          <Tag color="gold">*（全部权限）</Tag>
+        ) : (
+          <Tag color="blue">{value}</Tag>
+        ),
+    },
     {
       title: '时效',
       key: 'validity',
@@ -254,6 +290,14 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
         ) : null}
       </Card>
 
+      {hasWildcardGrant ? (
+        <Alert
+          type="success"
+          showIcon
+          title="该角色已拥有通配权限「*」（全部权限）"
+          description="在当前系统内，该角色对所有菜单、按钮与受控接口默认放行；勾选/撤销其他权限码不会影响通配权限。"
+        />
+      ) : null}
       {selectedRoleId === null ? (
         <Card>
           <Empty description="请先选择一个角色，再配置其权限授权" />

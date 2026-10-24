@@ -36,7 +36,7 @@ public class PageActionController {
     }
 
     @GetMapping
-    public ApiResponse<PageResult<PageActionVO>> page(@RequestParam Long systemId,
+    public ApiResponse<PageResult<PageActionVO>> page(@RequestParam(required = false) Long systemId,
                                                       @RequestParam(required = false) String pageCode,
                                                       @RequestParam(required = false) Integer page,
                                                       @RequestParam(required = false) Integer size) {

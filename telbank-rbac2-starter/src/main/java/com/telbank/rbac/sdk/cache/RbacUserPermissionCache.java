@@ -18,6 +18,7 @@ import com.telbank.rbac.sdk.client.RbacOpenApiClient;
 import com.telbank.rbac.sdk.client.RbacRemoteException;
 import com.telbank.rbac.sdk.client.UserPermissionEntry;
 import com.telbank.rbac.sdk.client.UserPermissionResponse;
+import com.telbank.rbac.sdk.util.RbacPermissionMatcher;
 
 /**
  * 用户权限集本地缓存（需求 §6.9，契约 §7.4）。
@@ -32,7 +33,9 @@ import com.telbank.rbac.sdk.client.UserPermissionResponse;
  *   <li><b>时钟偏移</b>：每次回源用响应里的 {@code serverTime} 重算
  *       {@code offsetMillis = serverTime - System.currentTimeMillis()}；时效判定用
  *       {@code 本地时间 + offsetMillis} 与 validFrom/validUntil 比较。</li>
- *   <li><b>平台超管</b>：权限码 {@code *}（有效期内）可命中任意 code；对外权限集返回 {@code ["*"]}。</li>
+ *   <li><b>通配权限（A 方案）</b>：权限中心只会下发精确码、{@code *}（任意权限）或 {@code 前缀:*}
+ *       （如 {@code order:*}，匹配 {@code order:delete} 等）；所有权限判定统一走
+ *       {@link RbacPermissionMatcher}。有效权限集包含 {@code *} 时对外返回 {@code ["*"]}。</li>
  * </ul>
  */
 public class RbacUserPermissionCache {
@@ -78,10 +81,11 @@ public class RbacUserPermissionCache {
     }
 
     /**
-     * 获取当前有效权限码集合；平台超管返回 {@code ["*"]}。
+     * 获取当前有效权限码集合；包含全量通配 {@code *} 时返回 {@code ["*"]}。
      *
-     * <p>缓存未命中/stale 时回源（同时完成预热）。回源失败且有旧缓存时返回旧缓存中当前有效的权限码；
-     * 无任何缓存时抛出 {@link RbacRemoteException}。</p>
+     * <p>其余情况原样返回有效权限码（可能包含 {@code 前缀:*} 通配条目，由前端 {@code hasPerm} 按同一
+     * 口径匹配）。缓存未命中/stale 时回源（同时完成预热）。回源失败且有旧缓存时返回旧缓存中当前有效的
+     * 权限码；无任何缓存时抛出 {@link RbacRemoteException}。</p>
      */
     public Set<String> getValidPermissions(String externalUserId, String systemCode) {
         if (isBlank(externalUserId) || isBlank(systemCode)) {
@@ -106,7 +110,11 @@ public class RbacUserPermissionCache {
     }
 
     /**
-     * 是否平台超管（权限中心对超管返回权限码 {@code *}）。
+     * 当前系统视角下是否拥有全量通配权限 {@code *}。
+     *
+     * <p>A 方案下平台超管与系统 admin 均只授一条 {@code *}，openapi 均下发 {@code *}；SDK 无法仅凭
+     * 权限集区分二者，因此本方法语义为「在当前系统内拥有全部权限」。前缀通配（{@code order:*}）
+     * 不算平台超管。</p>
      */
     public boolean isPlatformAdmin(String externalUserId, String systemCode) {
         return check(externalUserId, systemCode, PLATFORM_ADMIN_CODE) == Decision.ALLOW;
@@ -192,21 +200,26 @@ public class RbacUserPermissionCache {
         return isPermissionValid(entry, code, nowWithOffset());
     }
 
-    private boolean isPermissionValid(CachedUserPermissions entry, String code, long nowMillis) {
-        CachedPermission permission = entry.permissions.get(code);
-        if (permission != null
-                && isWithinValidityWindow(permission.validFromMillis, permission.validUntilMillis,
-                        nowMillis)) {
-            return true;
-        }
-        if (PLATFORM_ADMIN_CODE.equals(code)) {
+    private boolean isPermissionValid(CachedUserPermissions entry, String requiredCode, long nowMillis) {
+        if (requiredCode == null || requiredCode.trim().isEmpty()) {
             return false;
         }
-        // 平台超管：有效期内 * 可命中任意权限码
-        CachedPermission platformAdmin = entry.permissions.get(PLATFORM_ADMIN_CODE);
-        return platformAdmin != null
-                && isWithinValidityWindow(platformAdmin.validFromMillis, platformAdmin.validUntilMillis,
-                        nowMillis);
+        // 1) 精确码快速路径
+        CachedPermission exact = entry.permissions.get(requiredCode);
+        if (exact != null
+                && isWithinValidityWindow(exact.validFromMillis, exact.validUntilMillis, nowMillis)) {
+            return true;
+        }
+        // 2) 通配匹配（* / 前缀:*），只对当前时效有效的授权码生效
+        for (CachedPermission granted : entry.permissions.values()) {
+            if (!isWithinValidityWindow(granted.validFromMillis, granted.validUntilMillis, nowMillis)) {
+                continue;
+            }
+            if (RbacPermissionMatcher.matches(granted.code, requiredCode)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private long nowWithOffset() {

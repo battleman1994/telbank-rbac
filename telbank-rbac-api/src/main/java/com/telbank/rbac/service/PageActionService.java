@@ -50,10 +50,7 @@ public class PageActionService {
 
     @Transactional(readOnly = true)
     public PageResult<PageActionVO> page(Long systemId, String pageCode, PageQuery pageQuery) {
-        if (systemId == null) {
-            throw ApiException.badRequest("systemId is required");
-        }
-        systemScopeGuard.requireAccess(systemId);
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         String normalizedPageCode = pageCode == null ? "" : pageCode.trim();
         Page<SysPageAction> page = pageActionRepository.search(systemId, normalizedPageCode,
                 pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));

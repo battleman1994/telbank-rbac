@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 系统隔离边界：非超管 systemId/资源必须与当前管理上下文一致，否则 403；超管可跨系统。
+ * 严格系统隔离：任何用户（含平台超管）systemId/资源必须与当前管理上下文一致，否则 403。
  */
 class SystemScopeGuardTest {
 
@@ -60,7 +60,7 @@ class SystemScopeGuardTest {
         CurrentUserProvider currentUserProvider = new CurrentUserProvider(platformAdminService);
         ManagementContextService contextService =
                 new ManagementContextService(currentUserProvider, systemRepository, userRoleRepository);
-        guard = new SystemScopeGuard(contextService, currentUserProvider);
+        guard = new SystemScopeGuard(contextService);
     }
 
     @AfterEach
@@ -95,13 +95,22 @@ class SystemScopeGuardTest {
     }
 
     @Test
-    void platformAdminCanCrossSystems() {
+    void platformAdminCannotCrossSystemsEither() {
         SecurityTestSupport.authenticate("superadmin");
         SecurityTestSupport.requestWithSystemCode("crm");
 
-        assertThatCode(() -> guard.requireAccess(2L)).doesNotThrowAnyException();
-        assertThat(guard.resolveQuerySystemId(2L)).isEqualTo(2L);
-        assertThat(guard.resolveQuerySystemId(null)).isNull();
+        // 严格隔离：超管也必须在当前上下文系统内，无跨系统旁路
+        assertThatThrownBy(() -> guard.requireAccess(2L))
+                .isInstanceOfSatisfying(ApiException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(403);
+                    assertThat(ex.getMessage()).contains("cross-system");
+                });
+        assertThatThrownBy(() -> guard.resolveQuerySystemId(2L))
+                .isInstanceOfSatisfying(ApiException.class,
+                        ex -> assertThat(ex.getStatus()).isEqualTo(403));
+        assertThatCode(() -> guard.requireAccess(1L)).doesNotThrowAnyException();
+        assertThat(guard.resolveQuerySystemId(null)).isEqualTo(1L);
+        assertThat(guard.resolveQuerySystemId(1L)).isEqualTo(1L);
     }
 
     @Test

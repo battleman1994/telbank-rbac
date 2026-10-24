@@ -21,7 +21,7 @@ import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
  * 权限查询服务（需求 §5.2 / §5.3）：
  *
  * <ul>
- *   <li>JWT sub → external_user_id；平台超管（platform:admin，数据驱动）会得到 {@code *}；</li>
+ *   <li>JWT sub → external_user_id；平台超管（平台系统内 {@code *}，数据驱动）会得到 {@code *}；</li>
  *   <li>权限查询 SQL 自带时效过滤：{@code (valid_from IS NULL OR valid_from <= NOW()) AND
  *       (valid_until IS NULL OR valid_until > NOW()) AND status = 1}；</li>
  *   <li>{@code is_public=1} 的权限码所有登录用户默认拥有。</li>

@@ -1,8 +1,5 @@
 package com.telbank.rbac.service;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -30,7 +27,7 @@ import com.telbank.rbac.web.dto.SystemDtos.SystemVO;
 /**
  * 系统接入管理（契约 §3.2，仅平台超管）。
  *
- * <p>POST 在事务内完成：创建业务系统 → 默认 {@code admin} 角色 → 6 个系统内短权限码 →
+ * <p>POST 在事务内完成：创建业务系统 → 默认 {@code admin} 角色 → 一条通配权限 {@code *} →
  * 角色权限授权 → 给 {@code adminExternalUserId} 建 user_role → 写入 admin_* 信息。
  * GET 仅返回业务系统（排除 is_platform=1 的平台系统）。PUT 可更新系统与管理员
  * （更换管理员时撤销旧管理员角色并授权新管理员）。</p>
@@ -41,15 +38,6 @@ public class SystemService {
     /** 系统接入时自动创建的管理角色编码。 */
     public static final String DEFAULT_ADMIN_ROLE_CODE = "admin";
     public static final String DEFAULT_ADMIN_ROLE_NAME = "系统管理员";
-
-    /** 系统接入时自动创建并授予默认 admin 角色的 6 个短权限码。 */
-    private static final List<PermissionSeed> DEFAULT_ADMIN_PERMISSIONS = List.of(
-            new PermissionSeed(RbacConstants.PERM_ROLE_MANAGE, "角色管理", 80),
-            new PermissionSeed(RbacConstants.PERM_PERMISSION_MANAGE, "权限管理", 81),
-            new PermissionSeed(RbacConstants.PERM_RESOURCE_MANAGE, "资源管理", 82),
-            new PermissionSeed(RbacConstants.PERM_PAGE_MANAGE, "页面元素管理", 83),
-            new PermissionSeed(RbacConstants.PERM_USER_MANAGE, "用户授权管理", 84),
-            new PermissionSeed(RbacConstants.PERM_AUDIT_VIEW, "授权记录查看", 85));
 
     private final SysSystemRepository systemRepository;
     private final SysRoleRepository roleRepository;
@@ -79,7 +67,7 @@ public class SystemService {
     }
 
     /**
-     * 系统接入：创建系统 + 默认 admin 角色 + 6 个短权限码 + 授权 + 管理员 user_role。
+     * 系统接入：创建系统 + 默认 admin 角色 + 通配权限 {@code *} + 授权 + 管理员 user_role。
      */
     @Transactional
     public SystemVO create(SystemCreateRequest request) {
@@ -109,31 +97,25 @@ public class SystemService {
         adminRole.setRemark("系统接入自动创建");
         SysRole savedRole = roleRepository.save(adminRole);
 
-        List<SysPermission> permissions = new ArrayList<>(DEFAULT_ADMIN_PERMISSIONS.size());
-        List<SysRolePermission> grants = new ArrayList<>(DEFAULT_ADMIN_PERMISSIONS.size());
-        for (PermissionSeed seed : DEFAULT_ADMIN_PERMISSIONS) {
-            SysPermission permission = new SysPermission();
-            permission.setSystemId(savedSystem.getId());
-            permission.setParentId(0L);
-            permission.setType(2);
-            permission.setCode(seed.code());
-            permission.setName(seed.name());
-            permission.setSort(seed.sort());
-            permission.setStatus(RbacConstants.STATUS_ENABLED);
-            permission.setIsPublic(0);
-            permissions.add(permission);
-        }
-        for (SysPermission permission : permissionRepository.saveAll(permissions)) {
-            SysRolePermission grant = new SysRolePermission();
-            grant.setSystemId(savedSystem.getId());
-            grant.setRoleId(savedRole.getId());
-            grant.setPermissionId(permission.getId());
-            grant.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
-            grant.setGrantReason("系统管理员权限");
-            grant.setStatus(RbacConstants.STATUS_ENABLED);
-            grants.add(grant);
-        }
-        rolePermissionRepository.saveAll(grants);
+        SysPermission wildcardPermission = new SysPermission();
+        wildcardPermission.setSystemId(savedSystem.getId());
+        wildcardPermission.setParentId(0L);
+        wildcardPermission.setType(2);
+        wildcardPermission.setCode(RbacConstants.PERM_WILDCARD);
+        wildcardPermission.setName("全部权限（通配）");
+        wildcardPermission.setSort(100);
+        wildcardPermission.setStatus(RbacConstants.STATUS_ENABLED);
+        wildcardPermission.setIsPublic(0);
+        SysPermission savedPermission = permissionRepository.save(wildcardPermission);
+
+        SysRolePermission grant = new SysRolePermission();
+        grant.setSystemId(savedSystem.getId());
+        grant.setRoleId(savedRole.getId());
+        grant.setPermissionId(savedPermission.getId());
+        grant.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
+        grant.setGrantReason("系统管理员通配权限");
+        grant.setStatus(RbacConstants.STATUS_ENABLED);
+        rolePermissionRepository.save(grant);
 
         SysUserRole userRole = new SysUserRole();
         userRole.setSystemId(savedSystem.getId());
@@ -237,6 +219,4 @@ public class SystemService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private record PermissionSeed(String code, String name, int sort) {
-    }
 }

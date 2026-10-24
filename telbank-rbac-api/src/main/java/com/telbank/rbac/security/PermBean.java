@@ -5,6 +5,7 @@ import java.util.Set;
 
 import org.springframework.stereotype.Component;
 
+import com.telbank.rbac.common.PermissionMatcher;
 import com.telbank.rbac.service.PermissionQueryService;
 
 /**
@@ -12,9 +13,10 @@ import com.telbank.rbac.service.PermissionQueryService;
  *
  * <p>Controller 用法：{@code @PreAuthorize("@perm.has('role:manage')")}。</p>
  *
- * <p>查询逻辑（系统隔离模型）：JWT sub → external_user_id；平台超管（数据驱动 {@code platform:admin}）
+ * <p>查询逻辑（系统隔离模型）：JWT sub → external_user_id；平台超管（平台系统内 {@code *}，数据驱动）
  * 短路放行；否则在当前管理上下文系统（X-System-Code）内查询 {@code sys_user_role} 命中的
- * 权限码，查询自带时效过滤。缺 X-System-Code 且非平台超管 → 无权限。</p>
+ * 权限码，查询自带时效过滤，并用 {@link PermissionMatcher} 做通配匹配（{@code *} / {@code 前缀:*} / 精确）。
+ * 缺 X-System-Code 且非平台超管 → 无权限。</p>
  */
 @Component("perm")
 public class PermBean {
@@ -58,12 +60,7 @@ public class PermBean {
         }
         Set<String> granted = permissionQueryService.effectiveCodes(context.get().systemId(),
                 currentUser.get().externalUserId());
-        for (String code : codes) {
-            if (code == null || code.isBlank() || !granted.contains(code)) {
-                return false;
-            }
-        }
-        return true;
+        return PermissionMatcher.matchesAll(granted, codes);
     }
 
     /**
@@ -86,11 +83,6 @@ public class PermBean {
         }
         Set<String> granted = permissionQueryService.effectiveCodes(context.get().systemId(),
                 currentUser.get().externalUserId());
-        for (String code : codes) {
-            if (code != null && !code.isBlank() && granted.contains(code)) {
-                return true;
-            }
-        }
-        return false;
+        return PermissionMatcher.matchesAny(granted, codes);
     }
 }

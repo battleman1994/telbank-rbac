@@ -36,10 +36,7 @@ public class RoleService {
 
     @Transactional(readOnly = true)
     public PageResult<RoleVO> page(Long systemId, String keyword, PageQuery pageQuery) {
-        if (systemId == null) {
-            throw ApiException.badRequest("systemId is required");
-        }
-        systemScopeGuard.requireAccess(systemId);
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         Page<SysRole> page = roleRepository.search(systemId, normalizedKeyword,
                 pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));

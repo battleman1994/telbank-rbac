@@ -79,6 +79,13 @@ function collectDescendantIds(node: PermissionNode): number[] {
   return children.flatMap((child) => [child.id, ...collectDescendantIds(child)])
 }
 
+const WILDCARD_PERMISSION_NAME = '全部权限（通配）'
+
+function permissionDisplayName(node: PermissionNode): string {
+  if (node.code === '*') return node.name || WILDCARD_PERMISSION_NAME
+  return node.name
+}
+
 function PermissionsContent({ systemId }: { systemId: number }) {
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
@@ -127,6 +134,7 @@ function PermissionsContent({ systemId }: { systemId: number }) {
     function build(nodes: PermissionNode[]): ParentTreeOption[] {
       return nodes
         .filter((node) => !excludedIds.has(node.id))
+        .filter((node) => node.code !== '*')
         .map((node) => {
           const children = build(node.children ?? [])
           return {
@@ -208,9 +216,9 @@ function PermissionsContent({ systemId }: { systemId: number }) {
       title: '名称',
       dataIndex: 'name',
       width: 240,
-      render: (value: string, record) => (
+      render: (_, record) => (
         <Space size={6}>
-          <span>{value}</span>
+          <span>{permissionDisplayName(record)}</span>
           {record.isPublic === 1 ? <Tag color="green">公开</Tag> : null}
           {record.status === 0 ? <Tag color="red">已停用</Tag> : null}
         </Space>
@@ -220,7 +228,12 @@ function PermissionsContent({ systemId }: { systemId: number }) {
       title: '权限码',
       dataIndex: 'code',
       width: 210,
-      render: (value: string) => <Tag color="blue">{value}</Tag>,
+      render: (value: string) =>
+        value === '*' ? (
+          <Tag color="gold">*（全部权限）</Tag>
+        ) : (
+          <Tag color="blue">{value}</Tag>
+        ),
     },
     {
       title: '类型',
@@ -370,8 +383,19 @@ function PermissionsContent({ systemId }: { systemId: number }) {
                 rules={[
                   { required: true, message: '请输入权限码' },
                   {
-                    pattern: /^[A-Za-z0-9_:\-.]{1,128}$/,
-                    message: '权限码为 1-128 位字母、数字、下划线、冒号、连字符或点（如 order:delete）',
+                    validator: (_, value: string | undefined) => {
+                      const trimmed = value?.trim()
+                      // 通配权限行允许固定值 `*`
+                      if (trimmed === '*') return Promise.resolve()
+                      if (/^[A-Za-z0-9_:\-.]{1,128}$/.test(trimmed ?? '')) {
+                        return Promise.resolve()
+                      }
+                      return Promise.reject(
+                        new Error(
+                          '权限码为 1-128 位字母、数字、下划线、冒号、连字符或点（如 order:delete）',
+                        ),
+                      )
+                    },
                   },
                 ]}
                 tooltip="系统内唯一，建议采用 模块:资源:操作 格式"

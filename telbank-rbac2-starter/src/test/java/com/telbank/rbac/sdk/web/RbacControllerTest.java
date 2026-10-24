@@ -105,6 +105,21 @@ class RbacControllerTest {
     }
 
     @Test
+    void bootstrapReturnsPrefixWildcardAsIs() {
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(iso(System.currentTimeMillis()),
+                StubRbacOpenApiClient.permission("order:*", null, null));
+        RbacController controller = controller(remote, new RbacPageActionCache());
+
+        RbacController.BootstrapResponse response = controller.getBootstrap(requestWithJwt());
+
+        // 前缀通配不是全量通配：platformAdmin=false，permissions 原样返回 order:*
+        assertThat(response.isPlatformAdmin()).isFalse();
+        assertThat(response.getPermissions()).containsExactly("order:*");
+        assertThat(remote.userPermissionCalls.get()).isEqualTo(1);
+    }
+
+    @Test
     void bootstrapReturnsCachedPageActions() {
         StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
         remote.userPermissions = StubRbacOpenApiClient.response(iso(System.currentTimeMillis()),

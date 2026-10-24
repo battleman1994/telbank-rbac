@@ -3,6 +3,7 @@ package com.telbank.rbac.service;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class PlatformAdminServiceTest {
 
+    private final AtomicReference<String> requestedCode = new AtomicReference<>();
+
     private PlatformAdminService service(SysSystem platformSystem, List<String> adminUserIds) {
         SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
                 (proxy, method, args) -> {
@@ -30,6 +33,7 @@ class PlatformAdminServiceTest {
         SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
                 (proxy, method, args) -> {
                     if ("countEffectivePermission".equals(method.getName())) {
+                        requestedCode.set((String) args[2]);
                         return adminUserIds.contains((String) args[1]) ? 1L : 0L;
                     }
                     return TestProxies.defaultValue(method.getReturnType());
@@ -44,6 +48,8 @@ class PlatformAdminServiceTest {
         assertThat(service.isPlatformAdmin("superadmin")).isTrue();
         assertThat(service.isPlatformAdmin("crm-admin-001")).isFalse();
         assertThat(service.isPlatformAdmin("13800138000")).isFalse();
+        // A 方案：平台超管判定查询的是平台系统内的通配权限 *
+        assertThat(requestedCode.get()).isEqualTo("*");
     }
 
     @Test

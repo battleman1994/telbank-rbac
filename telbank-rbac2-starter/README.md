@@ -27,6 +27,16 @@
 - 用户**没有任何有效角色**时权限中心返回空数组，SDK **原样透传空数组**（不再降级为配置系统单例）；仅当权限中心不可用（回源失败）时才降级为本系统单例，保证业务页面可用。
 - v2.0 已删除「用户-系统开通」概念，SDK 不再包含用户-系统开通/管理上下文 `rbac` 语义；`/rbac/me/systems` 不读取 `X-System-Code`。
 
+## A 方案通配权限（`*` / `前缀:*`）
+
+v2.0 A 方案下 admin/superadmin 角色只授一条 `*` 权限，openapi user-permissions 可能下发 `*` 或 `前缀:*`（如 `order:*`）。SDK 权限判定统一使用内部 `RbacPermissionMatcher`（Java 8 兼容实现，与后端 `@perm`、前端 `hasPerm` 口径一致）：
+
+- **精确匹配**：权限码完全相等；
+- **`*`**：匹配任意权限码（当前系统全部权限）；
+- **`前缀:*`**（如 `order:*`）：匹配以 `前缀:` 开头的权限码（如 `order:delete`、`order:view:amount`）。
+
+`/rbac/me/bootstrap` 的 `permissions` 原样透传缓存中的有效权限码：包含 `*` 时仅返回 `["*"]`（`platformAdmin=true`），前缀通配条目（如 `order:*`）原样返回，业务前端 `hasPerm` 需使用同一匹配口径。
+
 ## 与 JDK 8 版的实现差异
 
 | 项 | JDK 8 版 | JDK 21 版（本模块） |

@@ -3,6 +3,7 @@ package com.telbank.rbac.sdk.client;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -78,6 +79,20 @@ class DefaultRbacClientTest {
         assertThatThrownBy(() -> client(remote).getPermissions("13600136000", "erp"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("erp");
+    }
+
+    @Test
+    void getPermissionsKeepsWildcardEntries() {
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        long now = System.currentTimeMillis();
+        remote.userPermissions = StubRbacOpenApiClient.response(iso(now),
+                StubRbacOpenApiClient.permission("order:*", null, null));
+
+        assertThat(client(remote).getPermissions("13600136000", "crm")).containsExactly("order:*");
+    }
+
+    private static String iso(long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).toString();
     }
 
     private static DefaultRbacClient client(StubRbacOpenApiClient remote) {

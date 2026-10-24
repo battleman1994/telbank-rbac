@@ -198,6 +198,61 @@ class RbacUserPermissionCacheTest {
     }
 
     @Test
+    void prefixWildcardAllowsCodesUnderPrefixOnly() {
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(iso(System.currentTimeMillis()),
+                StubRbacOpenApiClient.permission("order:*", null, null));
+        RbacUserPermissionCache cache = newCache(remote);
+
+        assertThat(cache.check(USER, SYSTEM, "order:delete"))
+                .isEqualTo(RbacUserPermissionCache.Decision.ALLOW);
+        assertThat(cache.check(USER, SYSTEM, "order:view:amount"))
+                .isEqualTo(RbacUserPermissionCache.Decision.ALLOW);
+        // 前缀必须到冒号边界，且不能跨前缀
+        assertThat(cache.check(USER, SYSTEM, "order"))
+                .isEqualTo(RbacUserPermissionCache.Decision.DENY);
+        assertThat(cache.check(USER, SYSTEM, "purchase:create"))
+                .isEqualTo(RbacUserPermissionCache.Decision.DENY);
+        // 前缀通配不等价于全量通配
+        assertThat(cache.check(USER, SYSTEM, "*"))
+                .isEqualTo(RbacUserPermissionCache.Decision.DENY);
+        assertThat(cache.isPlatformAdmin(USER, SYSTEM)).isFalse();
+        assertThat(cache.getValidPermissions(USER, SYSTEM)).containsExactly("order:*");
+    }
+
+    @Test
+    void prefixWildcardRespectsValidityWindow() {
+        long now = System.currentTimeMillis();
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(iso(now),
+                StubRbacOpenApiClient.permission("order:*", null, iso(now - 1L)),
+                StubRbacOpenApiClient.permission("purchase:*", iso(now + 3_600_000L), null));
+        RbacUserPermissionCache cache = newCache(remote);
+
+        assertThat(cache.check(USER, SYSTEM, "order:delete"))
+                .isEqualTo(RbacUserPermissionCache.Decision.DENY);
+        assertThat(cache.check(USER, SYSTEM, "purchase:create"))
+                .isEqualTo(RbacUserPermissionCache.Decision.DENY);
+        assertThat(cache.getValidPermissions(USER, SYSTEM)).isEmpty();
+    }
+
+    @Test
+    void mixedExactAndPrefixWildcardPermissionsAreKeptAsIs() {
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        remote.userPermissions = StubRbacOpenApiClient.response(iso(System.currentTimeMillis()),
+                StubRbacOpenApiClient.permission("order:list", null, null),
+                StubRbacOpenApiClient.permission("order:*", null, null));
+        RbacUserPermissionCache cache = newCache(remote);
+
+        assertThat(cache.check(USER, SYSTEM, "order:list"))
+                .isEqualTo(RbacUserPermissionCache.Decision.ALLOW);
+        assertThat(cache.check(USER, SYSTEM, "order:delete"))
+                .isEqualTo(RbacUserPermissionCache.Decision.ALLOW);
+        assertThat(cache.getValidPermissions(USER, SYSTEM))
+                .containsExactlyInAnyOrder("order:list", "order:*");
+    }
+
+    @Test
     void malformedTimestampFailsLoadAndFallsBack() {
         StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
         remote.userPermissions = StubRbacOpenApiClient.response(

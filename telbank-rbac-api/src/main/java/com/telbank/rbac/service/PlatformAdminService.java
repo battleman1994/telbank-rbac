@@ -14,7 +14,7 @@ import com.telbank.rbac.domain.repository.SysUserRoleRepository;
  * 平台超管判定（数据驱动，不读取配置文件）。
  *
  * <p>平台超管 = 用户在平台系统（{@code sys_system.is_platform=1}）内拥有有效角色，
- * 且该角色授予了 {@code platform:admin} 权限（时效过滤由 SQL 保证）。</p>
+ * 且该角色授予了通配权限 {@code *}（时效过滤由 SQL 保证）。</p>
  */
 @Service
 public class PlatformAdminService {
@@ -39,7 +39,7 @@ public class PlatformAdminService {
     }
 
     /**
-     * 用户是否平台超管（拥有平台系统内有效 {@code platform:admin} 权限）。
+     * 用户是否平台超管（拥有平台系统内有效通配权限 {@code *}）。
      */
     @Transactional(readOnly = true)
     public boolean isPlatformAdmin(String externalUserId) {
@@ -51,6 +51,6 @@ public class PlatformAdminService {
             return false;
         }
         return userRoleRepository.countEffectivePermission(platformSystem.getId(), externalUserId.trim(),
-                RbacConstants.PERM_PLATFORM_ADMIN) > 0;
+                RbacConstants.PERM_WILDCARD) > 0;
     }
 }

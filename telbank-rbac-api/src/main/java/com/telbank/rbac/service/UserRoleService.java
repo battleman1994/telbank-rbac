@@ -49,13 +49,10 @@ public class UserRoleService {
 
     @Transactional(readOnly = true)
     public List<UserRoleVO> list(Long systemId, String externalUserId) {
-        if (systemId == null) {
-            throw ApiException.badRequest("systemId is required");
-        }
         if (externalUserId == null || externalUserId.isBlank()) {
             throw ApiException.badRequest("externalUserId is required");
         }
-        systemScopeGuard.requireAccess(systemId);
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         List<SysUserRole> relations =
                 userRoleRepository.findBySystemIdAndExternalUserIdOrderByIdAsc(systemId, externalUserId.trim());
         Map<Long, SysRole> roles = loadRoles(relations);

@@ -33,7 +33,7 @@ public class SdkEndpointController {
     }
 
     @GetMapping
-    public ApiResponse<PageResult<SdkEndpointVO>> page(@RequestParam Long systemId,
+    public ApiResponse<PageResult<SdkEndpointVO>> page(@RequestParam(required = false) Long systemId,
                                                        @RequestParam(required = false) String keyword,
                                                        @RequestParam(required = false) Integer page,
                                                        @RequestParam(required = false) Integer size) {

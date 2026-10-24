@@ -226,11 +226,8 @@ def test_system_isolation():
     status, body = http("GET", "/api/me/bootstrap", token=crm_admin, system=CRM)
     d = data_of((status, body)) or {}
     perms = set(d.get("permissions") or [])
-    mgmt = {"role:manage", "permission:manage", "resource:manage",
-            "page:manage", "user:manage", "audit:view"}
-    check("crm-admin-001 bootstrap：currentSystemCode=crm 且含 6 个系统内管理权限码",
-          d.get("currentSystemCode") == "crm" and mgmt <= perms and not any(p.startswith("rbac:") for p in perms),
-          sorted(perms))
+    check("crm-admin-001 bootstrap：currentSystemCode=crm 且权限含通配 '*'（* 一条记录即可覆盖全部）",
+          d.get("currentSystemCode") == "crm" and "*" in perms, sorted(perms))
     status, body = http("GET", "/api/me/bootstrap", token=crm_admin, system=ERP)
     check("crm-admin-001 传 ERP 上下文时回退到自己的 CRM（不泄露 ERP）",
           (data_of((status, body)) or {}).get("currentSystemCode") == "crm")
@@ -240,6 +237,20 @@ def test_system_isolation():
     check("系统管理员本系统查询角色（systemId=1）→ 200", status == 200, status)
     status, _ = http("GET", "/api/systems?page=1&size=20", token=crm_admin, system=CRM)
     check("系统管理员访问系统接入接口 → 403", status == 403, status)
+
+    # 权限查询严格限定当前系统：系统管理员/超管都一样
+    status, body = http("GET", "/api/permissions?systemId=1", token=crm_admin, system=CRM)
+    tree = data_of((status, body)) or []
+    codes = {node.get("code") for node in tree}
+    check("系统管理员权限树仅 crm 且含通配 '*'", status == 200 and "*" in codes, sorted(codes))
+    status, _ = http("GET", "/api/permissions?systemId=2", token=crm_admin, system=CRM)
+    check("系统管理员跨系统查权限树（systemId=2）→ 403", status == 403, status)
+    status, body = http("GET", "/api/permissions?systemId=1", token=token_of(SUPER_ADMIN), system=CRM)
+    check("超管在 CRM 上下文查 CRM 权限树 → 200", status == 200, status)
+    status, _ = http("GET", "/api/permissions?systemId=2", token=token_of(SUPER_ADMIN), system=CRM)
+    check("超管也不能在同一请求跨系统查 ERP 权限树 → 403", status == 403, status)
+    status, _ = http("GET", "/api/permissions?systemId=2", token=token_of(SUPER_ADMIN), system=ERP)
+    check("超管切到 ERP 上下文后可查 ERP 权限树 → 200", status == 200, status)
 
     # 平台系统不能作为管理上下文
     status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20",
@@ -281,9 +292,11 @@ def test_multi_system():
     status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=admin, system=ERP)
     check("138 切到 ERP 上下文查询 ERP 角色 → 200", status == 200, status)
 
-    # 平台超管允许跨系统
+    # 平台超管也必须按当前系统上下文查询（严格隔离）
     status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=token_of(SUPER_ADMIN), system=CRM)
-    check("平台超管在 CRM 上下文跨系统查询 ERP 角色 → 200", status == 200, status)
+    check("平台超管在 CRM 上下文跨系统查询 ERP 角色 → 403", status == 403, status)
+    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=token_of(SUPER_ADMIN), system=ERP)
+    check("平台超管切到 ERP 上下文查 ERP 角色 → 200", status == 200, status)
 
     # 同一 external_user_id 在不同系统权限集互不干扰
     status, body = openapi("GET", "/openapi/sdk/user-permissions",
@@ -340,13 +353,16 @@ def test_system_onboarding():
     check("新系统管理员可访问新系统（由角色推导）", code in codes, codes)
     status, body = http("GET", "/api/me/bootstrap", token=new_admin, system=code)
     perms = set((data_of((status, body)) or {}).get("permissions") or [])
-    check("新系统管理员 bootstrap 含 6 个管理权限码",
-          {"role:manage", "permission:manage", "resource:manage",
-           "page:manage", "user:manage", "audit:view"} <= perms, sorted(perms))
+    check("新系统管理员 bootstrap 权限为通配 ['*']（接入只建 1 条权限记录）", perms == {"*"}, sorted(perms))
     if system_id:
         status, _ = http("GET", "/api/roles?systemId=%s&page=1&size=20" % system_id,
                          token=new_admin, system=code)
         check("新系统管理员可在本系统查询角色 → 200", status == 200, status)
+        status, body = http("GET", "/api/permissions?systemId=%s" % system_id,
+                            token=new_admin, system=code)
+        tree = data_of((status, body)) or []
+        check("新系统权限树仅本系统且含一条通配 '*'",
+              status == 200 and {n.get("code") for n in tree} == {"*"}, [n.get("code") for n in tree])
         status, _ = http("PUT", "/api/systems/%s" % system_id, token=super_token, system=CRM, body={
             "name": "OSS系统", "region": "region_a", "status": 0,
         })

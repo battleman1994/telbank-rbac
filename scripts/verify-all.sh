@@ -103,6 +103,10 @@ ok "数据库初始化采用手动 SQL（db/manual，无 Flyway）"
 # v2.0 系统隔离重构产物核对
 [ -f telbank-rbac-api/src/main/resources/db/manual/04_system_isolation.sql ] \
   || die "缺少 04_system_isolation.sql"
+[ -f telbank-rbac-api/src/main/resources/db/manual/05_wildcard_permissions.sql ] \
+  || die "缺少 05_wildcard_permissions.sql"
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/common/PermissionMatcher.java ] \
+  || die "缺少 PermissionMatcher（通配匹配器）"
 grep -rq 'class UserSystemController' telbank-rbac-api/src/main/java && die "仍存在 UserSystemController"
 [ -d telbank-rbac-api/src/main/java/com/telbank/rbac/security ] \
   && [ -f telbank-rbac-api/src/main/java/com/telbank/rbac/security/ManagementContextService.java ] \

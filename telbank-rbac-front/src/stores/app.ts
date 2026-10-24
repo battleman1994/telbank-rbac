@@ -4,6 +4,23 @@ import { CURRENT_SYSTEM_CODE_KEY, TOKEN_KEY, persistCurrentSystemCode } from '..
 import type { AdminBootstrapVO, MeVO, MySystemVO } from '../api/types'
 
 /**
+ * 权限码通配匹配（A 方案）：
+ * - permissions 含 `*` → 恒 true；
+ * - permissions 含 `前缀:*`（如 `order:*`）→ code 以 `前缀:` 开头即 true；
+ * - 否则精确匹配。
+ */
+export function matchesPermissionCode(permissions: Set<string>, code: string): boolean {
+  if (permissions.has('*') || permissions.has(code)) return true
+  for (const granted of permissions) {
+    if (granted.endsWith(':*')) {
+      const prefix = granted.slice(0, -1) // 保留末尾冒号，如 'order:'
+      if (code.startsWith(prefix)) return true
+    }
+  }
+  return false
+}
+
+/**
  * 客户端全局状态（系统隔离模型）：
  * - token：管理端 JWT，持久化到 localStorage["rbac.token"]
  * - currentUser：GET /api/me 返回的当前用户
@@ -83,8 +100,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
   hasPerm: (code) => {
     const { permissions, platformAdmin } = get()
-    if (platformAdmin || permissions.has('*')) return true
-    return permissions.has(code)
+    if (platformAdmin) return true
+    return matchesPermissionCode(permissions, code)
   },
   logout: () => {
     writeStorage(TOKEN_KEY, null)
@@ -108,7 +125,7 @@ export function useHasPerm(): (code: string) => boolean {
   const permissions = useAppStore((state) => state.permissions)
   const platformAdmin = useAppStore((state) => state.platformAdmin)
   return useMemo(
-    () => (code: string) => platformAdmin || permissions.has('*') || permissions.has(code),
+    () => (code: string) => platformAdmin || matchesPermissionCode(permissions, code),
     [permissions, platformAdmin],
   )
 }

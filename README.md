@@ -47,7 +47,9 @@ telbank-rbac/
 - **平台超管是数据驱动的**：平台系统 `platform`（`sys_system.is_platform=1`）内的 `super-admin` 角色持有 `platform:admin` 权限；种子超管账号 **`superadmin`**。后端不再读取 `rbac.platform-admin-ids` 等配置文件。
 - **管理上下文**：所有管理端 `/api/**` 带 `X-System-Code=<当前业务系统>`；普通用户必须在该系统有有效角色，且查询/写入的 `systemId` 必须等于上下文；平台超管可切换任意业务系统、可跨系统查询。
 - **用户可访问系统由有效角色推导**：不再有「用户-系统开通」表和接口；用户在某系统有有效角色（`sys_user_role` status=1 且时效内）即视为可访问。
-- **系统接入（仅超管）**：新增系统时必须录入系统管理员账号；服务端自动创建默认 `admin` 角色 + 6 个系统内短权限码（`role:manage`/`permission:manage`/`resource:manage`/`page:manage`/`user:manage`/`audit:view`）并授权给该账号。
+- **系统接入（仅超管）**：新增系统时必须录入系统管理员账号；服务端自动创建默认 `admin` 角色 + **一条 `*` 通配权限**并授权给该账号。
+- **通配权限（A 方案）**：管理员只授一条 `*`；匹配规则 `*` > `前缀:*` > 精确，后端 `@perm`、前端 `hasPerm`、SDK 拦截器一致。
+- **严格系统隔离**：每次请求只查/只写 `X-System-Code` 当前系统数据；**超管也必须切换系统上下文**，禁止单请求跨系统（否则 403）。
 - **菜单 IA**：`权限管理` 组（角色管理、角色授权、权限管理、资源管理、页面元素、用户授权、授权记录、到期提醒）+ 顶级「系统接入」（仅超管）；已移除「用户-系统开通」。
 
 ---
@@ -150,7 +152,7 @@ cd telbank-rbac-front && npm run dev
 | external_user_id | 身份 | 说明 |
 |---|---|---|
 | `superadmin` | **平台超管** | 平台系统 `platform` 的 `super-admin`（`platform:admin`），可切换所有业务系统 + 系统接入 |
-| `crm-admin-001` | CRM 系统管理员 | 仅 CRM；拥有 6 个系统内管理权限码，看不到 ERP/系统接入 |
+| `crm-admin-001` | CRM 系统管理员 | 仅 CRM；持有通配 `*`（一条记录覆盖全部管理权限），看不到 ERP/系统接入 |
 | `erp-admin-001` | ERP 系统管理员 | 仅 ERP；同上 |
 | `13800138000` | CRM 管理员 + ERP 管理员 | 两个系统都有 admin 角色（非平台超管），用于验证双系统切换与隔离 |
 | `13900139000` | CRM 运营 | 临时授权（`order:delete`/`order:export` 到 2027-06-30），仅 CRM |
@@ -162,7 +164,7 @@ cd telbank-rbac-front && npm run dev
 `demo-temp-permission.sh` 给指定账号授予一条 N 分钟（默认 1 分钟）的临时权限，用于验证「刷新后权限消失、点击提示无权限」：
 
 ```bash
-# 默认：demo-1min 账号 + audit:view + CRM 系统 + 1 分钟
+# 默认：demo-1min 账号 + 通配 * + CRM 系统 + 1 分钟
 MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/demo-temp-permission.sh
 
 # 自定义：账号 / 权限码 / 系统 / 分钟数
@@ -376,6 +378,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 9. **A9 · SDK 的 JDK 版本覆盖**：需求只定义 JDK 8 版 SDK；实现新增 JDK 21 + Spring Boot 4 变体（协议/配置一致、同包名不可共存），供 JDK 21 业务系统接入。
 10. **A10 · 移除 Flyway**：按用户要求去掉 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `telbank-rbac-api/src/main/resources/db/manual/*.sql` 手动初始化（`scripts/init-db.sh` 建库并按序导入，`--temp-db` 自动执行），后端启动前库表须已存在。
 11. **A11 · 系统隔离重构（v2.0）**：删除用户-系统开通（表/接口/页面），系统访问由有效角色推导；平台超管改为数据驱动（platform 系统 + super-admin + platform:admin，删除 `rbac.platform-admin-ids` 配置）；管理上下文改为 `X-System-Code=当前业务系统`，非超管跨系统 403；管理权限改为系统内短码（role:manage 等）；系统接入仅超管且必须录入系统管理员，自动创建默认 admin 角色并授权；菜单统一收在「权限管理」组，新增「系统接入」。
+12. **A12 · A 方案通配权限 + 严格上下文**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再写 6 条短码；所有权限/角色/资源查询严格限定当前 `X-System-Code` 系统，列表缺省 `systemId` 收敛上下文、by-id 校验实体 systemId，**超管也不能单请求跨系统**。
 
 其他实现说明（非偏差，需求本身已明确）：
 
@@ -394,25 +397,26 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。
 - **切系统后接口 403**：用户在该系统没有有效角色（`sys_user_role`），或调用了与 `X-System-Code` 不一致的 `systemId`；系统管理员只能操作自己系统；到「用户授权」给用户分配系统内角色即可。
-- **管理端接口 403**：确认当前用户在 `X-System-Code` 对应系统内拥有相应管理短码（`role:manage` 等），且 `systemId` 与上下文一致；平台超管由 `platform` 系统的 `platform:admin` 决定（种子账号 `superadmin`）。
+- **管理端接口 403**：确认当前用户在 `X-System-Code` 对应系统内拥有管理权限（admin 角色一条 `*` 即可），且 `systemId` 与上下文一致；**超管同样不能单请求跨系统**（先切系统）；平台超管由 `platform` 系统内的 `*` 判定（种子账号 `superadmin`）。
 - **SDK 接口未被拦截**：确认权限中心该系统的「权限码」已填写 `method + api_pattern`（SDK 只下发非空记录），且业务系统 `system-code` 与 `rbac.clients` 一致。
 
 ---
 
 ## 11. 本次交付验证记录（摘要）
 
-- 权限中心后端：`clean test` **88/88 PASS**（JDK 21.0.13，系统隔离重构后）。
+- 权限中心后端：`clean test` **104/104 PASS**（JDK 21.0.13，A 方案通配 + 严格隔离后）。
 - **系统隔离重构（A11）**：当前业务表 7 张（含平台系统共 3 个系统：crm/erp/platform）；全量 API 验收 **81/81 PASS**（含 JDK8/JDK21 两个 SDK e2e 各 4/4）；覆盖系统由有效角色推导、数据驱动超管、bootstrap `currentSystemCode`、跨系统 403/超管跨系统、系统接入自动创建管理员角色、用户-系统开通接口 404。
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
-- SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **97/97 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
-- SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **98/98 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
+- SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **113/113 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
+- SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **114/114 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
+- **一键验证**：`./scripts/verify-all.sh` → **13 项检查全过**（api 104、SDK v1 113、SDK v2 114、前端构建、05 通配/隔离产物、3 平台启动脚本）。
 - **GitHub Actions（6 job 全绿）**：权限中心（JDK21 88 单测）/ SDK v1（JDK17 97 单测）/ SDK v2（JDK21 98 单测）/ 前端（Node22）/ Windows 启动脚本语法 / JDK 8 运行时冒烟全部 success（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)）。
 - **v1 自接入（已被 A11 取代）**：旧的 `rbac` 系统自接入已移除；现由平台系统 `platform` + `superadmin` 数据驱动超管。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
 - 第 9 节全量验收（v2.0 当前）：**81/81 PASS**（含 JDK8/JDK21 两个 SDK 端到端各 4/4）；历史记录：v1/移除 Flyway 时 65/65、59/59。
-- **权限时效演示（本机验证，A11 后）**：`demo-temp-permission.sh` 给 `demo-1min` 在 CRM 临时授予 `audit:view`（1 分钟），有效期内 bootstrap 含该码、`/api/approval-grants` 200；过期后 `permissions=[]`、接口 403。
+- **权限时效演示（本机验证，A12 后）**：`demo-temp-permission.sh` 给 `demo-1min` 在 CRM 临时授予通配 `*`（1 分钟），有效期内可访问管理接口，过期后 `permissions=[]`、接口 403。
 - 管理前端：`tsc -b && vite build` 通过（3257 modules），dist 1.4 MB（JS 1,410.82 kB / gzip 444.74 kB）；与真实后端的浏览器人工联调待补（当前为 build + mock 冒烟，见验收文档）。
-- 一键验证：`./scripts/verify-all.sh` → **全部通过（8 项检查）**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
+- 一键验证：`./scripts/verify-all.sh` → **13 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 
 ---
 

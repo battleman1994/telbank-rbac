@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v2.0（2026-10-24）· 维护：Lead
-> 修订：v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v2.1（2026-10-24）· 维护：Lead
+> 修订：v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -40,7 +40,7 @@
 3. **分页**：请求 `?page=1&size=20`；`data = {"items":[..],"total":123,"page":1,"size":20}`。
 4. **时间**：JSON 一律 ISO-8601 UTC 字符串（如 `2026-10-31T23:59:59Z`）；DB 用 `DATETIME`（UTC 存储，`serverTimezone=UTC`）。
 5. **认证（管理端）**：`Authorization: Bearer <JWT>`；外部认证系统签发，`sub` = `external_user_id`。权限中心只校验不签发。
-   - **管理端 `/api/**` 必须带 `X-System-Code: <业务系统 code>`**（`/api/me`、`/api/me/systems`、`/api/me/bootstrap` 除外）；服务端把它解析为当前管理上下文系统，并在该系统内校验管理权限码。请求中的 `systemId` 必须与上下文一致（平台超管可跨系统）。
+   - **管理端 `/api/**` 必须带 `X-System-Code: <业务系统 code>`**（`/api/me`、`/api/me/systems`、`/api/me/bootstrap` 除外）；服务端把它解析为当前管理上下文系统，并在该系统内校验管理权限码。请求中的 `systemId` 必须与上下文一致；**平台超管也不例外**（需要跨系统时先切换 `X-System-Code`），否则 403。
    - **平台超管由数据驱动**：用户在平台系统（`sys_system.is_platform=1`）内拥有有效角色且该角色授予 `platform:admin` 权限（种子账号 `superadmin`）；不再读取配置文件。超管跳过权限码校验、可切换任意业务系统，但仍要求合法 JWT。
 6. **权限断言**：Controller 用 `@PreAuthorize("@perm.has('system:manage')")` 一类写法；`@perm` Bean 名固定 `perm`，方法签名 `boolean has(String... codes)`（单码时返回是否拥有；多码按 AND 语义，实现可扩展 OR 变体 `hasAny`）。
 7. **权限码**：系统内唯一；菜单/按钮/接口共用一个码。`is_public=1` 默认所有登录用户拥有。
@@ -57,6 +57,7 @@
   - `02_seed_data.sql`：CRM/ERP 示例系统、角色、权限码、演示用户
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
 - 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。平台一键脚本（`start-all-macos.sh` / `start-all-linux.sh` / `start-all-windows.ps1`）的 `--temp-db` 会在临时库启动后自动执行。
+- `05_wildcard_permissions.sql`（v2.1）：业务系统 admin 角色与平台超管各只授一条 `*` 权限（删除 6 条短码与 `platform:admin`）。
 - `04_system_isolation.sql`（v2.0）：删除 `sys_user_system`；`sys_system` 增加 `is_platform/admin_external_user_id/admin_name`；新增平台系统、`super-admin` 角色、`platform:admin` 权限、种子超管 `superadmin`；新增各业务系统短管理权限码与两个系统管理员演示账号。
 - 启动前提：数据库与表已经存在（`spring.jpa.hibernate.ddl-auto=none`，后端不会自动建表）。
 - SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `05_xxx.sql` 递增并在 README/验收文档登记。
@@ -71,9 +72,15 @@
 - 平台超管（数据驱动 `platform:admin`）可切换任意业务系统、跨系统查询，并独占「系统接入」能力。
 - 用户可访问哪些系统由**有效角色**（`sys_user_role` status=1 且时效内、角色/系统启用）推导，不再有用户-系统开通表；平台系统 `platform` 不参与业务系统列表。
 
-**管理端权限码（当前上下文系统内校验，种子授予各系统 admin 角色）：**
+**权限匹配（A 方案，v2.1）**
+- `*`：匹配任意权限码（系统内全部权限）；
+- `前缀:*`（如 `order:*`）：匹配以 `前缀:` 开头的权限码；
+- 其余精确匹配；多个必需权限按 AND 语义逐个匹配。
+- 后端 `@perm`、前端 `hasPerm`、SDK 拦截器/权限缓存使用同一口径。
 
-| 权限码 | 覆盖接口 |
+**管理端权限断言（语义码，系统 admin/平台超管只需一条 `*` 即可覆盖）：**
+
+| 语义码 | 覆盖接口 |
 |---|---|
 | `role:manage` | `/api/roles/**`、`/api/roles/{id}/permissions/**` |
 | `permission:manage` | `/api/permissions/**` |
@@ -84,7 +91,8 @@
 | （超管专属） | `/api/systems/**`：`@perm.isPlatformAdmin()`，无业务权限码 |
 
 - 除 `/api/me`、`/api/me/systems`、`/api/me/bootstrap` 仅要求已认证外，其余管理端接口都要求 `X-System-Code` + 对应权限码（平台超管免权限码但仍需合法业务系统上下文）。
-- 种子里 `crm-admin-001`（CRM admin）、`erp-admin-001`（ERP admin）各有 6 个短权限码；`superadmin` 是平台超管（platform 系统 + `platform:admin`）。
+- **严格隔离**：列表接口 `systemId` 可省略（=当前上下文），显式其他系统 403；所有 by-id 接口加载实体后校验 `entity.systemId == 上下文`，超管同样不允许单请求跨系统。
+- 种子里 `crm-admin-001`（CRM admin）、`erp-admin-001`（ERP admin）各持有 **一条 `*`**；`superadmin` 在平台系统内持有 **一条 `*`**。
 
 ### 3.1 当前用户与系统
 
@@ -92,14 +100,14 @@
 |---|---|---|---|
 | GET | `/api/me` | — | `{"externalUserId":"...","platformAdmin":false}` |
 | GET | `/api/me/systems` | — | `[{"id":1,"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`；普通用户=有有效角色的启用业务系统，超管=全部启用业务系统；**不含 platform 平台系统**；第一条 `isDefault=true` |
-| GET | `/api/me/bootstrap` | 可选 `X-System-Code` | 管理端渲染：`{"externalUserId":"...","platformAdmin":false,"currentSystemCode":"crm","permissions":["role:manage",...],"systems":[...同上...]}`；`currentSystemCode`=合法请求头否则第一个可访问系统（无系统为 null）；`permissions`=当前系统内有效权限码（超管 `["*"]`、无系统 `[]`） |
+| GET | `/api/me/bootstrap` | 可选 `X-System-Code` | 管理端渲染：`{"externalUserId":"...","platformAdmin":false,"currentSystemCode":"crm","permissions":["role:manage",...],"systems":[...同上...]}`；`currentSystemCode`=合法请求头否则第一个可访问系统（无系统为 null）；`permissions`=当前系统内有效权限码（含 `*` 通配；超管 `["*"]`、无系统 `[]`） |
 
 ### 3.2 系统接入（仅平台超管）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/systems?keyword=&page=&size=` | 分页列表（仅业务系统，排除 platform），items = `{id,code,name,region,status,sort,remark,isPlatform,adminExternalUserId,adminName,createdAt,updatedAt}` |
-| POST | `/api/systems` | 必填 `{code,name,region,adminExternalUserId}`，可选 `adminName,status,sort,remark`；事务内自动创建默认 `admin` 角色 + 6 个短权限码 + 角色授权 + 管理员 `user_role` + 写入 `admin_*`；code 全局唯一（重复 409） |
+| POST | `/api/systems` | 必填 `{code,name,region,adminExternalUserId}`，可选 `adminName,status,sort,remark`；事务内自动创建默认 `admin` 角色 + 一条 `*` 权限 + 角色授权 + 管理员 `user_role` + 写入 `admin_*`；code 全局唯一（重复 409） |
 | PUT | `/api/systems/{id}` | 必填 `{name,region}`，可选 `adminExternalUserId,adminName,status,sort,remark`；变更管理员时撤销旧管理员该 admin 角色授权并授权新管理员；code 不可改 |
 | DELETE | — | **v2.0 移除**：用 PUT `status=0` 停用 |
 
@@ -413,7 +421,7 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -431,7 +439,7 @@ rbac:
 - 环境变量：`VITE_API_BASE_URL`（默认 `http://localhost:8080`）。
 - 登录：`/login` 页面粘贴 JWT（外部认证系统签发；本地用 `scripts/gen-demo-jwt.sh` 生成），存 `localStorage["rbac.token"]`；请求头注入 `Authorization: Bearer`；当前系统存 `localStorage["rbac.systemCode"]`。
 - 系统上下文：登录后 GET `/api/me` → `/api/me/systems` → 选择 `currentSystemCode`（本地缓存命中否则第一条）→ 带 `X-System-Code` 拉 `/api/me/bootstrap`；所有管理端查询都带当前业务系统头；超管可切换所有业务系统并看到「系统接入」，系统管理员只能看到自己的系统。
-- 菜单 IA：`权限管理` 组（角色管理/角色授权 role:manage、权限管理 permission:manage、资源管理 resource:manage、页面元素 page:manage、用户授权 user:manage、授权记录/到期提醒 audit:view）+ 顶级「系统接入」（仅超管）；不再有「用户-系统开通」。
+- 菜单 IA：`权限管理` 组（角色管理/角色授权/权限管理/资源管理/页面元素/用户授权/授权记录/到期提醒）+ 顶级「系统接入」（仅超管）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」。
 - 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管，含管理员账号录入）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效）、用户授权（含时效）、资源管理（SDK 端点）、页面元素、授权记录、到期提醒。**用户-系统开通已移除**。
 - 状态：TanStack Query 管理服务端状态；Zustand 管理当前用户/系统/权限码集合；不使用 Axios，使用封装的 `request()`（原生 fetch）。
 - 必须 `npm run build` 通过（含 `tsc` 类型检查）。

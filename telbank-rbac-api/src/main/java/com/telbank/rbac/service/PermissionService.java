@@ -55,10 +55,7 @@ public class PermissionService {
 
     @Transactional(readOnly = true)
     public List<PermissionNodeVO> tree(Long systemId) {
-        if (systemId == null) {
-            throw ApiException.badRequest("systemId is required");
-        }
-        systemScopeGuard.requireAccess(systemId);
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         if (!systemRepository.existsById(systemId)) {
             throw ApiException.notFound("system not found: " + systemId);
         }

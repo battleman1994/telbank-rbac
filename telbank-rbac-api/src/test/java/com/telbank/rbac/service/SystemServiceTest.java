@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,26 +68,20 @@ class SystemServiceTest {
                 });
         SysPermissionRepository permissionRepository = TestProxies.proxy(SysPermissionRepository.class,
                 (proxy, method, args) -> {
-                    if ("saveAll".equals(method.getName())) {
-                        List<SysPermission> input = new ArrayList<>();
-                        for (Object item : (Iterable<?>) args[0]) {
-                            input.add((SysPermission) item);
-                        }
-                        input.forEach(permission -> permission.setId(permissionIdSeq.incrementAndGet()));
-                        permissions.addAll(input);
-                        return input;
+                    if ("save".equals(method.getName())) {
+                        SysPermission permission = (SysPermission) args[0];
+                        permission.setId(permissionIdSeq.incrementAndGet());
+                        permissions.add(permission);
+                        return permission;
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
         SysRolePermissionRepository rolePermissionRepository = TestProxies.proxy(
                 SysRolePermissionRepository.class, (proxy, method, args) -> {
-                    if ("saveAll".equals(method.getName())) {
-                        List<SysRolePermission> input = new ArrayList<>();
-                        for (Object item : (Iterable<?>) args[0]) {
-                            input.add((SysRolePermission) item);
-                        }
-                        rolePermissions.addAll(input);
-                        return input;
+                    if ("save".equals(method.getName())) {
+                        SysRolePermission grant = (SysRolePermission) args[0];
+                        rolePermissions.add(grant);
+                        return grant;
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
@@ -125,27 +118,20 @@ class SystemServiceTest {
         assertThat(adminRole.getCode()).isEqualTo(SystemService.DEFAULT_ADMIN_ROLE_CODE);
         assertThat(adminRole.getName()).isEqualTo(SystemService.DEFAULT_ADMIN_ROLE_NAME);
 
-        assertThat(permissions).hasSize(6);
-        assertThat(permissions).extracting(SysPermission::getCode).containsExactlyInAnyOrder(
-                RbacConstants.PERM_ROLE_MANAGE, RbacConstants.PERM_PERMISSION_MANAGE,
-                RbacConstants.PERM_RESOURCE_MANAGE, RbacConstants.PERM_PAGE_MANAGE,
-                RbacConstants.PERM_USER_MANAGE, RbacConstants.PERM_AUDIT_VIEW);
-        assertThat(permissions).allSatisfy(permission -> {
-            assertThat(permission.getSystemId()).isEqualTo(10L);
-            assertThat(permission.getType()).isEqualTo(2);
-            assertThat(permission.getStatus()).isEqualTo(1);
-        });
+        // A 方案：系统接入只创建 1 条通配权限 * + 1 条角色授权
+        assertThat(permissions).hasSize(1);
+        SysPermission wildcard = permissions.get(0);
+        assertThat(wildcard.getSystemId()).isEqualTo(10L);
+        assertThat(wildcard.getCode()).isEqualTo(RbacConstants.PERM_WILDCARD);
+        assertThat(wildcard.getType()).isEqualTo(2);
+        assertThat(wildcard.getStatus()).isEqualTo(1);
 
-        assertThat(rolePermissions).hasSize(6);
-        assertThat(rolePermissions).allSatisfy(grant -> {
-            assertThat(grant.getSystemId()).isEqualTo(10L);
-            assertThat(grant.getRoleId()).isEqualTo(20L);
-            assertThat(grant.getStatus()).isEqualTo(1);
-        });
-        assertThat(rolePermissions.stream().map(SysRolePermission::getPermissionId)
-                .collect(Collectors.toSet()))
-                .containsExactlyInAnyOrderElementsOf(
-                        permissions.stream().map(SysPermission::getId).toList());
+        assertThat(rolePermissions).hasSize(1);
+        SysRolePermission grant = rolePermissions.get(0);
+        assertThat(grant.getSystemId()).isEqualTo(10L);
+        assertThat(grant.getRoleId()).isEqualTo(20L);
+        assertThat(grant.getPermissionId()).isEqualTo(wildcard.getId());
+        assertThat(grant.getStatus()).isEqualTo(1);
 
         assertThat(userRoles).hasSize(1);
         SysUserRole adminGrant = userRoles.get(0);

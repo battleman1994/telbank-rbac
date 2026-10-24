@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { LinkOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -89,6 +89,13 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
   const [linkTarget, setLinkTarget] = useState<SdkEndpointVO | null>(null)
   const [linkForm] = Form.useForm<LinkFormValues>()
   const [createForm] = Form.useForm<CreatePermissionFormValues>()
+
+  // 系统切换后关闭关联弹窗并清空表单，避免旧系统的端点/权限码跨系统操作
+  useEffect(() => {
+    setLinkTarget(null)
+    linkForm.resetFields()
+    createForm.resetFields()
+  }, [systemId, linkForm, createForm])
 
   const endpointsQuery = useQuery({
     queryKey: ['sdk-endpoints', systemId, { keyword, page, size }],

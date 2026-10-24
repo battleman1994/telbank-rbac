@@ -36,7 +36,7 @@ public class PermissionController {
     }
 
     @GetMapping
-    public ApiResponse<List<PermissionNodeVO>> tree(@RequestParam Long systemId) {
+    public ApiResponse<List<PermissionNodeVO>> tree(@RequestParam(required = false) Long systemId) {
         return ApiResponse.ok(permissionService.tree(systemId));
     }
 
