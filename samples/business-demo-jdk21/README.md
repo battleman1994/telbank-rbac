@@ -1,6 +1,6 @@
 # 示例业务系统（JDK 21 + Boot 4 版，验收用，非交付物）
 
-模拟 **JDK 21 + Spring Boot 4.x** 业务系统，引入 `telbank-rbac-starter-jdk21`（JDK 21 版 SDK），用于验证新 SDK 的真实拦截链路与多系统隔离。协议/配置与 JDK 8 版示例一致。
+模拟 **JDK 21 + Spring Boot 4.x** 业务系统，引入 `telbank-rbac2-starter`（JDK 21 版 SDK），用于验证新 SDK 的真实拦截链路与多系统隔离。协议/配置与 JDK 8 版示例一致。
 
 > 构建工具链：JDK 21（`mvn ... -Dmaven.repo.local` 可选）；运行 JDK 21+。
 
@@ -8,7 +8,7 @@
 
 ```bash
 # 仓库根：先安装 JDK 21 版 SDK 到本地仓库
-mvn -pl telbank-rbac-starter-jdk21 install -DskipTests
+mvn -pl telbank-rbac2-starter install -DskipTests
 
 # 构建示例业务系统
 mvn -f samples/business-demo-jdk21/pom.xml -DskipTests package

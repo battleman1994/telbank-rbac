@@ -18,7 +18,7 @@
 | 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
 | **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8、Flyway、Caffeine + Redis |
 | **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（带时效 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
-| **JDK 21 业务系统 SDK** | `telbank-rbac-starter-jdk21/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
+| **JDK 21 业务系统 SDK** | `telbank-rbac2-starter/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
 
 ```text
@@ -34,7 +34,7 @@ telbank-rbac/
 ├── samples/business-demo-jdk21/   # 示例业务系统（JDK 21 + Boot 4，验收用）
 ├── telbank-rbac-api/              # 权限中心后端（JDK 21 + Boot 4.1.x）
 ├── telbank-rbac-starter/          # SDK（JDK 8 字节码 + Boot 2.7.x）
-├── telbank-rbac-starter-jdk21/    # SDK（JDK 21 + Boot 4.x，协议一致）
+├── telbank-rbac2-starter/         # SDK（JDK 21 + Boot 4.x，协议一致）
 ├── telbank-rbac-front/            # 管理前端（React 19 + Vite 8）
 └── pom.xml                        # Maven 聚合工程
 ```
@@ -226,7 +226,7 @@ JDK 21 + Spring Boot 4.x 业务系统使用 **JDK 21 版 SDK**（协议、配置
 ```xml
 <dependency>
   <groupId>com.telbank</groupId>
-  <artifactId>telbank-rbac-starter-jdk21</artifactId>
+  <artifactId>telbank-rbac2-starter</artifactId>
   <version>1.0.0</version>
 </dependency>
 ```
@@ -294,7 +294,7 @@ mvn -pl telbank-rbac-api -am test
 #   JAVA_HOME=<jdk17> mvn -pl telbank-rbac-starter clean test
 
 # SDK（JDK 21 版：JDK 21 + Boot 4，协议一致）
-mvn -pl telbank-rbac-starter-jdk21 test
+mvn -pl telbank-rbac2-starter test
 
 # 管理前端（nvm node 22）
 export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
@@ -304,7 +304,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 mvn -pl telbank-rbac-starter install -DskipTests
 mvn -f samples/business-demo/pom.xml -DskipTests package
 # JDK 21 版 SDK 的示例业务系统（JDK 21 构建）
-mvn -pl telbank-rbac-starter-jdk21 install -DskipTests
+mvn -pl telbank-rbac2-starter install -DskipTests
 mvn -f samples/business-demo-jdk21/pom.xml -DskipTests package
 ```
 
@@ -365,7 +365,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 - 权限中心后端：`clean test` **53/53 PASS**（JDK 21.0.13，字节码 major=65）。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
-- SDK（JDK 21 版）：`mvn -pl telbank-rbac-starter-jdk21 clean test`（JDK 21）→ **91/91 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
+- SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **91/91 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
 - **GitHub Actions（5 job 全绿）**：权限中心（JDK21 单测/字节码）、SDK v1（JDK17→Java8）、SDK v2（JDK21/Boot4）、前端（Node22 构建）、JDK 8 运行时冒烟全部 success（[run 40073016336](https://github.com/battleman1994/telbank-rbac/actions/runs/40073016336)）。
 - **权限中心自接入（rbac 系统）**：V1+V2+V3 迁移；管理员 bootstrap 返回 5 个 `rbac:*`、operator 空集、平台超管 `["*"]`；管理端 `X-System-Code: rbac` 200 / 业务系统上下文 403；管理前端按权限码过滤菜单与路由、无权限 403 页。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。

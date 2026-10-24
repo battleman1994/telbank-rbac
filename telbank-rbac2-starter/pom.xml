@@ -12,11 +12,11 @@
     </parent>
 
     <groupId>com.telbank</groupId>
-    <artifactId>telbank-rbac-starter-jdk21</artifactId>
+    <artifactId>telbank-rbac2-starter</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>telbank-rbac-starter-jdk21</name>
+    <name>telbank-rbac2-starter</name>
     <description>telbank-rbac SDK（JDK 21+ / Spring Boot 4.x 业务系统版本；协议与 JDK 8 版一致）</description>
 
     <properties>

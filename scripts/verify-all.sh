@@ -64,8 +64,8 @@ ok "SDK（JDK 8 版）单元测试通过，字节码 major=52"
 
 # ---------------------------------------------------------------- 3) SDK JDK 21
 say "3/5 SDK（JDK 21 版：JDK 21 + Boot 4，协议一致）：构建 + 单元测试"
-JAVA_HOME="${JDK21}" mvn "${MVN_ARGS[@]}" -pl telbank-rbac-starter-jdk21 clean test
-major21="$(JAVA_HOME="${JDK21}" javap -verbose -cp telbank-rbac-starter-jdk21/target/classes \
+JAVA_HOME="${JDK21}" mvn "${MVN_ARGS[@]}" -pl telbank-rbac2-starter clean test
+major21="$(JAVA_HOME="${JDK21}" javap -verbose -cp telbank-rbac2-starter/target/classes \
   com.telbank.rbac.sdk.RbacSdkAutoConfiguration 2>/dev/null | awk '/major version/{print $3}')"
 [ "$major21" = "65" ] || die "JDK 21 版 SDK 字节码 major=${major21}，期望 65（Java 21）"
 ok "SDK（JDK 21 版）单元测试通过，字节码 major=65"
@@ -89,7 +89,7 @@ grep -q 'RbacSdkAutoConfiguration' telbank-rbac-starter/src/main/resources/META-
   || die "JDK 8 版 SDK 的 spring.factories 未注册 RbacSdkAutoConfiguration"
 ok "SDK（JDK 8 版）spring.factories 自动配置存在"
 grep -q 'RbacSdkAutoConfiguration' \
-  telbank-rbac-starter-jdk21/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports \
+  telbank-rbac2-starter/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports \
   || die "JDK 21 版 SDK 的 AutoConfiguration.imports 未注册 RbacSdkAutoConfiguration"
 ok "SDK（JDK 21 版）AutoConfiguration.imports 自动配置存在"
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do

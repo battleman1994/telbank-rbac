@@ -178,7 +178,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.13.3 全链路 HTTPS | 🔶 | 配置/README 生产说明 + 代码强制不走 HTTP 生产；本机验收为 HTTP（demo） |
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 | §9.15 权限中心自接入（rbac 系统 + bootstrap + 权限菜单） | ✅ | V3 迁移新增 `rbac` 系统与 `rbac-admin` 角色；13800138000 bootstrap 返回 5 个 `rbac:*`、operator 返回空集、平台超管返回 `["*"]`；管理上下文 `X-System-Code: rbac` 200、业务系统上下文 `crm` 403；管理前端按 bootstrap 权限过滤菜单/路由（build + mock 冒烟通过） |
-| JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac-starter-jdk21`（Boot 4.1.2/JDK21）**91 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
+| JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac2-starter`（Boot 4.1.2/JDK21）**91 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
 | 管理前端 ↔ 真实后端联调 | 🔶 | 前端已通过 `tsc` 类型检查、生产构建、mock 后端 + headless Chrome 10 页面冒烟；**尚未在真实 `telbank-rbac-api` 上做浏览器人工联调**（启动方式见 README §4） |
 
 ## 已完成的补验（原限制项，保留记录）
@@ -187,7 +187,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 2. **Redis Pub/Sub（已完成）**：已安装 Redis 8.10.2，并以 `rbac.redis.enabled=true` 启动权限中心做真实联调：两个 SDK 按区域订阅频道成功、变更通知 `receivers=1`、SDK 收到通知后刷新映射/页面元数据/权限缓存、过期收回任务经 Redis 发布，且 nonce 防重放改用 Redis 存储（`rbac:nonce:*`）。
 3. **SDK 的 JDK 8 运行时冒烟（已完成，CI）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8；已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功。
 4. **权限中心自接入（已完成）**：新增 `rbac` 系统 + `rbac-admin` 角色（V3），管理端 `/api/**` 固定管理上下文；新增 `/api/me/bootstrap`；管理前端按权限码过滤菜单/路由（`PermissionGuard`/`NoPermission`）。
-5. **JDK 21 版 SDK（已完成）**：新增 `telbank-rbac-starter-jdk21`（JDK21 + Boot 4，协议一致），91 单测 + JDK21 示例业务系统 e2e 4/4 通过；真实 Redis Pub/Sub 亦已联调（订阅 + 变更通知驱动刷新）；CI 新增对应构建 job。
+5. **JDK 21 版 SDK（已完成）**：新增 `telbank-rbac2-starter`（JDK21 + Boot 4，协议一致），91 单测 + JDK21 示例业务系统 e2e 4/4 通过；真实 Redis Pub/Sub 亦已联调（订阅 + 变更通知驱动刷新）；CI 新增对应构建 job。
 
 ## 已知限制（生产前建议处理）
 

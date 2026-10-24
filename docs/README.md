@@ -10,7 +10,7 @@
 | [`docs/impl/contracts.md`](impl/contracts.md) | **跨端契约**：管理端 API、SDK 开放接口与签名、审批回调、Redis 消息、SDK 行为口径、偏差决策（§9） | 三端接口/协议以本文为准（与需求冲突处见 §9） | 接口或协议变化时同步更新，并通知三端 |
 | [`docs/acceptance.md`](acceptance.md) | **验收矩阵与执行记录**：需求第 9 节逐条证据级别、执行命令、结果、已知限制 | 验收状态以本文「执行记录」为准 | 每次验收/补验后追加记录 |
 | [`README.md`](../README.md) | **交付说明**：模块组成、环境要求、快速开始、SDK 接入、审批回调、配置、偏差清单 | 使用方式以本文为准 | 启动方式/配置/依赖变化时更新 |
-| [`telbank-rbac-starter-jdk21/README.md`](../telbank-rbac-starter-jdk21/README.md) | JDK 21 版 SDK 说明：坐标、Boot 4 差异、构建测试 | JDK 21 版 SDK 以本文为准 | SDK 实现/协议变化时更新 |
+| [`telbank-rbac2-starter/README.md`](../telbank-rbac2-starter/README.md) | JDK 21 版 SDK 说明：坐标、Boot 4 差异、构建测试 | JDK 21 版 SDK 以本文为准 | SDK 实现/协议变化时更新 |
 | [`telbank-rbac-front/README.md`](../telbank-rbac-front/README.md) | 管理前端说明：技术栈、页面、状态管理、自接入、本地验证 | 前端细节以本文为准 | 前端页面/接口变化时更新 |
 | [`samples/business-demo/README.md`](../samples/business-demo/README.md) | 验收用示例业务系统（非交付物）的构建与启动、SDK 拦截验证 | 示例系统以本文为准 | 示例或 SDK 接入方式变化时更新 |
 | [`.github/workflows/sdk-jdk8-compat.yml`](../.github/workflows/sdk-jdk8-compat.yml) | CI：SDK 用 JDK 17 构建、JDK 8 运行时可加载（兼容性证据） | 兼容性验证以 CI 结果为准 | 构建口径/依赖变化时更新 |

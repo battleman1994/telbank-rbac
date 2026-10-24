@@ -16,7 +16,7 @@ on:
     paths:
       - 'telbank-rbac-api/**'
       - 'telbank-rbac-starter/**'
-      - 'telbank-rbac-starter-jdk21/**'
+      - 'telbank-rbac2-starter/**'
       - 'telbank-rbac-front/**'
       - 'samples/**'
       - 'scripts/**'
@@ -25,7 +25,7 @@ on:
     paths:
       - 'telbank-rbac-api/**'
       - 'telbank-rbac-starter/**'
-      - 'telbank-rbac-starter-jdk21/**'
+      - 'telbank-rbac2-starter/**'
       - 'telbank-rbac-front/**'
       - 'samples/**'
   workflow_dispatch:
@@ -92,16 +92,16 @@ jobs:
           java-version: '21'
           cache: maven
       - name: Test JDK 21 SDK
-        run: mvn -B -pl telbank-rbac-starter-jdk21 clean test
+        run: mvn -B -pl telbank-rbac2-starter clean test
       - name: Assert class file major version is 65 (Java 21)
         run: |
-          major=$(javap -verbose -cp telbank-rbac-starter-jdk21/target/classes \
+          major=$(javap -verbose -cp telbank-rbac2-starter/target/classes \
             com.telbank.rbac.sdk.RbacSdkAutoConfiguration | awk '/major version/{print $3}')
           echo "major=$major"
           test "$major" = "65"
       - name: Build JDK 21 sample business system
         run: |
-          mvn -B -pl telbank-rbac-starter-jdk21 install -DskipTests
+          mvn -B -pl telbank-rbac2-starter install -DskipTests
           mvn -B -f samples/business-demo-jdk21/pom.xml -DskipTests package
 
   build-front:

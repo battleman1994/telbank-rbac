@@ -6,9 +6,9 @@
 
     <!--
       验收用示例业务系统（JDK 21 + Spring Boot 4.x 版本，不属于三端交付物）：
-      - 引入 telbank-rbac-starter-jdk21（与 JDK 8 版 SDK 协议一致）
+      - 引入 telbank-rbac2-starter（与 JDK 8 版 SDK 协议一致）
       - CRM / ERP 两个实例（不同 system-code / 端口）验证多系统隔离与接口拦截
-      构建前置：先在仓库根执行 mvn -pl telbank-rbac-starter-jdk21 install
+      构建前置：先在仓库根执行 mvn -pl telbank-rbac2-starter install
     -->
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -33,7 +33,7 @@
     <dependencies>
         <dependency>
             <groupId>com.telbank</groupId>
-            <artifactId>telbank-rbac-starter-jdk21</artifactId>
+            <artifactId>telbank-rbac2-starter</artifactId>
             <version>1.0.0</version>
         </dependency>
         <dependency>

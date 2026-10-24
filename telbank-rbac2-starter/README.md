@@ -1,4 +1,4 @@
-# telbank-rbac-starter-jdk21（JDK 21 / Spring Boot 4.x 版 SDK）
+# telbank-rbac2-starter（JDK 21 / Spring Boot 4.x 版 SDK）
 
 供 **JDK 21 + Spring Boot 4.x** 业务系统接入的 RBAC SDK 变体。协议、配置键、类名、包名与 JDK 8 版 `telbank-rbac-starter` **完全一致**，仅实现层适配 Boot 4。
 
@@ -12,7 +12,7 @@
 ```xml
 <dependency>
   <groupId>com.telbank</groupId>
-  <artifactId>telbank-rbac-starter-jdk21</artifactId>
+  <artifactId>telbank-rbac2-starter</artifactId>
   <version>1.0.0</version>
 </dependency>
 ```
@@ -35,7 +35,7 @@
 
 ```bash
 # 仓库根（JDK 21）
-mvn -pl telbank-rbac-starter-jdk21 clean test
+mvn -pl telbank-rbac2-starter clean test
 ```
 
 CI：`.github/workflows/sdk-jdk8-compat.yml` 的 `build-sdk-jdk21` job（测试 + 字节码校验 + JDK 21 示例业务系统构建）。

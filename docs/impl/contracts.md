@@ -15,11 +15,11 @@
 | 聚合工程 | `com.telbank:telbank-rbac:1.0.0`（根 `pom.xml`，packaging=pom） | — | — |
 | 权限中心后端 | `com.telbank:telbank-rbac-api:1.0.0` → `telbank-rbac-api/` | JDK 21，Spring Boot 4.1.2 | `com.telbank.rbac` |
 | SDK（JDK 8 业务系统） | `com.telbank:telbank-rbac-starter:1.0.0` → `telbank-rbac-starter/` | JDK 8 字节码（构建工具链 JDK 17+），Boot 2.7.18 | `com.telbank.rbac.sdk` |
-| SDK（JDK 21 业务系统） | `com.telbank:telbank-rbac-starter-jdk21:1.0.0` → `telbank-rbac-starter-jdk21/` | JDK 21，Spring Boot 4.x（协议与 JDK 8 版一致） | `com.telbank.rbac.sdk` |
+| SDK（JDK 21 业务系统） | `com.telbank:telbank-rbac2-starter:1.0.0` → `telbank-rbac2-starter/` | JDK 21，Spring Boot 4.x（协议与 JDK 8 版一致） | `com.telbank.rbac.sdk` |
 | 管理前端 | `telbank-rbac-front/`（npm 工程，非 Maven 模块） | Node 22.22+（nvm），Vite 8 | — |
 
 - 三个 Maven 子模块的 `<parent>` 分别是各自 Spring Boot 的 `spring-boot-starter-parent`，`<relativePath/>` 为空；根 POM 只做 reactor 聚合。**不要修改根 POM 与模块 POM 的依赖版本段**（Lead 维护），需要新依赖先向 Lead 提出。
-- 两个 SDK 变体使用**相同包名**（`com.telbank.rbac.sdk`）保证 API 兼容，但**不能同时出现在同一个 classpath**：JDK 8 业务系统用 `telbank-rbac-starter`，JDK 21 + Boot 4 业务系统用 `telbank-rbac-starter-jdk21`。
+- 两个 SDK 变体使用**相同包名**（`com.telbank.rbac.sdk`）保证 API 兼容，但**不能同时出现在同一个 classpath**：JDK 8 业务系统用 `telbank-rbac-starter`，JDK 21 + Boot 4 业务系统用 `telbank-rbac2-starter`。
 - 源码编码统一 UTF-8；API 工程语言级别 21（record/var/文本块可用），SDK 工程 `--release 8`（禁 Java 9+ 语法/API）。
 - **SDK 构建口径（2026-10 调整）**：构建工具链 JDK 17+（推荐 17；JDK 21 亦可），使用 `--release 8` 产出 Java 8 字节码（major=52），运行时目标 JDK 8+；构建/校验入口 `scripts/build-sdk.sh`，CI 兼容性验证见 `.github/workflows/sdk-jdk8-compat.yml`（JDK 17 构建 + JDK 8 runtime 冒烟）。
 - SDK 包名固定：`com.telbank.rbac.sdk`，业务系统扫描包示例 `com.telbank.crm`。
@@ -296,7 +296,7 @@ Content-Type: application/json
 | `RbacPollingFallback` | `...sdk.notify` | 兜底短轮询（默认 5 分钟，`cache.fallback-poll-interval`），SDK 自己持有 `ScheduledExecutorService`，不要求宿主 `@EnableScheduling` |
 | `RbacSigner` | `...sdk.client` | §4.1 签名实现（SDK 与 api 必须逐字节一致） |
 
-> **两个变体**：`telbank-rbac-starter`（JDK 8 + Boot 2.7，`META-INF/spring.factories`）与 `telbank-rbac-starter-jdk21`（JDK 21 + Boot 4，`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`）。类名、包名、配置键、HTTP 协议一致；差异仅限 Servlet API（javax/jakarta）、HTTP 客户端（Feign+OkHttp / Spring 7 RestClient）与 JSON 库（Jackson 2/3）。
+> **两个变体**：`telbank-rbac-starter`（JDK 8 + Boot 2.7，`META-INF/spring.factories`）与 `telbank-rbac2-starter`（JDK 21 + Boot 4，`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`）。类名、包名、配置键、HTTP 协议一致；差异仅限 Servlet API（javax/jakarta）、HTTP 客户端（Feign+OkHttp / Spring 7 RestClient）与 JSON 库（Jackson 2/3）。
 
 ### 7.2 请求判定顺序（必须严格实现，需求 §6.10/§9.9）
 
@@ -347,9 +347,9 @@ SDK 不校验 JWT（认证属于业务系统/外部认证系统），按以下�
 
 本节定义覆盖前文任何“仅 Ant 风格”的描述：`{id}` 模板与 `*` 等价（单段），`**` 仅末尾。api 的保存校验与 SDK 的匹配实现必须按本口径一致。
 
-### 7.9 JDK 21 / Boot 4 SDK 变体（telbank-rbac-starter-jdk21）
+### 7.9 JDK 21 / Boot 4 SDK 变体（telbank-rbac2-starter）
 
-- 坐标：`com.telbank:telbank-rbac-starter-jdk21:1.0.0`；JDK 21，Spring Boot 4.x；Boot 4 自动配置通过 `AutoConfiguration.imports` 注册。
+- 坐标：`com.telbank:telbank-rbac2-starter:1.0.0`；JDK 21，Spring Boot 4.x；Boot 4 自动配置通过 `AutoConfiguration.imports` 注册。
 - 协议、类名、包名、配置键（`rbac-sdk.*`）与 JDK 8 版完全一致；同一业务系统只能选一个变体（同包名不可共存）。
 - 实现差异：`jakarta.servlet`、Spring 7 `RestClient`（不再使用 Feign/OkHttp）、Jackson 3（`tools.jackson`）；Redis Pub/Sub 同样支持连接失败降级轮询。
 - 与权限中心之间仍走 §4.1 签名协议与 §6 Redis 频道，权限中心侧无需任何改动。
@@ -439,7 +439,7 @@ rbac:
 - 一键验证：`./scripts/verify-all.sh`（后端 46 单测 + SDK 90 单测 + 前端类型检查/构建 + 产物核对）
 - 权限中心：`./scripts/start-api.sh`（需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
 - SDK（JDK 8）：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
-- SDK（JDK 21）：`mvn -pl telbank-rbac-starter-jdk21 test`（JDK 21，字节码 major=65）
+- SDK（JDK 21）：`mvn -pl telbank-rbac2-starter test`（JDK 21，字节码 major=65）
 - 权限中心自接入：`GET /api/me/bootstrap`（管理端权限渲染）；管理端 `/api/**` 固定 `X-System-Code: rbac`
 - 管理前端：`cd telbank-rbac-front && npm install && npm run dev|build`（nvm Node 22）
 - 示例业务系统：`samples/business-demo`（Boot 2.7.18，JDK 8+ 运行时）
