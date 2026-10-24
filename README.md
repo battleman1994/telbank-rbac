@@ -411,7 +411,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **113/113 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 113/113。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **114/114 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
-- **一键验证**：`./scripts/verify-all.sh` → **14 项检查全过**（api 104、SDK v1 113、SDK v2 114、前端构建、05 通配/隔离产物、3 平台启动脚本）。
+- **一键验证**：`./scripts/verify-all.sh` → **14 项检查全过**（api 112、SDK v1 113、SDK v2 114、前端构建、MyBatis-Plus/无 JPA、05 通配/隔离、3 平台启动脚本）。
 - **GitHub Actions（6 job 全绿）**：权限中心（JDK21 88 单测）/ SDK v1（JDK17 97 单测）/ SDK v2（JDK21 98 单测）/ 前端（Node22）/ Windows 启动脚本语法 / JDK 8 运行时冒烟全部 success（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)）。
 - **v1 自接入（已被 A11 取代）**：旧的 `rbac` 系统自接入已移除；现由平台系统 `platform` + `superadmin` 数据驱动超管。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
