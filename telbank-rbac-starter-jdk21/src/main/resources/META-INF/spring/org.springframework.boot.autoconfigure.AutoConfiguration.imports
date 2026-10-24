@@ -1,0 +1,8 @@
+# telbank-rbac SDK（JDK 21 / Spring Boot 4.x 版）—— Boot 4 自动配置单轨注册
+#
+# 唯一自动配置入口：
+#   - 总开关 rbac-sdk.enabled=true 时注册整套权限校验组件；
+#   - enabled=false（默认）时整套组件不注册。
+# 组件细分条件（servlet / Redis / Jackson classpath）在 RbacSdkAutoConfiguration
+# 内部以嵌套配置判断，不对外提供任何细粒度开关。
+com.telbank.rbac.sdk.RbacSdkAutoConfiguration

@@ -15,9 +15,10 @@
 
 | 工程 | 目录 | 说明 | 技术栈 |
 |---|---|---|---|
-| 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合两个后端模块 | Maven 3.6.3+ |
+| 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
 | **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8、Flyway、Caffeine + Redis |
 | **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（带时效 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
+| **JDK 21 业务系统 SDK** | `telbank-rbac-starter-jdk21/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
 
 ```text
@@ -28,15 +29,26 @@ telbank-rbac/
 │   ├── acceptance.md              # 第 9 节验收矩阵与证据
 │   └── impl/contracts.md          # 三端接口契约 + 偏差口径
 ├── scripts/                       # 数据库初始化、启动、演示 JWT、签名、构建、一键验收
-├── .github/workflows/             # CI（SDK JDK 8 兼容性）
-├── samples/business-demo/         # 示例业务系统（验收用，非交付物）
+├── .github/workflows/             # CI（三端构建 + JDK 8 运行时兼容性）
+├── samples/business-demo/         # 示例业务系统（JDK 8 + Boot 2.7，验收用）
+├── samples/business-demo-jdk21/   # 示例业务系统（JDK 21 + Boot 4，验收用）
 ├── telbank-rbac-api/              # 权限中心后端（JDK 21 + Boot 4.1.x）
 ├── telbank-rbac-starter/          # SDK（JDK 8 字节码 + Boot 2.7.x）
+├── telbank-rbac-starter-jdk21/    # SDK（JDK 21 + Boot 4.x，协议一致）
 ├── telbank-rbac-front/            # 管理前端（React 19 + Vite 8）
 └── pom.xml                        # Maven 聚合工程
 ```
 
 > 说明：SDK 与权限中心运行环境完全隔离。SDK 以 Maven 依赖交付，业务系统是 JDK 8 + Spring Boot 2.x，权限中心是 JDK 21 + Boot 4.1.x，两者只通过 HTTPS + 区域化 Redis Pub/Sub 通信。**SDK 的构建工具链为 JDK 17+（推荐 JDK 17），使用 `--release 8` 产出 Java 8 字节码，因此可直接运行在 JDK 8 业务系统；不需要用 JDK 8 来构建 SDK。**
+
+### 1.1 权限中心自身接入（自举）
+
+权限中心自己也作为系统 `rbac` 接入同一套权限模型（**不引入 SDK**，避免自调用循环）：
+
+- `sys_system` 注册 `rbac`（权限中心）系统；管理权限码 `rbac:*` 与 `rbac-admin` 角色归属该系统；
+- 管理端 `/api/**` 的鉴权上下文固定为 `X-System-Code: rbac`，业务系统选择仅作为查询参数 `systemId`；
+- 管理前端登录后调用 `GET /api/me/bootstrap` 获取管理权限码，按 `hasPerm` 过滤菜单/按钮；
+- 演示管理员 `13800138000` 已接入 `rbac` 系统（`rbac-admin` 角色）；平台超管仍由 `rbac.platform-admin-ids` 配置短路。
 
 ---
 
@@ -57,7 +69,7 @@ telbank-rbac/
 | 组件 | 版本 | 用途 |
 |---|---|---|
 | JDK | **21+**（推荐 21 LTS） | 构建/运行权限中心后端 |
-| JDK（SDK） | **构建：17+**（推荐 17）→ 产物 Java 8；**运行：8+** | 构建 SDK；业务系统 JDK 8 + Boot 2.7.x 直接运行 |
+| JDK（SDK） | JDK 8 版：构建 17+ → 产物 Java 8 / 运行 8+；JDK 21 版：JDK 21 → 产物 Java 21 / 运行 21+ | 构建 SDK；按业务系统 JDK/Boot 版本选择变体 |
 | Maven | 3.6.3+ | 构建两个后端模块 |
 | Node.js | **22.22+**（推荐用 nvm 管理） | 构建/运行管理前端 |
 | MySQL | 8.0+ | 权限中心数据存储 |
@@ -117,7 +129,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/me/systems
 
 | external_user_id | 身份 | 说明 |
 |---|---|---|
-| `13800138000` | CRM 管理员 + ERP 管理员 | 两个系统都有 admin 角色 |
+| `13800138000` | CRM 管理员 + ERP 管理员 + 权限中心管理员 | 三个系统均有角色（`rbac` 系统为 `rbac-admin`），管理前端用它登录 |
 | `13900139000` | CRM 运营 | 临时授权（`order:delete`/`order:export` 到 2027-06-30），未开通 ERP |
 | `13600136000` | CRM 运营 + ERP 采购员 | 跨系统隔离验收：CRM 有临时 `order:delete`，ERP 没有 |
 | `13700137000` | 已过期用户 | 授权已过期，用于验证自动收回与时效过滤 |
@@ -207,6 +219,22 @@ boolean platformAdmin = rbacClient.isPlatformAdmin(externalUserId);
 
 业务系统前端路由/菜单由前端代码维护，通过 `hasPerm(code)` 过滤；数据从业务系统后端的 `/rbac/me/bootstrap`（SDK 自动注册）或业务后端自封装接口获取。返回：`permissions`、`pageActions`、`platformAdmin`。
 
+### 5.5 JDK 21 + Spring Boot 4 业务系统接入
+
+JDK 21 + Spring Boot 4.x 业务系统使用 **JDK 21 版 SDK**（协议、配置键、类名与 JDK 8 版完全一致，仅实现层适配 Boot 4）：
+
+```xml
+<dependency>
+  <groupId>com.telbank</groupId>
+  <artifactId>telbank-rbac-starter-jdk21</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
+- `application.yml` 配置与 §5.1 完全相同（`rbac-sdk.*`），认证/缓存/通知/拦截行为一致；
+- 实现差异：`jakarta.servlet`、Spring 7 `RestClient`、Jackson 3、Boot 4 自动配置（`AutoConfiguration.imports`）；
+- 两个 SDK 变体使用相同包名，**同一业务系统只能引入一个**，不要同时出现在 classpath。
+
 ---
 
 ## 6. 审批系统接入
@@ -232,6 +260,7 @@ python3 scripts/sign-request.py \
 | 配置 | 说明 |
 |---|---|
 | `rbac.platform-admin-ids` | 平台超管 `external_user_id` 列表，命中即跳过权限校验 |
+| `rbac.management-system-code` | 管理端鉴权使用的系统 code，默认 `rbac`（权限中心自身系统） |
 | `rbac.security.jwt.mode` | `jwk`（生产，JWKS 校验）或 `hs256`（demo） |
 | `rbac.security.jwt.jwk-set-uri` / `issuer` | OAuth2 Resource Server 校验参数 |
 | `rbac.clients[]` | 各业务系统的 AppKey / system-code / AppSecret（secret 用环境变量注入） |
@@ -259,18 +288,24 @@ python3 scripts/sign-request.py \
 # 权限中心后端（JDK 21）编译 + 单元测试
 mvn -pl telbank-rbac-api -am test
 
-# SDK（推荐用脚本：JDK 17 工具链 → Java 8 字节码，并校验 major=52）
+# SDK（JDK 8 版：推荐用脚本，JDK 17 工具链 → Java 8 字节码，并校验 major=52）
 ./scripts/build-sdk.sh
 # 等价手动命令（JDK 17）：
 #   JAVA_HOME=<jdk17> mvn -pl telbank-rbac-starter clean test
+
+# SDK（JDK 21 版：JDK 21 + Boot 4，协议一致）
+mvn -pl telbank-rbac-starter-jdk21 test
 
 # 管理前端（nvm node 22）
 export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
 cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 # 示例业务系统（SDK 端到端验收，非交付物）
-mvn -pl telbank-rbac-starter -am install -DskipTests
+mvn -pl telbank-rbac-starter install -DskipTests
 mvn -f samples/business-demo/pom.xml -DskipTests package
+# JDK 21 版 SDK 的示例业务系统（JDK 21 构建）
+mvn -pl telbank-rbac-starter-jdk21 install -DskipTests
+mvn -f samples/business-demo-jdk21/pom.xml -DskipTests package
 ```
 
 验收矩阵与逐条证据见 [`docs/acceptance.md`](docs/acceptance.md)；本地冒烟脚本：
@@ -282,6 +317,10 @@ python3 scripts/acceptance.py
 # 额外跑 SDK 端到端（先按 samples/business-demo/README.md 启动 CRM:8081 / ERP:8082）
 RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 \
   python3 scripts/acceptance.py --only 9.1b
+
+# JDK 21 版 SDK 端到端（samples/business-demo-jdk21，CRM:8091 / ERP:8092）
+RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://localhost:8092 \
+  python3 scripts/acceptance.py --only 9.1c
 ```
 
 ---
@@ -297,6 +336,8 @@ RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 
 5. **A5 · `api_pattern` 仅写“Ant 风格”**：实现同时接受 Spring 模板 `{id}`（单段，与 `*` 等价）与 Ant `*`、末尾 `**`；`**` 非末尾视为非法。
 6. **A6 · `/rbac/me/systems` 数据来源未定义**：新增开放接口 `GET /openapi/sdk/user-systems` 供 SDK 使用（管理端 `/api/user-systems` 需 JWT，SDK 不能直接调用）。
 7. **A7 · SDK「JDK 8 字节码」的构建方式**：字节码目标保持 Java 8（major=52），但构建工具链为 **JDK 17+**（`--release 8`）——Apple Silicon 无官方 JDK 8；运行时仍兼容 JDK 8+（GitHub Actions 已用真实 JDK 8 运行时验证）。
+8. **A8 · 权限中心自身接入方式**：需求未定义。实现为权限中心作为 `rbac` 系统接入自身权限模型（管理端固定管理上下文 + `/api/me/bootstrap` + 前端按权限渲染菜单）；**不引入 SDK**（避免自调用循环）。
+9. **A9 · SDK 的 JDK 版本覆盖**：需求只定义 JDK 8 版 SDK；实现新增 JDK 21 + Spring Boot 4 变体（协议/配置一致、同包名不可共存），供 JDK 21 业务系统接入。
 
 其他实现说明（非偏差，需求本身已明确）：
 
@@ -315,20 +356,22 @@ RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。
 - **切系统后接口 403**：该用户未被开通目标系统（`sys_user_system`）或没有对应角色/权限码，到管理端「用户-系统开通」「用户-角色分配」处理。
+- **管理端接口 403**：管理端鉴权走 `rbac` 管理系统上下文；确认当前用户在 `rbac` 系统有 `rbac-admin`（或等价 `rbac:*`）角色，或把 `external_user_id` 加入 `rbac.platform-admin-ids`。
 - **SDK 接口未被拦截**：确认权限中心该系统的「权限码」已填写 `method + api_pattern`（SDK 只下发非空记录），且业务系统 `system-code` 与 `rbac.clients` 一致。
 
 ---
 
 ## 11. 本次交付验证记录（摘要）
 
-- 权限中心后端：`clean test` **46/46 PASS**（JDK 21.0.13，字节码 major=65）。
-- SDK：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，`clean test` 通过、产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
-- **SDK 的 JDK 8 兼容性（GitHub Actions 实测）**：`SDK JDK 8 compatibility` workflow 通过 —— JDK 17 构建 SDK（90 单测 + 断言 major=52）→ 在 **JDK 8 运行时**启动示例业务系统并成功探测 `/api/health`（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)）。
-- **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布；期间验收 50/50、SDK e2e 4/4。
-- 第 9 节 API 级验收：**50/50 PASS**（JDK 21 运行 + 干净库 + demo profile，Flyway V1+V2）。
-- SDK 端到端：示例业务系统 CRM/ERP 双实例 **4/4 PASS**（CRM 有权限 200、同用户 ERP 同码接口 403、未配置权限码接口默认放行）。
-- 管理前端：`tsc -b && vite build` 通过，dist 1.4 MB（JS gzip 443 kB）；与真实后端的浏览器人工联调待补（当前为 build + mock 冒烟，见验收文档）。
-- 验证机已安装 Redis 8.10.2（真实 Pub/Sub 联调通过）；Redis 不可用时的降级路径也有测试覆盖；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
+- 权限中心后端：`clean test` **53/53 PASS**（JDK 21.0.13，字节码 major=65）。
+- SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
+- SDK（JDK 21 版）：`mvn -pl telbank-rbac-starter-jdk21 clean test`（JDK 21）→ **91/91 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**。
+- **SDK 的 JDK 8 兼容性（GitHub Actions 实测）**：workflow 通过 —— JDK 17 构建 SDK（90 单测 + 断言 major=52）→ 在 **JDK 8 运行时**启动示例业务系统并成功探测 `/api/health`（[Actions](https://github.com/battleman1994/telbank-rbac/actions/workflows/sdk-jdk8-compat.yml)）。
+- **权限中心自接入（rbac 系统）**：V1+V2+V3 迁移；管理员 bootstrap 返回 5 个 `rbac:*`、operator 空集、平台超管 `["*"]`；管理端 `X-System-Code: rbac` 200 / 业务系统上下文 403；管理前端按权限码过滤菜单与路由、无权限 403 页。
+- **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
+- 第 9 节全量验收：**65/65 PASS**（JDK 21 运行 + 干净库 + JDK 8/JDK 21 两个 SDK 端到端各 4/4）。
+- 管理前端：`tsc -b && vite build` 通过（3257 modules），dist 1.4 MB（JS 1,410.82 kB / gzip 444.74 kB）；与真实后端的浏览器人工联调待补（当前为 build + mock 冒烟，见验收文档）。
+- 一键验证：`./scripts/verify-all.sh` → **全部通过（8 项检查）**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 
 ---
 

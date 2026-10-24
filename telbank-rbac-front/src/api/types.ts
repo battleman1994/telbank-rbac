@@ -42,6 +42,29 @@ export interface MySystemVO {
   isDefault: boolean
 }
 
+/**
+ * GET /api/me/bootstrap —— 权限中心自身接入 RBAC 的管理上下文（仅要求已认证）。
+ * 管理权限码在 managementSystemCode（默认 rbac）系统内查询；
+ * 平台超管 permissions 返回 ["*"]，hasPerm 恒为 true。
+ */
+export interface AdminBootstrapVO {
+  externalUserId: string
+  platformAdmin: boolean
+  /** 管理上下文系统编码（所有 /api/** 请求的 X-System-Code 取值） */
+  managementSystemCode: string
+  /** 当前账号拥有的管理权限码集合，如 ["rbac:system:manage", ...]；平台超管为 ["*"] */
+  permissions: string[]
+  /** 当前账号可访问系统（含管理上下文系统 rbac） */
+  systems: MySystemVO[]
+}
+
+/** 管理端会话引导结果：/api/me → /api/me/systems → /api/me/bootstrap */
+export interface AdminSessionVO {
+  me: MeVO
+  systems: MySystemVO[]
+  bootstrap: AdminBootstrapVO
+}
+
 /* ------------------------------------------------------------------ */
 /* §3.2 系统管理                                                        */
 /* ------------------------------------------------------------------ */

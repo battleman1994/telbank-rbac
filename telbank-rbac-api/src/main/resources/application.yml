@@ -52,6 +52,8 @@ rbac:
   redis:
     enabled: ${RBAC_REDIS_ENABLED:true}
   expiry-scan-cron: "0 * * * * *"
+  # 权限中心自身接入 RBAC 的系统编码：管理前端 /api/** 请求的 X-System-Code
+  management-system-code: ${RBAC_MANAGEMENT_SYSTEM_CODE:rbac}
   cors:
     allowed-origins:
       - http://localhost:5173

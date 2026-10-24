@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { Alert, App as AntApp, Button, Card, Form, Input, Space, Typography } from 'antd'
 import { Navigate, useNavigate } from 'react-router'
-import { getMe, getMySystems } from '../api'
+import { loadAdminSession } from '../api'
 import { useAppStore } from '../stores/app'
 
 const { Paragraph, Text, Title } = Typography
@@ -13,8 +13,9 @@ interface LoginFormValues {
 
 /**
  * 登录页（契约 §10）：权限中心不签发 JWT，管理员粘贴外部认证系统签发的 JWT。
- * 校验通过后保存 localStorage["rbac.token"]，GET /api/me + /api/me/systems，
- * 选中默认系统后进入管理台。
+ * 校验通过后保存 localStorage["rbac.token"]，并按
+ * /api/me → /api/me/systems → /api/me/bootstrap 顺序加载管理上下文
+ * （管理权限码、管理上下文系统编码、可访问系统），随后进入管理台。
  */
 export default function LoginPage() {
   const token = useAppStore((state) => state.token)
@@ -22,6 +23,7 @@ export default function LoginPage() {
   const setCurrentUser = useAppStore((state) => state.setCurrentUser)
   const setSystems = useAppStore((state) => state.setSystems)
   const setCurrentSystemCode = useAppStore((state) => state.setCurrentSystemCode)
+  const setBootstrap = useAppStore((state) => state.setBootstrap)
 
   const navigate = useNavigate()
   const { message } = AntApp.useApp()
@@ -30,7 +32,7 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   if (token) {
-    return <Navigate to="/systems" replace />
+    return <Navigate to="/" replace />
   }
 
   async function handleFinish(values: LoginFormValues) {
@@ -39,15 +41,22 @@ export default function LoginPage() {
     setLoading(true)
     setErrorMessage(null)
     try {
-      const me = await getMe(inputToken)
-      const systems = await getMySystems(inputToken)
+      const { me, systems, bootstrap } = await loadAdminSession(inputToken)
       setSession(inputToken)
       setCurrentUser(me)
-      setSystems(systems)
-      const defaultSystem = systems.find((system) => system.isDefault) ?? systems[0]
+      const allSystems = systems.length > 0 ? systems : bootstrap.systems
+      setSystems(allSystems)
+      setBootstrap(bootstrap)
+      // 业务系统选择排除管理上下文系统（默认 rbac），仅作为数据筛选条件
+      const businessSystems = allSystems.filter(
+        (system) => system.code !== bootstrap.managementSystemCode,
+      )
+      const defaultSystem =
+        businessSystems.find((system) => system.isDefault) ?? businessSystems[0]
       setCurrentSystemCode(defaultSystem?.code ?? null)
       void message.success(`登录成功，欢迎 ${me.externalUserId}`)
-      void navigate('/systems', { replace: true })
+      // 首页重定向到第一个有权限的菜单（由 HomeRedirect 计算）
+      void navigate('/', { replace: true })
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'JWT 校验失败，请检查后重试')
       // 失败时保持未登录状态，避免脏 token 写入 localStorage
@@ -72,6 +81,7 @@ export default function LoginPage() {
         </div>
         <Paragraph type="secondary" style={{ marginTop: 16 }}>
           权限中心不签发 JWT（认证外部化）。请粘贴外部认证系统签发的 JWT，系统仅校验签名与有效期。
+          登录后按管理权限码（rbac:*）加载可访问菜单。
         </Paragraph>
         {errorMessage ? (
           <Alert
@@ -98,7 +108,8 @@ export default function LoginPage() {
           </Form.Item>
           <div className="login-tip">
             本地联调：后端以 <Text code>demo</Text> profile 启动时，可运行
-            <Text code>scripts/gen-demo-jwt.sh</Text>生成 HS256 演示 token；生产环境使用
+            <Text code>scripts/gen-demo-jwt.sh</Text>生成 HS256 演示 token（默认账号
+            <Text code>13800138000</Text> 已具备 rbac 管理权限码）；生产环境使用
             <Text code>jwk</Text> 模式校验外部认证系统签发的 JWT。
           </div>
           <Form.Item style={{ marginBottom: 0 }}>

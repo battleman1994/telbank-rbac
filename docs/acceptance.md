@@ -177,13 +177,17 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.12.7 时钟偏移 | 🧪 | `RbacUserPermissionCacheTest`（offset 计算与时效判定） |
 | §9.13.3 全链路 HTTPS | 🔶 | 配置/README 生产说明 + 代码强制不走 HTTP 生产；本机验收为 HTTP（demo） |
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
+| §9.15 权限中心自接入（rbac 系统 + bootstrap + 权限菜单） | ✅ | V3 迁移新增 `rbac` 系统与 `rbac-admin` 角色；13800138000 bootstrap 返回 5 个 `rbac:*`、operator 返回空集、平台超管返回 `["*"]`；管理上下文 `X-System-Code: rbac` 200、业务系统上下文 `crm` 403；管理前端按 bootstrap 权限过滤菜单/路由（build + mock 冒烟通过） |
+| JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac-starter-jdk21`（Boot 4.1.2/JDK21）**91 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询 |
 | 管理前端 ↔ 真实后端联调 | 🔶 | 前端已通过 `tsc` 类型检查、生产构建、mock 后端 + headless Chrome 10 页面冒烟；**尚未在真实 `telbank-rbac-api` 上做浏览器人工联调**（启动方式见 README §4） |
 
 ## 已完成的补验（原限制项，保留记录）
 
 1. **JDK 21 实机复核（已完成）**：2026-10-24 14:16–14:17 在 **JDK 21.0.13（Homebrew）** 下全量复跑：权限中心 `clean test` 46/46、SDK `clean test` 90/90、API 验收 50/50、SDK 端到端 4/4，字节码 major 分别为 65/52。
 2. **Redis Pub/Sub（已完成）**：已安装 Redis 8.10.2，并以 `rbac.redis.enabled=true` 启动权限中心做真实联调：两个 SDK 按区域订阅频道成功、变更通知 `receivers=1`、SDK 收到通知后刷新映射/页面元数据/权限缓存、过期收回任务经 Redis 发布，且 nonce 防重放改用 Redis 存储（`rbac:nonce:*`）。
-3. **SDK 的 JDK 8 运行时冒烟（已完成，CI）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8；已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功，两个 job 均 success（run 40071190930 / 40071295904）。
+3. **SDK 的 JDK 8 运行时冒烟（已完成，CI）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8；已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功。
+4. **权限中心自接入（已完成）**：新增 `rbac` 系统 + `rbac-admin` 角色（V3），管理端 `/api/**` 固定管理上下文；新增 `/api/me/bootstrap`；管理前端按权限码过滤菜单/路由（`PermissionGuard`/`NoPermission`）。
+5. **JDK 21 版 SDK（已完成）**：新增 `telbank-rbac-starter-jdk21`（JDK21 + Boot 4，协议一致），91 单测 + JDK21 示例业务系统 e2e 4/4 通过；CI 新增对应构建 job。
 
 ## 已知限制（生产前建议处理）
 
@@ -195,10 +199,14 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 ## 执行记录
 
-> 验证机：macOS arm64（`hellokitty`）· 临时 MySQL 26.7（`127.0.0.1:3307`，独立临时实例）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
+> 验证机：macOS arm64（`hellokitty`）· 临时 MySQL 26.7（`127.0.0.1:3307`，独立临时实例；本次 V1+V2+V3 迁移）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；JDK 8 运行时由 GitHub Actions 验证；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 15:08 | `./scripts/verify-all.sh`（JDK21） | **全部通过（8 项检查）**：api 53 单测、SDK(JDK8) 90 单测、SDK(JDK21) 91 单测、前端 `tsc + vite build`，字节码 major=65/52/65 |
+| 15:06 | 全量 API 验收（含 SDK 端到端，权限中心 + 4 个示例业务系统实例） | **65/65 PASS**：原 58 项 + JDK8 SDK e2e 4/4 + JDK21 SDK e2e 4/4 |
+| 15:03 | 权限中心自接入 E2E（MySQL 干净库 + V1/V2/V3 迁移 + demo profile） | `bootstrap`：管理员 5 个 `rbac:*`、operator 空集、平台超管 `["*"]`；`X-System-Code: rbac` → 200，`crm` → 403；`/api/me/systems` 含 rbac 系统 |
+| 15:06 | JDK21 版 SDK 端到端（`samples/business-demo-jdk21`，Boot 4.1.2/JDK21，CRM:8091/ERP:8092） | **4/4 PASS**：CRM 200 / 同用户 ERP 403 / ERP 有权限 200 / 未配置权限码接口 200 |
 | 14:47 | Redis 8.10.2 + 权限中心 `--rbac.redis.enabled=true` + CRM/ERP 示例系统 | **真实跨区域 Pub/Sub 通过**：频道 `rbac:change:region_a:crm`/`region_b:erp` 各 1 订阅者；变更后 API `receivers=1`，CRM SDK 收到 `PAGE_ACTION_CHANGED` 刷新页面元数据、ERP SDK 收到 `PERMISSION_CHANGED` 刷新映射并失效权限缓存；Redis nonce 键 `rbac:nonce:*` 生效；同期验收 50/50、SDK e2e 4/4 |
 | 14:44 | GitHub Actions `SDK JDK 8 compatibility`（push 自动触发，含 Actions 升级后二次运行） | **两个 job 全部 success**：JDK 17 构建 SDK（90/90、major=52 断言）→ JDK 8 运行时启动示例业务系统，`/api/health` 返回 200（run 40071190930 / 40071295904） |
 | 14:30 | `./scripts/build-sdk.sh`（**JDK 17.0.20.1** 工具链，`--release 8`） | **90/90 PASS**，BUILD SUCCESS，产物字节码 **major=52（Java 8）** 校验通过 |

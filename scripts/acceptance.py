@@ -41,6 +41,9 @@ CLIENT_SECRETS = {
 # 可选：示例业务系统（samples/business-demo）地址，用于 SDK 端到端拦截验收
 DEMO_CRM_URL = os.environ.get("RBAC_DEMO_CRM_URL", "").rstrip("/")
 DEMO_ERP_URL = os.environ.get("RBAC_DEMO_ERP_URL", "").rstrip("/")
+# 可选：JDK 21 版 SDK 示例业务系统（samples/business-demo-jdk21）
+DEMO21_CRM_URL = os.environ.get("RBAC_DEMO_JDK21_CRM_URL", "").rstrip("/")
+DEMO21_ERP_URL = os.environ.get("RBAC_DEMO_JDK21_ERP_URL", "").rstrip("/")
 
 USER_ADMIN = "13800138000"        # CRM + ERP 管理员
 USER_OPERATOR = "13900139000"     # 仅 CRM 运营（临时授权）
@@ -48,6 +51,7 @@ USER_CROSS = "13600136000"        # CRM 运营 + ERP 采购员（跨系统隔离
 USER_EXPIRED = "13700137000"      # 授权全部过期
 USER_NEW = "13500135000"          # 审批授权验收（初始无数据）
 PLATFORM_ADMIN = "platform-admin-001"
+MGMT_SYSTEM = "rbac"            # 管理端 /api/** 的 X-System-Code 固定为权限中心自身系统
 
 RESULTS = []
 CURRENT_SECTION = ["?"]
@@ -191,6 +195,41 @@ def test_auth():
 # --------------------------------------------------------------------------
 # §9.1 多系统隔离
 # --------------------------------------------------------------------------
+def test_self_onboarding():
+    section("§9.15 权限中心自接入（rbac 系统 + /api/me/bootstrap）")
+    admin = token_of(USER_ADMIN)
+    status, body = http("GET", "/api/me/bootstrap", token=admin)
+    d = data_of((status, body)) or {}
+    perms = set(d.get("permissions") or [])
+    systems = {s.get("code") for s in (d.get("systems") or [])}
+    check("管理员 bootstrap 返回 200 且 managementSystemCode=rbac",
+          status == 200 and d.get("managementSystemCode") == "rbac", (status, d.get("managementSystemCode")))
+    check("管理员 bootstrap 含 5 个 rbac:* 管理权限",
+          {"rbac:system:manage", "rbac:role:manage", "rbac:permission:manage",
+           "rbac:page:manage", "rbac:audit:view"} <= perms, sorted(perms))
+    check("管理员 bootstrap systems 含 rbac/crm/erp", {"rbac", "crm", "erp"} <= systems, sorted(systems))
+
+    status, body = http("GET", "/api/me/systems", token=admin)
+    codes = {s.get("code") for s in (data_of((status, body)) or [])}
+    check("管理员 /api/me/systems 含 rbac 系统", "rbac" in codes, sorted(codes))
+
+    status, body = http("GET", "/api/me/bootstrap", token=token_of(USER_OPERATOR))
+    d = data_of((status, body)) or {}
+    perms = set(d.get("permissions") or [])
+    systems = {s.get("code") for s in (d.get("systems") or [])}
+    check("operator bootstrap 无管理权限（空集合）", perms == set(), sorted(perms))
+    check("operator 系统列表不含 rbac", "rbac" not in systems, sorted(systems))
+
+    status, body = http("GET", "/api/me/bootstrap", token=token_of(PLATFORM_ADMIN))
+    d = data_of((status, body)) or {}
+    check("平台超管 bootstrap permissions=['*']", d.get("permissions") == ["*"], d.get("permissions"))
+
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=admin, system=MGMT_SYSTEM)
+    check("管理上下文 rbac：管理员 200", status == 200, status)
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=token_of(USER_OPERATOR), system=MGMT_SYSTEM)
+    check("管理上下文 rbac：operator 403", status == 403, status)
+
+
 def test_multi_system():
     section("§9.1 多系统隔离")
     admin = token_of(USER_ADMIN)
@@ -199,20 +238,17 @@ def test_multi_system():
     codes = [s.get("code") for s in systems]
     check("用户 A 可访问 CRM 与 ERP", {"crm", "erp"}.issubset(set(codes)), codes)
 
-    # 管理端鉴权：operator 无管理权限码 → 403；admin 有 → 200
-    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=token_of(USER_OPERATOR), system="crm")
-    check("CRM operator 调管理端角色列表返回 403", status == 403, status)
-    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=admin, system="crm")
-    check("CRM admin 调管理端角色列表返回 200", status == 200, status)
-    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=admin, system="erp")
-    check("CRM/ERP admin 均可按系统上下文管理（ERP 200）", status == 200, status)
+    # 管理端鉴权：管理上下文固定为 rbac 系统（X-System-Code: rbac）
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=token_of(USER_OPERATOR), system=MGMT_SYSTEM)
+    check("operator 无管理权限：管理端角色列表返回 403", status == 403, status)
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=admin, system=MGMT_SYSTEM)
+    check("rbac 管理员可查 CRM 角色（systemId=1）返回 200", status == 200, status)
+    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=admin, system=MGMT_SYSTEM)
+    check("rbac 管理员可跨系统查 ERP 角色（systemId=2）返回 200", status == 200, status)
 
-    # 未开通 ERP 的用户在 ERP 上下文 403
-    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=token_of(USER_OPERATOR), system="erp")
-    check("未开通 ERP 的用户在 ERP 上下文返回 403", status == 403, status)
     status, body = http("GET", "/api/me/systems", token=token_of(USER_OPERATOR))
     codes = [s.get("code") for s in (data_of((status, body)) or [])]
-    check("13900139000 仅能访问 CRM", codes == ["crm"], codes)
+    check("13900139000 仅能访问 CRM（未接入权限中心系统）", codes == ["crm"], codes)
 
     # 同一 external_user_id 在不同系统权限集互不干扰
     status, body = openapi("GET", "/openapi/sdk/user-permissions",
@@ -275,7 +311,7 @@ def test_page_actions():
     admin = token_of(USER_ADMIN)
     suffix = str(int(time.time()))[-6:]
     code = "order:accept" + suffix
-    status, body = http("POST", "/api/page-actions", token=admin, system="crm", body={
+    status, body = http("POST", "/api/page-actions", token=admin, system=MGMT_SYSTEM, body={
         "systemId": 1, "pageCode": "order:list", "code": code, "text": "验收按钮",
         "type": "default", "action": "callApi", "config": "{\"api\":\"POST /api/order/accept\"}", "sort": 99,
     })
@@ -293,7 +329,7 @@ def test_page_actions():
               {a.get("action") for a in actions}))
 
     if action_id:
-        http("DELETE", "/api/page-actions/%s" % action_id, token=admin, system="crm")
+        http("DELETE", "/api/page-actions/%s" % action_id, token=admin, system=MGMT_SYSTEM)
         status, body = openapi("GET", "/openapi/sdk/page-actions",
                                "systemCode=crm&pageCode=order:list", system="crm")
         actions = (data_of((status, body)) or {}).get("pageActions", [])
@@ -338,7 +374,7 @@ def test_open_api_and_channel():
     check("SDK 端点全量上报成功", status == 200 and (data_of((status, body)) or {}).get("received", 0) >= 1,
           (status, body))
     status, body = http("GET", "/api/sdk-endpoints?systemId=1&page=1&size=50",
-                        token=token_of(USER_ADMIN), system="crm")
+                        token=token_of(USER_ADMIN), system=MGMT_SYSTEM)
     items = (data_of((status, body)) or {}).get("items", [])
     check("管理端可见上报端点", any(i.get("path") == "/api/acceptance/ping" for i in items))
 
@@ -361,20 +397,20 @@ def test_mapping_and_pattern():
     admin = token_of(USER_ADMIN)
     suffix = str(int(time.time()))[-6:]
     bad_code = "accept:badpattern:" + suffix
-    status, _ = http("POST", "/api/permissions", token=admin, system="crm", body={
+    status, _ = http("POST", "/api/permissions", token=admin, system=MGMT_SYSTEM, body={
         "systemId": 1, "parentId": 0, "type": 3, "code": bad_code, "name": "非法通配符",
         "method": "GET", "apiPattern": "/api/accept/**/bad", "status": 1,
     })
     check("非法 Ant 通配符（** 不在末尾）保存返回 400", status == 400, status)
 
-    status, _ = http("POST", "/api/permissions", token=admin, system="crm", body={
+    status, _ = http("POST", "/api/permissions", token=admin, system=MGMT_SYSTEM, body={
         "systemId": 1, "parentId": 0, "type": 3, "code": bad_code + "2", "name": "半配置",
         "method": "GET", "status": 1,
     })
     check("只配置 method 不配 apiPattern 返回 400", status == 400, status)
 
     good_code = "accept:goodpattern:" + suffix
-    status, body = http("POST", "/api/permissions", token=admin, system="crm", body={
+    status, body = http("POST", "/api/permissions", token=admin, system=MGMT_SYSTEM, body={
         "systemId": 1, "parentId": 0, "type": 3, "code": good_code, "name": "合法通配符",
         "method": "GET", "apiPattern": "/api/accept-" + suffix + "/**", "status": 1,
     })
@@ -384,7 +420,7 @@ def test_mapping_and_pattern():
         status, body = openapi("GET", "/openapi/sdk/mappings", "systemCode=crm", system="crm")
         mappings = (data_of((status, body)) or {}).get("mappings", [])
         check("新映射即时出现在下发表", any(m.get("code") == good_code for m in mappings))
-        http("DELETE", "/api/permissions/%s" % permission_id, token=admin, system="crm")
+        http("DELETE", "/api/permissions/%s" % permission_id, token=admin, system=MGMT_SYSTEM)
 
 
 # --------------------------------------------------------------------------
@@ -490,6 +526,25 @@ def test_sdk_end_to_end():
         check("ERP 有权限用户放行（多系统隔离正例）", status == 200, status)
 
 
+def test_sdk_jdk21_end_to_end():
+    section("§9.1 / §9.9 JDK 21 版 SDK 接口拦截（示例业务系统，可选）")
+    if not DEMO21_CRM_URL and not DEMO21_ERP_URL:
+        check("未配置 RBAC_DEMO_JDK21_CRM_URL/RBAC_DEMO_JDK21_ERP_URL，跳过 JDK 21 SDK 端到端", True, "skip")
+        return
+    token_cross = token_of(USER_CROSS)
+    token_admin = token_of(USER_ADMIN)
+    if DEMO21_CRM_URL:
+        status, _ = http_abs("GET", DEMO21_CRM_URL + "/api/health")
+        check("JDK21 SDK：未配置权限码接口无 token 放行", status == 200, status)
+        status, _ = http_abs("DELETE", DEMO21_CRM_URL + "/api/order/1", token_cross)
+        check("JDK21 SDK：CRM 有权限用户 DELETE 200", status == 200, status)
+    if DEMO21_ERP_URL:
+        status, _ = http_abs("DELETE", DEMO21_ERP_URL + "/api/order/1", token_cross)
+        check("JDK21 SDK：同用户 ERP 同码接口 403", status == 403, status)
+        status, _ = http_abs("DELETE", DEMO21_ERP_URL + "/api/order/1", token_admin)
+        check("JDK21 SDK：ERP 有权限用户 200", status == 200, status)
+
+
 def test_sdk_data_prereq():
     section("§9.4 / §9.9 SDK 数据前置（bootstrap 所需数据 API 层）")
     status, body = openapi("GET", "/openapi/sdk/page-actions", "systemCode=crm&pageCode=order:list", system="crm")
@@ -506,6 +561,7 @@ def test_sdk_data_prereq():
 
 TESTS = [
     ("9.14", test_auth),
+    ("9.15", test_self_onboarding),
     ("9.1", test_multi_system),
     ("9.2", test_permission_model),
     ("9.7", test_public_and_platform_admin),
@@ -515,6 +571,7 @@ TESTS = [
     ("9.12", test_expiry_and_approval),
     ("9.4", test_sdk_data_prereq),
     ("9.1b", test_sdk_end_to_end),
+    ("9.1c", test_sdk_jdk21_end_to_end),
 ]
 
 

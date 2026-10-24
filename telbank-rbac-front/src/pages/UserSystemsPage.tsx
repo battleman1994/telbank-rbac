@@ -23,7 +23,7 @@ import { createUserSystem, disableUserSystem, listUserSystems } from '../api'
 import type { UserSystemCreatePayload, UserSystemVO } from '../api/types'
 import { PageShell } from '../components/PageShell'
 import { DefaultTag, StatusTag } from '../components/StatusTags'
-import { useAppStore } from '../stores/app'
+import { useBusinessSystems } from '../stores/app'
 
 const { Text } = Typography
 
@@ -40,7 +40,7 @@ interface UserSystemFormValues {
 export default function UserSystemsPage() {
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
-  const systems = useAppStore((state) => state.systems)
+  const businessSystems = useBusinessSystems()
   const [searchInput, setSearchInput] = useState('')
   const [externalUserId, setExternalUserId] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -89,7 +89,7 @@ export default function UserSystemsPage() {
     form.resetFields()
     form.setFieldsValue({
       externalUserId: externalUserId || searchInput.trim(),
-      systemId: systems[0]?.id,
+      systemId: businessSystems[0]?.id,
       isDefault: false,
     })
     setModalOpen(true)
@@ -239,11 +239,11 @@ export default function UserSystemsPage() {
           >
             <Select
               placeholder="请选择业务系统"
-              options={systems.map((system) => ({
+              options={businessSystems.map((system) => ({
                 value: system.id,
                 label: `${system.name}（${system.code}）`,
               }))}
-              notFoundContent="当前账号无权访问任何系统"
+              notFoundContent="当前账号名下暂无业务系统"
               showSearch
               optionFilterProp="label"
             />

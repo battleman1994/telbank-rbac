@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v1.1（2026-10-24）· 维护：Lead
-> 修订：v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v1.2（2026-10-24）· 维护：Lead
+> 修订：v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -14,10 +14,12 @@
 |---|---|---|---|
 | 聚合工程 | `com.telbank:telbank-rbac:1.0.0`（根 `pom.xml`，packaging=pom） | — | — |
 | 权限中心后端 | `com.telbank:telbank-rbac-api:1.0.0` → `telbank-rbac-api/` | JDK 21，Spring Boot 4.1.2 | `com.telbank.rbac` |
-| SDK | `com.telbank:telbank-rbac-starter:1.0.0` → `telbank-rbac-starter/` | JDK 8 字节码（构建工具链 JDK 17+），Boot 2.7.18 | `com.telbank.rbac.sdk` |
+| SDK（JDK 8 业务系统） | `com.telbank:telbank-rbac-starter:1.0.0` → `telbank-rbac-starter/` | JDK 8 字节码（构建工具链 JDK 17+），Boot 2.7.18 | `com.telbank.rbac.sdk` |
+| SDK（JDK 21 业务系统） | `com.telbank:telbank-rbac-starter-jdk21:1.0.0` → `telbank-rbac-starter-jdk21/` | JDK 21，Spring Boot 4.x（协议与 JDK 8 版一致） | `com.telbank.rbac.sdk` |
 | 管理前端 | `telbank-rbac-front/`（npm 工程，非 Maven 模块） | Node 22.22+（nvm），Vite 8 | — |
 
-- 两个 Maven 子模块的 `<parent>` 分别是各自 Spring Boot 的 `spring-boot-starter-parent`，`<relativePath/>` 为空；根 POM 只做 reactor 聚合。**不要修改根 POM 与两个模块 POM 的依赖版本段**（Lead 维护），需要新依赖先向 Lead 提出。
+- 三个 Maven 子模块的 `<parent>` 分别是各自 Spring Boot 的 `spring-boot-starter-parent`，`<relativePath/>` 为空；根 POM 只做 reactor 聚合。**不要修改根 POM 与模块 POM 的依赖版本段**（Lead 维护），需要新依赖先向 Lead 提出。
+- 两个 SDK 变体使用**相同包名**（`com.telbank.rbac.sdk`）保证 API 兼容，但**不能同时出现在同一个 classpath**：JDK 8 业务系统用 `telbank-rbac-starter`，JDK 21 + Boot 4 业务系统用 `telbank-rbac-starter-jdk21`。
 - 源码编码统一 UTF-8；API 工程语言级别 21（record/var/文本块可用），SDK 工程 `--release 8`（禁 Java 9+ 语法/API）。
 - **SDK 构建口径（2026-10 调整）**：构建工具链 JDK 17+（推荐 17；JDK 21 亦可），使用 `--release 8` 产出 Java 8 字节码（major=52），运行时目标 JDK 8+；构建/校验入口 `scripts/build-sdk.sh`，CI 兼容性验证见 `.github/workflows/sdk-jdk8-compat.yml`（JDK 17 构建 + JDK 8 runtime 冒烟）。
 - SDK 包名固定：`com.telbank.rbac.sdk`，业务系统扫描包示例 `com.telbank.crm`。
@@ -38,8 +40,8 @@
 3. **分页**：请求 `?page=1&size=20`；`data = {"items":[..],"total":123,"page":1,"size":20}`。
 4. **时间**：JSON 一律 ISO-8601 UTC 字符串（如 `2026-10-31T23:59:59Z`）；DB 用 `DATETIME`（UTC 存储，`serverTimezone=UTC`）。
 5. **认证（管理端）**：`Authorization: Bearer <JWT>`；外部认证系统签发，`sub` = `external_user_id`。权限中心只校验不签发。
-   - 系统级接口还必须带 `X-System-Code: <code>`；服务端把它解析成 `system_id` 并做隔离。
-   - 平台超管（`rbac.platform-admin-ids` 命中 `sub`）跳过权限码校验，但仍要求合法 JWT。
+   - **管理端 `/api/**` 必须带 `X-System-Code: <management-system-code>`**（默认 `rbac`，即权限中心自身系统）；服务端把它解析成 `system_id` 并用于管理权限码校验。业务系统筛选通过 `systemId` 查询参数表达，不再由该请求头承载。
+   - 平台超管（`rbac.platform-admin-ids` 命中 `sub`）跳过权限码校验，但仍要求合法 JWT；普通管理员需在管理系统中拥有对应 `rbac:*` 权限码。
 6. **权限断言**：Controller 用 `@PreAuthorize("@perm.has('system:manage')")` 一类写法；`@perm` Bean 名固定 `perm`，方法签名 `boolean has(String... codes)`（单码时返回是否拥有；多码按 AND 语义，实现可扩展 OR 变体 `hasAny`）。
 7. **权限码**：系统内唯一；菜单/按钮/接口共用一个码。`is_public=1` 默认所有登录用户拥有。
 8. **CORS**：开发环境允许 `http://localhost:5173`（前端 dev server）与 `http://127.0.0.1:5173`；生产按配置。
@@ -73,16 +75,17 @@
 | `rbac:page:manage` | `/api/page-actions/**` |
 | `rbac:audit:view` | `/api/approval-grants`、`/api/expiring-grants` |
 
-- 除 `/api/me`、`/api/me/systems` 仅要求已认证外，其余管理端接口都要求对应权限码（平台超管命中即放行）。
-- 权限码在 `X-System-Code` 指向的系统内查询；缺 `X-System-Code` 且非平台超管 → 403。前端登录后总会带当前系统头。
-- Seed 中 CRM admin（role 1）与 ERP admin（role 3）已获得各自系统内的上述 5 个权限码；operator/purchaser 没有，用于验收 403。
+- 除 `/api/me`、`/api/me/systems`、`/api/me/bootstrap` 仅要求已认证外，其余管理端接口都要求对应权限码（平台超管命中即放行）。
+- **管理上下文**：`/api/**` 的 `X-System-Code` 固定为管理系统 code（默认 `rbac`，配置 `rbac.management-system-code`）；上述 `rbac:*` 权限码在管理系统内查询。业务系统数据通过 `systemId` 查询参数筛选。
+- 管理系统缺失 → 管理接口 403（非平台超管）；种子里 13800138000 通过 `rbac-admin` 角色持有全部 5 个管理权限码；operator/purchaser 没有，用于验收 403。
 
 ### 3.1 当前用户与系统
 
 | 方法 | 路径 | 请求 | 响应 data |
 |---|---|---|---|
 | GET | `/api/me` | — | `{"externalUserId":"...","platformAdmin":false}` |
-| GET | `/api/me/systems` | — | `[{"id":1,"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`（平台超管返回全部启用系统） |
+| GET | `/api/me/systems` | — | `[{"id":1,"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`（平台超管返回全部启用系统；含管理系统本身） |
+| GET | `/api/me/bootstrap` | — | 管理端权限渲染用：`{"externalUserId":"...","platformAdmin":false,"managementSystemCode":"rbac","permissions":["rbac:system:manage",...],"systems":[...同上...]}`；`permissions` 为当前用户在管理系统中经时效过滤后的权限码（平台超管 `["*"]`；管理系统缺失时为空数组） |
 
 ### 3.2 系统管理
 
@@ -275,7 +278,7 @@ Content-Type: application/json
 
 ## 7. SDK 行为契约
 
-### 7.1 固定类名与职责（starter）
+### 7.1 固定类名与职责（两个 SDK 变体，包名/类名/配置键/协议一致）
 
 | 类 | 包 | 职责 |
 |---|---|---|
@@ -292,6 +295,8 @@ Content-Type: application/json
 | `RbacChangeSubscriber` | `...sdk.notify` | Redis Pub/Sub 订阅（Lettuce/Jedis 均可，Boot 2.7 默认 Lettuce） |
 | `RbacPollingFallback` | `...sdk.notify` | 兜底短轮询（默认 5 分钟，`cache.fallback-poll-interval`），SDK 自己持有 `ScheduledExecutorService`，不要求宿主 `@EnableScheduling` |
 | `RbacSigner` | `...sdk.client` | §4.1 签名实现（SDK 与 api 必须逐字节一致） |
+
+> **两个变体**：`telbank-rbac-starter`（JDK 8 + Boot 2.7，`META-INF/spring.factories`）与 `telbank-rbac-starter-jdk21`（JDK 21 + Boot 4，`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`）。类名、包名、配置键、HTTP 协议一致；差异仅限 Servlet API（javax/jakarta）、HTTP 客户端（Feign+OkHttp / Spring 7 RestClient）与 JSON 库（Jackson 2/3）。
 
 ### 7.2 请求判定顺序（必须严格实现，需求 §6.10/§9.9）
 
@@ -342,6 +347,13 @@ SDK 不校验 JWT（认证属于业务系统/外部认证系统），按以下�
 
 本节定义覆盖前文任何“仅 Ant 风格”的描述：`{id}` 模板与 `*` 等价（单段），`**` 仅末尾。api 的保存校验与 SDK 的匹配实现必须按本口径一致。
 
+### 7.9 JDK 21 / Boot 4 SDK 变体（telbank-rbac-starter-jdk21）
+
+- 坐标：`com.telbank:telbank-rbac-starter-jdk21:1.0.0`；JDK 21，Spring Boot 4.x；Boot 4 自动配置通过 `AutoConfiguration.imports` 注册。
+- 协议、类名、包名、配置键（`rbac-sdk.*`）与 JDK 8 版完全一致；同一业务系统只能选一个变体（同包名不可共存）。
+- 实现差异：`jakarta.servlet`、Spring 7 `RestClient`（不再使用 Feign/OkHttp）、Jackson 3（`tools.jackson`）；Redis Pub/Sub 同样支持连接失败降级轮询。
+- 与权限中心之间仍走 §4.1 签名协议与 §6 Redis 频道，权限中心侧无需任何改动。
+
 ---
 
 ## 8. 配置键（api 与 sdk 共享口径）
@@ -361,6 +373,7 @@ spring:
     open-in-view: false
 rbac:
   platform-admin-ids: [platform-admin-001]
+  management-system-code: ${RBAC_MANAGEMENT_SYSTEM_CODE:rbac}   # 管理端 /api/** 鉴权上下文系统
   security:
     jwt:
       mode: jwk            # jwk | hs256（demo）
@@ -397,7 +410,7 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -425,7 +438,9 @@ rbac:
 
 - 一键验证：`./scripts/verify-all.sh`（后端 46 单测 + SDK 90 单测 + 前端类型检查/构建 + 产物核对）
 - 权限中心：`./scripts/start-api.sh`（需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
-- SDK：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
+- SDK（JDK 8）：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
+- SDK（JDK 21）：`mvn -pl telbank-rbac-starter-jdk21 test`（JDK 21，字节码 major=65）
+- 权限中心自接入：`GET /api/me/bootstrap`（管理端权限渲染）；管理端 `/api/**` 固定 `X-System-Code: rbac`
 - 管理前端：`cd telbank-rbac-front && npm install && npm run dev|build`（nvm Node 22）
 - 示例业务系统：`samples/business-demo`（Boot 2.7.18，JDK 8+ 运行时）
 - 验收矩阵与执行记录：`docs/acceptance.md`

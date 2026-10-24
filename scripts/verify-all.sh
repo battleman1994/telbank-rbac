@@ -2,10 +2,11 @@
 # telbank-rbac 一键验证（不需要数据库/Redis；端到端验收另见 scripts/acceptance.py）
 #
 # 覆盖：
-#   1) 权限中心后端：JDK 21 编译 + 单元测试（46 个），断言字节码 major=65
-#   2) SDK：JDK 17 工具链构建 + 单元测试（90 个），断言字节码 major=52（Java 8）
-#   3) 管理前端：tsc 类型检查 + vite 生产构建
-#   4) 产物/配置核对（starter jar、spring.factories、字节码版本）
+#   1) 权限中心后端：JDK 21 编译 + 单元测试，断言字节码 major=65
+#   2) SDK（JDK 8 版）：JDK 17 工具链构建 + 单元测试，断言字节码 major=52（Java 8）
+#   3) SDK（JDK 21 版）：JDK 21 构建 + 单元测试，断言字节码 major=65
+#   4) 管理前端：tsc 类型检查 + vite 生产构建
+#   5) 产物/配置核对（两个 SDK 的自动配置入口、文档、脚本）
 #
 # 用法：
 #   ./scripts/verify-all.sh
@@ -44,24 +45,33 @@ find_jdk21() {
   return 1
 }
 
-# ---------------------------------------------------------------- 1) 权限中心
-say "1/4 权限中心后端（JDK 21）：编译 + 单元测试"
 JDK21="$(find_jdk21)" || die "未找到 JDK 21+（设置 JAVA_HOME_21 或安装 openjdk@21）"
-echo "使用 ${JDK21}"
+echo "使用 JDK 21：${JDK21}"
 JAVA_HOME="${JDK21}" "${JDK21}/bin/java" -version 2>&1 | head -n 1
+
+# ---------------------------------------------------------------- 1) 权限中心
+say "1/5 权限中心后端（JDK 21）：编译 + 单元测试"
 JAVA_HOME="${JDK21}" mvn "${MVN_ARGS[@]}" -pl telbank-rbac-api clean test
 major="$(JAVA_HOME="${JDK21}" javap -verbose -cp telbank-rbac-api/target/classes \
   com.telbank.rbac.RbacApiApplication 2>/dev/null | awk '/major version/{print $3}')"
 [ "$major" = "65" ] || die "权限中心字节码 major=${major}，期望 65（Java 21）"
-ok "权限中心 46 个单测通过，字节码 major=65"
+ok "权限中心单元测试通过，字节码 major=65"
 
-# ---------------------------------------------------------------- 2) SDK
-say "2/4 SDK（JDK 17 工具链 → Java 8 字节码）：构建 + 单元测试"
+# ---------------------------------------------------------------- 2) SDK JDK 8
+say "2/5 SDK（JDK 8 版：JDK 17 工具链 → Java 8 字节码）：构建 + 单元测试"
 ./scripts/build-sdk.sh
-ok "SDK 90 个单测通过，字节码 major=52"
+ok "SDK（JDK 8 版）单元测试通过，字节码 major=52"
 
-# ---------------------------------------------------------------- 3) 前端
-say "3/4 管理前端（nvm Node 22）：tsc 类型检查 + 生产构建"
+# ---------------------------------------------------------------- 3) SDK JDK 21
+say "3/5 SDK（JDK 21 版：JDK 21 + Boot 4，协议一致）：构建 + 单元测试"
+JAVA_HOME="${JDK21}" mvn "${MVN_ARGS[@]}" -pl telbank-rbac-starter-jdk21 clean test
+major21="$(JAVA_HOME="${JDK21}" javap -verbose -cp telbank-rbac-starter-jdk21/target/classes \
+  com.telbank.rbac.sdk.RbacSdkAutoConfiguration 2>/dev/null | awk '/major version/{print $3}')"
+[ "$major21" = "65" ] || die "JDK 21 版 SDK 字节码 major=${major21}，期望 65（Java 21）"
+ok "SDK（JDK 21 版）单元测试通过，字节码 major=65"
+
+# ---------------------------------------------------------------- 4) 前端
+say "4/5 管理前端（nvm Node 22）：tsc 类型检查 + 生产构建"
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if [ -s "${NVM_DIR}/nvm.sh" ]; then
   # shellcheck disable=SC1091
@@ -73,17 +83,21 @@ echo "node $(node -v) / npm $(npm -v)"
 [ -f telbank-rbac-front/dist/index.html ] || die "前端 dist/index.html 不存在"
 ok "前端类型检查 + 构建通过，dist 产物存在"
 
-# ---------------------------------------------------------------- 4) 产物核对
-say "4/4 产物核对"
+# ---------------------------------------------------------------- 5) 产物核对
+say "5/5 产物核对"
 grep -q 'RbacSdkAutoConfiguration' telbank-rbac-starter/src/main/resources/META-INF/spring.factories \
-  || die "spring.factories 未注册 RbacSdkAutoConfiguration"
-ok "SDK spring.factories 单轨自动配置存在"
-for f in docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md README.md; do
+  || die "JDK 8 版 SDK 的 spring.factories 未注册 RbacSdkAutoConfiguration"
+ok "SDK（JDK 8 版）spring.factories 自动配置存在"
+grep -q 'RbacSdkAutoConfiguration' \
+  telbank-rbac-starter-jdk21/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports \
+  || die "JDK 21 版 SDK 的 AutoConfiguration.imports 未注册 RbacSdkAutoConfiguration"
+ok "SDK（JDK 21 版）AutoConfiguration.imports 自动配置存在"
+for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"
 done
-ok "需求/验收/契约/README 文档齐备"
+ok "需求/验收/契约/README/文档总览齐备"
 for f in scripts/init-db.sh scripts/start-api.sh scripts/start-front.sh scripts/gen-demo-jwt.sh \
-         scripts/acceptance.py scripts/build-sdk.sh; do
+         scripts/acceptance.py scripts/build-sdk.sh scripts/verify-all.sh; do
   [ -x "$f" ] || die "脚本不可执行或缺失：$f"
 done
 ok "启动/验收/构建脚本齐备且可执行"
@@ -93,8 +107,8 @@ cat <<'EOF'
 
 下一步（需要启动服务，端到端验收）：
   ./scripts/init-db.sh                          # 或 ./scripts/start-temp-mysql.sh start
-  ./scripts/start-api.sh                        # 权限中心 demo profile
-  python3 scripts/acceptance.py                 # 第 9 节 API 级验收（50 项）
+  ./scripts/start-api.sh                        # 权限中心 demo profile（管理端 X-System-Code: rbac）
+  python3 scripts/acceptance.py                 # 第 9 节 API 级验收（含 §9.15 权限中心自接入）
   # SDK 端到端（另起 CRM/ERP 示例业务系统）：
   #   RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 \
   #     python3 scripts/acceptance.py --only 9.1b

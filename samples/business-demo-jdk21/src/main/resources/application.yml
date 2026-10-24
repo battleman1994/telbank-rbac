@@ -1,0 +1,44 @@
+server:
+  port: ${SERVER_PORT:8091}
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: business-demo-jdk21
+
+rbac-sdk:
+  enabled: true
+  system-code: ${RBAC_SDK_SYSTEM_CODE:crm}
+  platform-base-url: ${RBAC_PLATFORM_BASE_URL:http://localhost:8080}
+  app-key: ${RBAC_SDK_APP_KEY:crm}
+  app-secret: ${RBAC_SDK_APP_SECRET:crm-dev-secret}
+  app-version: 1.0.0
+
+  endpoint:
+    base-path: /rbac
+
+  scan:
+    base-packages: com.telbank.crm
+    report-on-startup: true
+
+  interceptor:
+    unmatched-strategy: pass
+    exclude-paths:
+      - /actuator/**
+      - /error
+      - /favicon.ico
+
+  cache:
+    fallback-poll-interval: 30s
+
+  code-generator:
+    pattern: "{systemCode}:{resource}:{action}"
+    resource-from: controller-class
+    action-from: http-method
+
+logging:
+  level:
+    com.telbank.rbac.sdk: INFO

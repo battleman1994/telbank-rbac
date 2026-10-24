@@ -7,11 +7,12 @@
     <!--
       telbank-rbac 权限管理系统 · Maven 聚合工程
       =====================================================================
-      注意：两个子模块使用不同的 Spring Boot 大版本，因此这里的聚合 POM 不充当
+      注意：子模块使用不同的 Spring Boot / JDK 组合，因此这里的聚合 POM 不充当
       子模块的 <parent>（子模块各自继承 spring-boot-starter-parent），只负责
       在同一个 reactor 中构建：
-        - telbank-rbac-api     : JDK 21 + Spring Boot 4.1.x（权限中心后端）
-        - telbank-rbac-starter : JDK 8  + Spring Boot 2.7.x（业务系统 SDK）
+        - telbank-rbac-api            : JDK 21 + Spring Boot 4.1.x（权限中心后端）
+        - telbank-rbac-starter        : JDK 8  + Spring Boot 2.7.x（JDK 8 业务系统 SDK）
+        - telbank-rbac-starter-jdk21  : JDK 21 + Spring Boot 4.x（JDK 21 业务系统 SDK，协议一致）
       子模块的 <parent> 必须声明 <relativePath/>，否则 Maven 会把本 POM 当作父工程。
     -->
     <groupId>com.telbank</groupId>
@@ -25,6 +26,7 @@
     <modules>
         <module>telbank-rbac-api</module>
         <module>telbank-rbac-starter</module>
+        <module>telbank-rbac-starter-jdk21</module>
     </modules>
 
     <properties>

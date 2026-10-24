@@ -3,16 +3,26 @@ import type { ApiEnvelope, PageResult } from './types'
 /**
  * 原生 fetch 封装（契约 §1 / §10）：
  * - 自动注入 `Authorization: Bearer <token>`（localStorage rbac.token）
- * - 系统级接口自动注入 `X-System-Code`（localStorage rbac.systemCode）
+ * - 自动注入 `X-System-Code: <managementSystemCode>`：权限中心自身接入 RBAC 后，
+ *   管理端所有 /api/** 请求的鉴权上下文固定为管理上下文系统（默认 rbac，
+ *   可用 VITE_MANAGEMENT_SYSTEM_CODE 覆盖）；业务系统选择仅作为 systemId 查询参数，
+ *   不再进入请求头。
  * - 解析信封 `{code,message,data}`：HTTP 非 2xx 或 code !== 0 时抛 ApiError
  * - 失败时通过 antd message 统一提示（由 AppNotifier 注入）
  * - 401 时清空本地会话并触发未认证处理器
  */
 
 export const TOKEN_KEY = 'rbac.token'
+/** 业务系统选择（仅用于数据筛选，如 systemId 查询参数） */
 export const SYSTEM_CODE_KEY = 'rbac.systemCode'
+/** 管理上下文系统编码（请求头 X-System-Code） */
+export const MANAGEMENT_SYSTEM_CODE_KEY = 'rbac.managementSystemCode'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
+
+/** 管理上下文系统编码默认值（env 可覆盖） */
+export const DEFAULT_MANAGEMENT_SYSTEM_CODE =
+  import.meta.env.VITE_MANAGEMENT_SYSTEM_CODE?.trim() || 'rbac'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
 
@@ -24,7 +34,7 @@ export interface RequestOptions {
   query?: Record<string, QueryValue>
   /** 请求体，自动 JSON 序列化 */
   body?: unknown
-  /** 是否注入 X-System-Code，默认 true（管理端接口默认需要） */
+  /** 是否注入 X-System-Code（管理上下文），默认 true */
   withSystemCode?: boolean
   /** 显式指定 token；不传则读取 localStorage */
   token?: string
@@ -57,10 +67,19 @@ let errorNotifier: ErrorNotifier = (message) => {
   console.error('[api]', message)
 }
 
+/** 清空本地会话相关存储（401 与退出登录共用） */
+export function clearSessionStorage(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_KEY)
+    window.localStorage.removeItem(SYSTEM_CODE_KEY)
+    window.localStorage.removeItem(MANAGEMENT_SYSTEM_CODE_KEY)
+  } catch {
+    // localStorage 不可用时忽略
+  }
+}
+
 let unauthorizedHandler: UnauthorizedHandler = () => {
-  // 未注入全局处理器时的兜底
-  window.localStorage.removeItem(TOKEN_KEY)
-  window.localStorage.removeItem(SYSTEM_CODE_KEY)
+  clearSessionStorage()
 }
 
 /** 由 AppNotifier 注入 antd message.error */
@@ -73,20 +92,25 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
   unauthorizedHandler = handler
 }
 
-function readToken(): string | null {
+function readStorage(key: string): string | null {
   try {
-    return window.localStorage.getItem(TOKEN_KEY)
+    return window.localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-function readSystemCode(): string | null {
-  try {
-    return window.localStorage.getItem(SYSTEM_CODE_KEY)
-  } catch {
-    return null
-  }
+function readToken(): string | null {
+  return readStorage(TOKEN_KEY)
+}
+
+/**
+ * 读取管理上下文系统编码：优先使用 bootstrap 持久化的值，否则用 env 默认值。
+ * 该值只用于请求头 X-System-Code，与业务系统选择（rbac.systemCode）相互独立。
+ */
+export function getManagementSystemCode(): string {
+  const stored = readStorage(MANAGEMENT_SYSTEM_CODE_KEY)?.trim()
+  return stored || DEFAULT_MANAGEMENT_SYSTEM_CODE
 }
 
 function buildQueryString(query?: Record<string, QueryValue>): string {
@@ -143,8 +167,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (token) headers.Authorization = `Bearer ${token}`
   if (withSystemCode) {
-    const systemCode = readSystemCode()
-    if (systemCode) headers['X-System-Code'] = systemCode
+    // 管理上下文的系统编码固定为 managementSystemCode（默认 rbac）
+    headers['X-System-Code'] = getManagementSystemCode()
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
@@ -169,8 +193,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const code = isEnvelope(parsed) ? parsed.code : response.status
     const error = new ApiError(response.status, code, message)
     if (response.status === 401 && !skipUnauthorizedHandler) {
-      window.localStorage.removeItem(TOKEN_KEY)
-      window.localStorage.removeItem(SYSTEM_CODE_KEY)
+      clearSessionStorage()
       unauthorizedHandler()
     }
     if (notifyError) errorNotifier(message)

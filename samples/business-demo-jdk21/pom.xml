@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      验收用示例业务系统（JDK 21 + Spring Boot 4.x 版本，不属于三端交付物）：
+      - 引入 telbank-rbac-starter-jdk21（与 JDK 8 版 SDK 协议一致）
+      - CRM / ERP 两个实例（不同 system-code / 端口）验证多系统隔离与接口拦截
+      构建前置：先在仓库根执行 mvn -pl telbank-rbac-starter-jdk21 install
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.2</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.telbank.demo</groupId>
+    <artifactId>business-demo-jdk21</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>business-demo-jdk21</name>
+    <description>telbank-rbac JDK 21 版 SDK 验收示例业务系统（CRM/ERP 双实例）</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.telbank</groupId>
+            <artifactId>telbank-rbac-starter-jdk21</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- 让 JDK 21 版 SDK 的 Redis 订阅路径真实装载（无 Redis 时验证降级轮询） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -10,7 +10,8 @@
 | [`docs/impl/contracts.md`](impl/contracts.md) | **跨端契约**：管理端 API、SDK 开放接口与签名、审批回调、Redis 消息、SDK 行为口径、偏差决策（§9） | 三端接口/协议以本文为准（与需求冲突处见 §9） | 接口或协议变化时同步更新，并通知三端 |
 | [`docs/acceptance.md`](acceptance.md) | **验收矩阵与执行记录**：需求第 9 节逐条证据级别、执行命令、结果、已知限制 | 验收状态以本文「执行记录」为准 | 每次验收/补验后追加记录 |
 | [`README.md`](../README.md) | **交付说明**：模块组成、环境要求、快速开始、SDK 接入、审批回调、配置、偏差清单 | 使用方式以本文为准 | 启动方式/配置/依赖变化时更新 |
-| [`telbank-rbac-front/README.md`](../telbank-rbac-front/README.md) | 管理前端说明：技术栈、页面、状态管理、本地验证 | 前端细节以本文为准 | 前端页面/接口变化时更新 |
+| [`telbank-rbac-starter-jdk21/README.md`](../telbank-rbac-starter-jdk21/README.md) | JDK 21 版 SDK 说明：坐标、Boot 4 差异、构建测试 | JDK 21 版 SDK 以本文为准 | SDK 实现/协议变化时更新 |
+| [`telbank-rbac-front/README.md`](../telbank-rbac-front/README.md) | 管理前端说明：技术栈、页面、状态管理、自接入、本地验证 | 前端细节以本文为准 | 前端页面/接口变化时更新 |
 | [`samples/business-demo/README.md`](../samples/business-demo/README.md) | 验收用示例业务系统（非交付物）的构建与启动、SDK 拦截验证 | 示例系统以本文为准 | 示例或 SDK 接入方式变化时更新 |
 | [`.github/workflows/sdk-jdk8-compat.yml`](../.github/workflows/sdk-jdk8-compat.yml) | CI：SDK 用 JDK 17 构建、JDK 8 运行时可加载（兼容性证据） | 兼容性验证以 CI 结果为准 | 构建口径/依赖变化时更新 |
 
@@ -24,11 +25,11 @@
 
 ## 3. 当前文档状态（2026-10-24）
 
-- 需求基线：`docs/telbank-rbac.md`（含附录 A 实现修订记录，7 项偏差/新增口径）
-- 接口契约：`docs/impl/contracts.md` v1.1
-- 验收状态：第 9 节条目均有证据（实测 / 单元测试 / 代码级说明）；SDK JDK 8 运行时兼容由 GitHub Actions 实测；真实 Redis Pub/Sub 已本机联调
-- 已验证：后端 46 单测、SDK 90 单测、API 验收 50/50、SDK 端到端 4/4、前端构建、JDK 8 运行时 CI
-- 待补（可选）：管理前端 ↔ 真实后端浏览器联调（当前前端为 build + mock 冒烟）；生产 HTTPS 链路的真机验证（本机验收为 HTTP demo）
+- 需求基线：`docs/telbank-rbac.md`（含附录 A 实现修订记录，9 项偏差/新增口径）
+- 接口契约：`docs/impl/contracts.md` v1.2
+- 验收状态：第 9 节条目均有证据（实测 / 单元测试 / 代码级说明）；SDK JDK 8 运行时兼容由 GitHub Actions 实测；真实 Redis Pub/Sub 已本机联调；权限中心已通过 `rbac` 系统自接入（管理上下文 + bootstrap + 前端权限菜单）
+- 已验证：权限中心 53 单测、SDK（JDK 8）90 单测、SDK（JDK 21）91 单测、API 验收 **65/65**（含两个 SDK 端到端 4/4+4/4）、前端构建、JDK 8 运行时 CI、权限中心自接入（rbac 系统 + bootstrap + 权限菜单）
+- 待补（可选）：管理前端 ↔ 真实后端浏览器人工联调（前后端均已就绪，当前前端为 build + mock 冒烟）；生产 HTTPS 链路的真机验证（本机验收为 HTTP demo）
 
 ## 4. 修订记录
 
