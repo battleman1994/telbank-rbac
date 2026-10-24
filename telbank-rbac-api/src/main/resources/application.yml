@@ -1,0 +1,62 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: telbank-rbac-api
+  datasource:
+    url: "${RBAC_DB_URL:jdbc:mysql://localhost:3306/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false}"
+    username: ${RBAC_DB_USER:root}
+    password: ${RBAC_DB_PASSWORD:}
+    hikari:
+      # DB 统一 UTC 存储：会话时区固定 UTC，保证 NOW()/valid_until 比较口径一致
+      connection-init-sql: "SET time_zone = '+00:00'"
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+rbac:
+  platform-admin-ids:
+    - platform-admin-001
+  security:
+    jwt:
+      mode: jwk            # jwk | hs256（demo profile 使用 hs256）
+      jwk-set-uri: ${RBAC_JWK_SET_URI:}
+      issuer: ${RBAC_JWT_ISSUER:}
+      hs256-secret: ${RBAC_JWT_HS256_SECRET:}
+  clients:                 # SDK 系统级 AppKey（AppSecret 由环境变量注入）
+    - app-key: crm
+      system-code: crm
+      app-secret: ${RBAC_CRM_SECRET:crm-dev-secret}
+    - app-key: erp
+      system-code: erp
+      app-secret: ${RBAC_ERP_SECRET:erp-dev-secret}
+  approval:
+    app-key: approval-system
+    app-secret: ${RBAC_APPROVAL_SECRET:approval-dev-secret}
+  regions:                 # 区域 Redis 连接（SDK 通过 /openapi/sdk/connection 获取）
+    region_a:
+      host: ${RBAC_REDIS_REGION_A_HOST:127.0.0.1}
+      port: ${RBAC_REDIS_REGION_A_PORT:6379}
+      password: ${RBAC_REDIS_REGION_A_PASSWORD:}
+      channel-prefix: "rbac:change:region_a:"
+    region_b:
+      host: ${RBAC_REDIS_REGION_B_HOST:127.0.0.1}
+      port: ${RBAC_REDIS_REGION_B_PORT:6379}
+      password: ${RBAC_REDIS_REGION_B_PASSWORD:}
+      channel-prefix: "rbac:change:region_b:"
+  redis:
+    enabled: ${RBAC_REDIS_ENABLED:true}
+  expiry-scan-cron: "0 * * * * *"
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+
+logging:
+  level:
+    com.telbank.rbac: INFO

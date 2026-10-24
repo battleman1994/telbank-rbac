@@ -1,0 +1,22 @@
+# 本地验收专用 profile（scripts/start-api.sh 以 --spring.profiles.active=demo 启动）
+#
+# - HS256 演示 JWT：scripts/gen-demo-jwt.sh 生成，secret 必须一致（默认值仅开发用途）
+# - Redis 可缺席：nonce 用 Caffeine 兜底、变更发布为 no-op（只打 warn）
+spring:
+  data:
+    redis:
+      # 该 profile 不连接本机 Redis；连接配置仍会通过 /openapi/sdk/connection 下发给 SDK
+      connect-timeout: 200ms
+
+rbac:
+  security:
+    jwt:
+      mode: hs256
+      hs256-secret: ${RBAC_JWT_HS256_SECRET:telbank-rbac-demo-secret-please-change}
+      issuer: ${RBAC_JWT_ISSUER:demo-auth}
+  redis:
+    enabled: false
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173

@@ -1,0 +1,135 @@
+/* 全局基础样式 */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f2f5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 管理端整体布局 */
+.app-layout {
+  min-height: 100vh;
+}
+
+.app-sider {
+  border-right: 1px solid #f0f0f0;
+  box-shadow: 2px 0 8px rgb(29 35 41 / 4%);
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 64px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1668dc;
+  white-space: nowrap;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.app-logo-icon {
+  font-size: 22px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 64px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.app-content {
+  padding: 24px;
+  overflow-x: hidden;
+}
+
+/* 登录页 */
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 15% 20%, rgb(22 104 220 / 22%), transparent 45%),
+    radial-gradient(circle at 85% 80%, rgb(114 46 209 / 20%), transparent 45%),
+    linear-gradient(135deg, #0b1b36 0%, #11264a 45%, #0c2340 100%);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 32%);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.login-brand-icon {
+  font-size: 30px;
+  color: #1668dc;
+}
+
+.login-tip {
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #475467;
+  background: #f5f8ff;
+  border: 1px solid #d6e4ff;
+  border-radius: 6px;
+}
+
+.login-footer {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #8c8c8c;
+  text-align: center;
+}
+
+/* 表格内代码/路径展示 */
+.mono-text {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* 权限树容器 */
+.grant-tree-panel {
+  max-height: 420px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+
+/* 侧边栏折叠时隐藏 logo 文本 */
+.ant-layout-sider-collapsed .app-logo span {
+  display: none;
+}
