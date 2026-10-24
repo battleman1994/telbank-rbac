@@ -218,6 +218,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 21:24 | GitHub Actions `telbank-rbac CI`（commit e4e059e） | **6 个 job 全部 success**：权限中心(112)/SDK v1(113)/SDK v2(114)/前端/Windows 脚本/JDK 8 运行时（[run 40098002904](https://github.com/battleman1994/telbank-rbac/actions/runs/40098002904)） |
 | 21:22 | `./scripts/verify-all.sh`（MyBatis-Plus 持久层） | **14 项全过**：api **112** 单测、SDK v1 113、SDK v2 114、前端构建、MP 持久层/无 JPA 检查等 |
 | 21:20 | 真库 `telbank_rbac_v4`（01→05）+ 28086 API + 两版 SDK 示例系统 | `acceptance.py` **88/88 PASS**（含 SDK e2e 8/8），JPA/Hibernate 依赖/源码残留为 0 |
 | 21:16 | `mvn -pl telbank-rbac-api clean test`（JPA → MyBatis-Plus） | **112/112 PASS**，BUILD SUCCESS |
