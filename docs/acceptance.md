@@ -217,6 +217,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 21:05 | GitHub Actions `telbank-rbac CI`（commit 7b6bc5d） | **6 个 job 全部 success**：权限中心(104)/SDK v1(113)/SDK v2(114)/前端/Windows 脚本/JDK 8 运行时（[run 40096446088](https://github.com/battleman1994/telbank-rbac/actions/runs/40096446088)） |
 | 21:02 | `./scripts/verify-all.sh`（A 方案） | **13 项全过**：api **104** 单测、SDK v1 **113**、SDK v2 **114**、前端构建、05 通配/严格隔离产物、3 平台脚本 |
 | 21:02 | 8080 最终重启冒烟（用户库 05 迁移后） | superadmin platformAdmin=true；crm-admin bootstrap 含 `*`（currentSystemCode=crm）；超管跨系统 `systemId=2` → **403** |
 | 20:59 | 用户库 `telbank_rbac` 应用 05 通配迁移 + 8080 新 API 冒烟 | CRM/ERP/platform 各一条 `*`；superadmin platformAdmin=true；crm-admin bootstrap 含 `*`；`systemId=1` 权限树 200、`systemId=2` 403 |
