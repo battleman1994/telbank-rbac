@@ -356,7 +356,15 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
               <Alert
                 type="warning"
                 showIcon
-                title={`当前页有 ${unlinkCount} 个端点未生效`}
+                title={
+                  <span>
+                    当前页有{' '}
+                    <strong style={{ color: '#d46b08', fontSize: '1.35em', lineHeight: 1 }}>
+                      {unlinkCount}
+                    </strong>{' '}
+                    个端点未生效
+                  </span>
+                }
                 description="未关联权限码的端点不会写入 SDK mappings，SDK 对未命中映射的请求默认放行。点击行尾「关联权限码」后才会按权限拦截。"
               />
             )

@@ -115,7 +115,7 @@ cd telbank-rbac-front && npm run dev
 | 接入凭据（权限管理组内） | `/system-credential` | `system:credential` | 查看当前系统 AppKey / AppSecret（默认隐藏，可显示/复制）；admin 角色经通配 `*` 通过 |
 | 角色管理 | `/roles` | `role:manage` | 当前系统角色 CRUD |
 | 权限管理 | `/permissions` | `permission:manage` | 权限码树（type/is_public/method/api_pattern） |
-| 角色授权 | `/role-permissions` | `role:manage` | 角色-权限授权（树勾选 + 时效） |
+| 角色授权 | `/role-permissions` | `role:manage` | 左右工作区：左侧选角色/勾权限/逐项时效/提交，右侧已授权列表与撤销 |
 | 用户授权 | `/user-roles` | `user:manage` | 用户-角色分配（含时效） |
 | 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点上报与权限码关联；未关联端点显式标记「未生效」 |
 | 页面元素 | `/page-actions` | `page:manage` | 页面元素标识：pageCode/code/text/type（语义类型） |
@@ -171,6 +171,14 @@ cd telbank-rbac-front && npm run dev
 - 角色授权页角色下拉**过滤 `code='admin'` 的角色**（admin 默认拥有全部权限，无需授权）；若历史状态选中 admin 会自动清空。
 - 页面顶部 Alert：「系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息」。
 - 角色管理页对 `admin` 角色展示「内置」金色 Tag；后端对 admin 角色的 grant/revoke 返回 400 作为双保险。
+
+## 角色授权页（交互重构）
+
+- **左右工作区**：左侧「授权操作」完成角色选择、权限树勾选、逐条时效、授权原因与提交；右侧「已授权列表」展示该角色全部授权（状态、起止时间、单条撤销）及授权规则。避免把宽表格拉满后字段空旷、操作区与列表一左一右割裂。
+- **逐项时效**：勾选权限树后进入「本次授权清单」，每条权限独立 `RangePicker`；未设置时间 = 永久授权；取消勾选只移出本次提交，不会自动撤销。
+- **分组提交**：提交时前端按「生效时间 + 失效时间」完全相同的权限分组调用 `grant` API，成功后提示「授权已提交（N 组时效）」；同一批选择可以混合永久与临时授权。
+- **右栏闭环**：已授权项按状态展示「启用/停用」，单条「撤销」即时生效；已过期项保留展示但不可撤销。admin 角色不出现在下拉，后端 400 双保险。
+- **空间控制**：权限树限高滚动，选中清单限高滚动；授权原因与「提交授权/撤销勾选」同排，保证主操作在首屏可见。
 
 ## 只查当前系统数据（前端审计）
 
@@ -256,8 +264,8 @@ telbank-rbac-front/
 vite v8.3.5 building client environment for production...
 ✓ 3257 modules transformed.
 dist/index.html                     0.60 kB │ gzip:   0.40 kB
-dist/assets/index-*.css             2.94 kB │ gzip:   1.14 kB
-dist/assets/index-*.js          1,423.56 kB │ gzip: 449.11 kB
+dist/assets/index-*.css             3.90 kB │ gzip:   1.40 kB
+dist/assets/index-*.js          1,430.90 kB │ gzip: 451.42 kB
 ✓ built in ~0.5s
 ```
 
@@ -269,8 +277,9 @@ dist/assets/index-*.js          1,423.56 kB │ gzip: 449.11 kB
 - 未做路由级 code splitting：生产包单 chunk 约 1.4 MB（gzip 约 442 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
 - 授权记录按契约仅提供查询（只读）；「到期提醒」菜单/路由已移除（后端 `/api/expiring-grants` 接口保留）。
 - 资源管理：未关联权限码的端点显示「未生效/未关联」并有当前页提示，行背景高亮；关联后才进入 SDK mappings 生效。
+- 角色授权提交按「相同时效」分组调用 grant：后端当前只有单组时效接口，因此多组提交不是数据库事务；任一组失败时前端提示错误，已成功组会保留，可重试。
 - 全局 `.ant-message*` 设置 `pointer-events:none`，避免切换系统 toast 覆盖顶部系统下拉框、导致下拉框点不开。
-- 表格单元统一 `white-space:nowrap + ellipsis`，字段不换行；时间列用 `YYYY-MM-DD HH:mm`，长文本/路径省略并保留 title/tooltip。
+- 表格按 A19 内容优先：`table-layout:auto`，宽度足够不换行，不够时换行完整展示；时间列用 `YYYY-MM-DD HH:mm`。
 
 ## 本地验证记录
 
@@ -299,5 +308,7 @@ dist/assets/index-*.js          1,423.56 kB │ gzip: 449.11 kB
   - `crm-admin-001`（permissions=["*"]）：顶级「接入凭据」可见、「系统接入」不可见；`/system-credential` 展示 CRM系统/crm/region_a，AppSecret 默认掩码，点「显示」后展示 `crm-dev-secret`、点「隐藏」恢复掩码，复制按钮可用。
   - `superadmin`：系统接入页「查看密钥」调用 `/api/system-credentials/1`，弹窗展示完整 `crm-app` / `crm-dev-secret` + 敏感提示 + 复制按钮；业务系统表格无横向滚动。
   - 角色授权页：顶部 admin 提示 Alert 存在；角色下拉仅有「运营（operator）」，无 admin 选项。
+  - 角色授权交互重构：选择「CRM运营（operator）」后「已勾选 3 项」，本次清单显示 3 条独立时效；点击「提交授权」提示「授权已提交（2 组时效）」（永久 1 条 + 临时 2 条分组），提交前后数据库 operator 授权记录完全一致；右栏展示 4 条（3 条生效）并支持单条撤销。
+  - 资源管理未生效提示：当前页 3 个未生效端点时 Alert 文案中的数字 3 为强调样式（21.6px / `#d46b08`），不再是普通正文。
   - 普通运营账号：无任何管理菜单，直接访问 `/system-credential` 显示无权限空态。
   - 接口日志：`/api/system-credentials/current` 由当前系统上下文发起；`/api/system-credentials/{id}` 仅 superadmin 调用（其他账号 403）。

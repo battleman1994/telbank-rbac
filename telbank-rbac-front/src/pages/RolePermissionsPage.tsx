@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Dayjs } from 'dayjs'
 import {
@@ -7,21 +7,20 @@ import {
   App as AntApp,
   Button,
   Card,
-  Col,
   DatePicker,
+  Divider,
   Empty,
   Flex,
   Input,
   Popconfirm,
-  Row,
   Select,
+  Skeleton,
   Space,
-  Table,
   Tag,
   Tree,
   Typography,
 } from 'antd'
-import type { TableProps, TreeDataNode } from 'antd'
+import type { TreeDataNode } from 'antd'
 import type { Key } from 'react'
 import {
   getRolePermissions,
@@ -35,11 +34,11 @@ import { PageShell } from '../components/PageShell'
 import { StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
 import { useCurrentSystemId } from '../stores/app'
-import { formatValidity, toIsoString } from '../utils/format'
+import { formatValidity, toDayjs, toIsoString } from '../utils/format'
 
 const { Text } = Typography
 
-type RangeValue = [Dayjs | null, Dayjs | null] | null
+type ValidityRange = [Dayjs | null, Dayjs | null] | null
 
 function flattenTree(nodes: PermissionNode[]): PermissionNode[] {
   return nodes.flatMap((node) => [node, ...flattenTree(node.children ?? [])])
@@ -69,7 +68,7 @@ function buildTreeData(nodes: PermissionNode[]): TreeDataNode[] {
   }))
 }
 
-/** 角色-权限授权（契约 §3.5）：角色选择 + 权限树勾选 + 时效 + grant/revoke */
+/** 角色-权限授权（契约 §3.5）：左侧操作（角色 + 权限树 + 逐项时效），右侧只读列表 */
 export default function RolePermissionsPage() {
   const systemId = useCurrentSystemId()
   if (!systemId) {
@@ -88,15 +87,17 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
   const queryClient = useQueryClient()
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null)
   const [checkedKeys, setCheckedKeys] = useState<Key[]>([])
-  const [validRange, setValidRange] = useState<RangeValue>(null)
+  const [validityByPermission, setValidityByPermission] = useState<
+    Record<number, ValidityRange>
+  >({})
   const [grantReason, setGrantReason] = useState('')
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([])
 
-  // 超管/多系统管理员切换系统后，清空上一系统的角色选择与勾选，避免带旧 roleId 跨系统查询
+  // 超管/多系统管理员切换系统后，清空上一系统的角色选择、勾选与时效草稿，避免串系统
   useEffect(() => {
     setSelectedRoleId(null)
     setCheckedKeys([])
-    setValidRange(null)
+    setValidityByPermission({})
     setGrantReason('')
   }, [systemId])
 
@@ -144,7 +145,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     if (selected?.code === 'admin') {
       setSelectedRoleId(null)
       setCheckedKeys([])
-      setValidRange(null)
+      setValidityByPermission({})
       setGrantReason('')
     }
   }, [rolesQuery.data, selectedRoleId])
@@ -159,117 +160,168 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     setExpandedKeys(flattenTree(permissionsQuery.data).map((node) => String(node.id)))
   }, [permissionsQuery.data])
 
+  // 勾选态 = 已授权态；时效草稿从每条授权记录分别回填，避免「统一时效」覆盖单条时效
   useEffect(() => {
     const grants = grantsQuery.data?.grants ?? []
-    setCheckedKeys(grants.filter((grant) => grant.status === 1).map((grant) => String(grant.permissionId)))
+    const active = grants.filter((grant) => grant.status === 1)
+    setCheckedKeys(active.map((grant) => String(grant.permissionId)))
+    const next: Record<number, ValidityRange> = {}
+    for (const grant of active) {
+      const from = toDayjs(grant.validFrom)
+      const until = toDayjs(grant.validUntil)
+      next[grant.permissionId] = from || until ? [from, until] : null
+    }
+    setValidityByPermission(next)
   }, [grantsQuery.data])
 
-  const grantMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedRoleId) return Promise.reject(new Error('请先选择角色'))
-      if (checkedKeys.length === 0) return Promise.reject(new Error('请至少勾选一个权限'))
-      const permissionIds = checkedKeys
-        .map((key) => Number(key))
-        .filter((id) => Number.isFinite(id))
-      return grantRolePermissions(selectedRoleId, {
-        permissionIds,
-        validFrom: validRange ? toIsoString(validRange[0]) : null,
-        validUntil: validRange ? toIsoString(validRange[1]) : null,
-        grantReason: grantReason.trim() || undefined,
-      })
-    },
-    onSuccess: () => {
-      void message.success('授权已提交')
-      setValidRange(null)
-      setGrantReason('')
-      void queryClient.invalidateQueries({ queryKey: ['role-permissions', systemId, selectedRoleId] })
-    },
-    onError: (error: Error) => {
-      if (error.message === '请至少勾选一个权限' || error.message === '请先选择角色') {
-        void message.warning(error.message)
-      }
-    },
-  })
-
-  const revokeMutation = useMutation({
-    mutationFn: (permissionIds: number[]) => {
-      if (!selectedRoleId) return Promise.reject(new Error('请先选择角色'))
-      if (permissionIds.length === 0) return Promise.reject(new Error('请至少勾选一个权限'))
-      return revokeRolePermissions(selectedRoleId, { permissionIds })
-    },
-    onSuccess: () => {
-      void message.success('撤销授权已提交')
-      setCheckedKeys([])
-      void queryClient.invalidateQueries({ queryKey: ['role-permissions', systemId, selectedRoleId] })
-    },
-    onError: (error: Error) => {
-      if (error.message === '请至少勾选一个权限' || error.message === '请先选择角色') {
-        void message.warning(error.message)
-      }
-    },
-  })
-
-  function handleRoleChange(roleId: number | undefined) {
-    setSelectedRoleId(roleId ?? null)
-    setCheckedKeys([])
-    setValidRange(null)
-    setGrantReason('')
-  }
+  const checkedPermissions = useMemo(() => {
+    const selected = new Set(checkedKeys.map((key) => String(key)))
+    return flatPermissions.filter((node) => selected.has(String(node.id)))
+  }, [checkedKeys, flatPermissions])
 
   const grants = grantsQuery.data?.grants ?? []
   const activeGrants = grants.filter((grant) => grant.status === 1)
   const hasWildcardGrant = activeGrants.some((grant) => grant.code === '*')
+  const grantedIds = useMemo(() => new Set(activeGrants.map((grant) => grant.permissionId)), [activeGrants])
 
-  const grantColumns: TableProps<PermissionGrant>['columns'] = [
-    { title: '权限 ID', dataIndex: 'permissionId', width: 100 },
-    {
-      title: '权限码',
-      dataIndex: 'code',
-      width: 220,
-      render: (value: string) =>
-        value === '*' ? (
-          <Tag color="gold">*（全部权限）</Tag>
-        ) : (
-          <Tag color="blue">{value}</Tag>
-        ),
+  function updateValidity(permissionId: number, range: ValidityRange) {
+    setValidityByPermission((previous) => ({ ...previous, [permissionId]: range }))
+  }
+
+  function removeChecked(permissionId: number) {
+    setCheckedKeys((keys) => keys.filter((key) => String(key) !== String(permissionId)))
+    setValidityByPermission((previous) => {
+      const next = { ...previous }
+      delete next[permissionId]
+      return next
+    })
+  }
+
+  function handleCheck(checked: Key[] | { checked: Key[]; halfChecked: Key[] }) {
+    const keys = Array.isArray(checked) ? checked : checked.checked
+    setCheckedKeys(keys)
+    setValidityByPermission((previous) => {
+      const next = { ...previous }
+      const selected = new Set(keys.map((key) => String(key)))
+      for (const key of Object.keys(next)) {
+        if (!selected.has(String(key))) delete next[Number(key)]
+      }
+      for (const key of keys) {
+        const permissionId = Number(key)
+        if (Number.isFinite(permissionId) && next[permissionId] === undefined) {
+          next[permissionId] = null
+        }
+      }
+      return next
+    })
+  }
+
+  function selectAll() {
+    const keys = flatPermissions
+      .filter((node) => node.status === 1)
+      .map((node) => String(node.id))
+    setCheckedKeys(keys)
+    setValidityByPermission((previous) => {
+      const next = { ...previous }
+      for (const key of keys) {
+        const permissionId = Number(key)
+        if (next[permissionId] === undefined) next[permissionId] = null
+      }
+      return next
+    })
+  }
+
+  function clearAll() {
+    setCheckedKeys([])
+    setValidityByPermission({})
+  }
+
+  function handleRoleChange(roleId: number | undefined) {
+    setSelectedRoleId(roleId ?? null)
+    setCheckedKeys([])
+    setValidityByPermission({})
+    setGrantReason('')
+  }
+
+  const grantMutation = useMutation<number, Error, void>({
+    mutationFn: async () => {
+      if (!selectedRoleId) throw new Error('请先选择角色')
+      const permissionIds = checkedKeys
+        .map((key) => Number(key))
+        .filter((id) => Number.isFinite(id))
+      if (permissionIds.length === 0) throw new Error('请至少勾选一个权限')
+
+      // 后端 grant 接口一次请求只带一个时效；按「相同生效/失效时间」分组提交，
+      // 这样每个权限仍然保留自己的时效，同时减少请求数。
+      const groups = new Map<
+        string,
+        { permissionIds: number[]; validFrom: string | null; validUntil: string | null }
+      >()
+      for (const permissionId of permissionIds) {
+        const range = validityByPermission[permissionId] ?? null
+        const validFrom = toIsoString(range?.[0] ?? null)
+        const validUntil = toIsoString(range?.[1] ?? null)
+        if (validFrom && validUntil && new Date(validUntil).getTime() < new Date(validFrom).getTime()) {
+          throw new Error(`权限 #${permissionId} 的失效时间不能早于生效时间`)
+        }
+        const key = `${validFrom ?? ''}|${validUntil ?? ''}`
+        const group = groups.get(key) ?? { permissionIds: [], validFrom, validUntil }
+        group.permissionIds.push(permissionId)
+        groups.set(key, group)
+      }
+
+      for (const group of groups.values()) {
+        await grantRolePermissions(selectedRoleId, {
+          permissionIds: group.permissionIds,
+          validFrom: group.validFrom,
+          validUntil: group.validUntil,
+          grantReason: grantReason.trim() || undefined,
+        })
+      }
+      return groups.size
     },
-    {
-      title: '时效',
-      key: 'validity',
-      render: (_, record) => formatValidity(record.validFrom, record.validUntil),
+    onSuccess: (groupCount) => {
+      void message.success(`授权已提交（${groupCount} 组时效）`)
+      setGrantReason('')
+      void queryClient.invalidateQueries({
+        queryKey: ['role-permissions', systemId, selectedRoleId],
+      })
     },
-    { title: '状态', dataIndex: 'status', width: 90, render: (value: number) => <StatusTag status={value} /> },
-    {
-      title: '操作',
-      key: 'action',
-      width: 110,
-      render: (_, record) => (
-        <Popconfirm
-          title="撤销该权限授权"
-          description={`确认撤销权限「${record.code}」吗？`}
-          okText="确认撤销"
-          cancelText="取消"
-          onConfirm={() => revokeMutation.mutate([record.permissionId])}
-        >
-          <Button type="link" size="small" danger disabled={record.status !== 1}>
-            撤销
-          </Button>
-        </Popconfirm>
-      ),
+    onError: (error) => {
+      void message.error(error.message)
     },
-  ]
+  })
+
+  const revokeMutation = useMutation<void, Error, number[]>({
+    mutationFn: async (permissionIds) => {
+      if (!selectedRoleId) throw new Error('请先选择角色')
+      if (permissionIds.length === 0) throw new Error('请至少勾选一个权限')
+      await revokeRolePermissions(selectedRoleId, { permissionIds })
+    },
+    onSuccess: () => {
+      void message.success('撤销授权已提交')
+      setCheckedKeys([])
+      void queryClient.invalidateQueries({
+        queryKey: ['role-permissions', systemId, selectedRoleId],
+      })
+    },
+    onError: (error) => {
+      void message.error(error.message)
+    },
+  })
 
   return (
     <PageShell
       title="角色授权"
-      description="在当前系统内选择角色后勾选权限树节点，可设置生效/失效时间（不设置则为永久授权）；提交后服务端发布 Redis 权限变更通知。"
+      description="左侧选择角色、勾选权限并逐项设置生效/失效时间；右侧查看该角色已授权项。提交为整体提交，但每条权限可独立设置时效。"
       extra={
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => void grantsQuery.refetch()} disabled={!selectedRoleId}>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => void grantsQuery.refetch()}
+            disabled={!selectedRoleId}
+          >
             刷新授权
-          </Button>
-          <Button icon={<SafetyCertificateOutlined />} disabled>
-            已授权 {activeGrants.length} 项
           </Button>
         </Space>
       }
@@ -281,35 +333,6 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
         description="系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息（backend 会拒绝对 admin 角色的 grant/revoke 操作）。"
       />
 
-      <Card>
-        <Flex align="center" gap={16} wrap>
-          <Text strong>选择角色</Text>
-          <Select
-            style={{ width: 320 }}
-            placeholder={rolesQuery.isLoading ? '角色加载中…' : '请选择角色'}
-            value={selectedRoleId ?? undefined}
-            options={roleOptions}
-            onChange={handleRoleChange}
-            showSearch
-            optionFilterProp="label"
-            loading={rolesQuery.isLoading}
-            notFoundContent={rolesQuery.isLoading ? '加载中' : '当前系统暂无启用角色'}
-          />
-          <Text type="secondary">
-            角色列表按当前系统隔离；授权变更会失效 SDK 的用户权限集缓存。
-          </Text>
-        </Flex>
-        {rolesQuery.isError ? (
-          <Alert
-            style={{ marginTop: 16 }}
-            type="error"
-            showIcon
-            title="角色列表加载失败"
-            description={rolesQuery.error.message}
-          />
-        ) : null}
-      </Card>
-
       {hasWildcardGrant ? (
         <Alert
           type="success"
@@ -318,149 +341,267 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
           description="在当前系统内，该角色对所有菜单、按钮与受控接口默认放行；勾选/撤销其他权限码不会影响通配权限。"
         />
       ) : null}
-      {selectedRoleId === null ? (
-        <Card>
-          <Empty description="请先选择一个角色，再配置其权限授权" />
-        </Card>
-      ) : (
-        <>
-          {permissionsQuery.isError ? (
-            <Alert
-              type="error"
-              showIcon
-              title="权限资源树加载失败"
-              description={permissionsQuery.error.message}
-              action={
-                <Button size="small" onClick={() => void permissionsQuery.refetch()}>
-                  重试
-                </Button>
-              }
-            />
-          ) : null}
-          <Row gutter={16}>
-            <Col xs={24} xl={14}>
-              <Card
-                title={`权限树（已勾选 ${checkedKeys.length} 项）`}
-                extra={
-                  <Space>
-                    <Button size="small" onClick={() => setCheckedKeys(flatPermissions.filter((node) => node.status === 1).map((node) => String(node.id)))}>
-                      全选
-                    </Button>
-                    <Button size="small" onClick={() => setCheckedKeys([])}>
-                      清空
-                    </Button>
-                  </Space>
+
+      <div className="grant-workspace">
+        <Card
+          title="授权操作"
+          extra={<Text type="secondary">已勾选 {checkedKeys.length} 项</Text>}
+        >
+          <Flex vertical gap={12}>
+            <div>
+              <Text strong>选择角色</Text>
+              <Select
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder={rolesQuery.isLoading ? '角色加载中…' : '请选择角色'}
+                value={selectedRoleId ?? undefined}
+                options={roleOptions}
+                onChange={handleRoleChange}
+                showSearch
+                optionFilterProp="label"
+                loading={rolesQuery.isLoading}
+                notFoundContent={
+                  rolesQuery.isLoading
+                    ? '加载中'
+                    : '当前系统暂无可在此授权的启用角色（admin 角色默认全权限，已排除）'
                 }
-              >
-                <div className="grant-tree-panel">
-                  <Tree
-                    checkable
-                    checkStrictly
-                    selectable={false}
-                    treeData={buildTreeData(permissionsQuery.data ?? [])}
-                    checkedKeys={checkedKeys}
-                    expandedKeys={expandedKeys}
-                    onExpand={(keys) => setExpandedKeys(keys)}
-                    onCheck={(checked) => {
-                      const keys = Array.isArray(checked) ? checked : checked.checked
-                      setCheckedKeys(keys)
-                    }}
-                  />
-                </div>
-              </Card>
-            </Col>
-            <Col xs={24} xl={10}>
-              <Card title="授权设置">
-                <Flex vertical gap={16}>
-                  <div>
-                    <Text strong>授权时效</Text>
-                    <div style={{ marginTop: 8 }}>
-                      <DatePicker.RangePicker
-                        showTime
-                        style={{ width: '100%' }}
-                        value={validRange}
-                        onChange={(dates) => setValidRange(dates as RangeValue)}
-                        placeholder={['生效时间（空=立即生效）', '失效时间（空=永久有效）']}
-                      />
-                    </div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      不设置时间表示永久授权；到期后 SDK 与权限查询即时视为无权限。
-                    </Text>
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                角色列表按当前系统隔离；admin 角色默认全权限，不在本页授权。
+              </Text>
+            </div>
+
+            {rolesQuery.isError ? (
+              <Alert
+                type="error"
+                showIcon
+                title="角色列表加载失败"
+                description={rolesQuery.error.message}
+              />
+            ) : null}
+
+            {selectedRoleId === null ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="请先选择一个角色，再配置其权限授权"
+              />
+            ) : (
+              <>
+                <div>
+                  <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
+                    <Space size={6}>
+                      <Text strong>权限树</Text>
+                      <Tag>{checkedKeys.length} 项已选</Tag>
+                    </Space>
+                    <Space size={4}>
+                      <Button size="small" onClick={selectAll}>
+                        全选
+                      </Button>
+                      <Button size="small" onClick={clearAll}>
+                        清空
+                      </Button>
+                    </Space>
+                  </Flex>
+                  <div className="grant-tree-panel">
+                    <Tree
+                      checkable
+                      checkStrictly
+                      selectable={false}
+                      treeData={buildTreeData(permissionsQuery.data ?? [])}
+                      checkedKeys={checkedKeys}
+                      expandedKeys={expandedKeys}
+                      onExpand={(keys) => setExpandedKeys(keys)}
+                      onCheck={handleCheck}
+                    />
                   </div>
-                  <div>
+                  {permissionsQuery.isError ? (
+                    <Alert
+                      style={{ marginTop: 8 }}
+                      type="error"
+                      showIcon
+                      title="权限资源树加载失败"
+                      description={permissionsQuery.error.message}
+                      action={
+                        <Button size="small" onClick={() => void permissionsQuery.refetch()}>
+                          重试
+                        </Button>
+                      }
+                    />
+                  ) : null}
+                </div>
+
+                <Divider style={{ margin: '4px 0' }}>本次授权清单</Divider>
+
+                <div className="grant-selected-list">
+                  {checkedPermissions.length === 0 ? (
+                    <Text type="secondary">勾选权限树中的节点后，会在这里逐项设置时效</Text>
+                  ) : (
+                    checkedPermissions.map((node) => (
+                      <div className="grant-selected-row" key={node.id}>
+                        <Space size={4} wrap>
+                          <Text strong={node.code === '*'}>{permissionDisplayName(node)}</Text>
+                          <Tag
+                            color={node.code === '*' ? 'gold' : grantedIds.has(node.id) ? 'green' : 'blue'}
+                            title={grantedIds.has(node.id) ? '已授权' : undefined}
+                          >
+                            {node.code}
+                          </Tag>
+                        </Space>
+                        <Space size={2} align="center">
+                          <DatePicker.RangePicker
+                            size="small"
+                            showTime={{ format: 'HH:mm' }}
+                            format="MM-DD HH:mm"
+                            style={{ width: 248 }}
+                            value={validityByPermission[node.id] ?? null}
+                            onChange={(dates) =>
+                              updateValidity(
+                                node.id,
+                                (dates as [Dayjs | null, Dayjs | null] | null) ?? null,
+                              )
+                            }
+                            placeholder={['生效时间', '失效时间']}
+                            allowEmpty={[true, true]}
+                          />
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            title="移出本次授权"
+                            onClick={() => removeChecked(node.id)}
+                          >
+                            移出
+                          </Button>
+                        </Space>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <Flex gap={8} align="flex-end" wrap>
+                  <div style={{ flex: '1 1 220px', minWidth: 220 }}>
                     <Text strong>授权原因</Text>
                     <Input
-                      style={{ marginTop: 8 }}
-                      placeholder="选填，如：季度末批量清理订单"
+                      style={{ marginTop: 6 }}
+                      placeholder="选填，所有本次提交的权限共用"
                       value={grantReason}
                       onChange={(event) => setGrantReason(event.target.value)}
                       maxLength={255}
                     />
                   </div>
-                  <Space>
-                    <Button
-                      type="primary"
-                      loading={grantMutation.isPending}
-                      onClick={() => grantMutation.mutate()}
-                    >
-                      提交授权
-                    </Button>
-                    <Popconfirm
-                      title="撤销所选权限授权"
-                      description={`确认撤销当前勾选的 ${checkedKeys.length} 项权限授权吗？`}
-                      okText="确认撤销"
-                      cancelText="取消"
-                      onConfirm={() =>
-                        revokeMutation.mutate(
-                          checkedKeys.map((key) => Number(key)).filter((id) => Number.isFinite(id)),
-                        )
-                      }
-                      disabled={checkedKeys.length === 0}
-                    >
-                      <Button danger disabled={checkedKeys.length === 0} loading={revokeMutation.isPending}>
-                        撤销授权
-                      </Button>
-                    </Popconfirm>
-                  </Space>
-                </Flex>
-              </Card>
-            </Col>
-          </Row>
-
-          <Card
-            title="当前角色已授权列表"
-            extra={
-              <Text type="secondary">
-                共 {grants.length} 条，生效中 {activeGrants.length} 条
-              </Text>
-            }
-          >
-            {grantsQuery.isError ? (
-              <Alert
-                type="error"
-                showIcon
-                title="授权列表加载失败"
-                description={grantsQuery.error.message}
-                action={
-                  <Button size="small" onClick={() => void grantsQuery.refetch()}>
-                    重试
+                  <Button
+                    type="primary"
+                    loading={grantMutation.isPending}
+                    disabled={checkedKeys.length === 0}
+                    onClick={() => grantMutation.mutate()}
+                  >
+                    提交授权（{checkedKeys.length}）
                   </Button>
-                }
-              />
-            ) : (
-              <Table<PermissionGrant>
-                rowKey={(record) => `${record.permissionId}-${record.status}`}
-                columns={grantColumns}
-                dataSource={grants}
-                loading={grantsQuery.isLoading || grantsQuery.isFetching}
-                pagination={false}
-                size="small"
-                locale={{ emptyText: '该角色暂无任何权限授权' }}
-              />
+                  <Popconfirm
+                    title="撤销勾选的权限授权"
+                    description={`确认撤销当前勾选的 ${checkedKeys.length} 项权限授权吗？`}
+                    okText="确认撤销"
+                    cancelText="取消"
+                    onConfirm={() =>
+                      revokeMutation.mutate(
+                        checkedKeys.map((key) => Number(key)).filter((id) => Number.isFinite(id)),
+                      )
+                    }
+                    disabled={checkedKeys.length === 0}
+                  >
+                    <Button danger disabled={checkedKeys.length === 0} loading={revokeMutation.isPending}>
+                      撤销勾选（{checkedKeys.length}）
+                    </Button>
+                  </Popconfirm>
+                </Flex>
+              </>
             )}
-          </Card>
-        </>
-      )}
+          </Flex>
+        </Card>
+
+        <div className="grant-side-column">
+        <Card
+          title="已授权列表"
+          extra={
+            <Text type="secondary">
+              共 {grants.length} 条 · 生效中 {activeGrants.length} 条
+            </Text>
+          }
+        >
+          {selectedRoleId === null ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="选择左侧角色后查看已授权项"
+            />
+          ) : grantsQuery.isLoading ? (
+            <Skeleton active paragraph={{ rows: 5 }} />
+          ) : grantsQuery.isError ? (
+            <Alert
+              type="error"
+              showIcon
+              title="授权列表加载失败"
+              description={grantsQuery.error.message}
+              action={
+                <Button size="small" onClick={() => void grantsQuery.refetch()}>
+                  重试
+                </Button>
+              }
+            />
+          ) : grants.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="该角色暂无任何权限授权，可从左侧勾选后提交"
+            />
+          ) : (
+            <div className="grant-grant-list">
+              {grants.map((grant: PermissionGrant) => {
+                const permission = flatPermissions.find((node) => node.id === grant.permissionId)
+                return (
+                  <div className="grant-grant-row" key={`${grant.permissionId}-${grant.status}`}>
+                    <div className="grant-grant-main">
+                      <Space size={6} wrap>
+                        <Text strong={grant.code === '*'}>
+                          {permission ? permissionDisplayName(permission) : grant.code}
+                        </Text>
+                        <Tag color={grant.code === '*' ? 'gold' : 'blue'}>
+                          {grant.code === '*' ? '*（全部权限）' : grant.code}
+                        </Tag>
+                      </Space>
+                      <div className="grant-grant-meta">
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {formatValidity(grant.validFrom, grant.validUntil)}
+                        </Text>
+                      </div>
+                    </div>
+                    <Space size={12} align="center">
+                      <StatusTag status={grant.status} />
+                      <Popconfirm
+                        title="撤销该权限授权"
+                        description={`确认撤销权限「${grant.code}」吗？`}
+                        okText="确认撤销"
+                        cancelText="取消"
+                        onConfirm={() => revokeMutation.mutate([grant.permissionId])}
+                      >
+                        <Button type="link" size="small" danger disabled={grant.status !== 1}>
+                          撤销
+                        </Button>
+                      </Popconfirm>
+                    </Space>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+        <Card size="small" title="授权规则">
+          <ul className="grant-rule-list">
+            <li>勾选权限树节点后点击「提交授权」；未设置时间的权限为永久授权。</li>
+            <li>每条权限可在左侧单独设置生效/失效时间，互不影响。</li>
+            <li>取消勾选只移出本次提交，不会自动撤销；撤销请点右侧「撤销」或底部「撤销勾选」。</li>
+            <li>右侧「撤销」单条即时生效；到期后权限查询与 SDK 会即时判定无权限。</li>
+          </ul>
+        </Card>
+        </div>
+      </div>
     </PageShell>
   )
 }

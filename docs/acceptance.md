@@ -227,6 +227,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
 | 22:45 | 修复切换系统 toast 遮挡系统下拉框 | `.ant-message*` 设为 `pointer-events:none`；headless 验证切换 ERP 后系统下拉框顶部元素由 message 容器变回 input，页面下拉框可正常展开 |
 | 22:36 | 资源管理「提示」列替代候选码列 | 候选码不再单独成列：未关联行提示「确认权限码后生效，候选码为：xxx」；已关联行提示「已确认权限码，已生效」；表格仍无横向滚动，`npm run build` 0 error |
+| 23:50 | 角色授权交互重构 + 未生效计数强调（front build + headless） | `npm run build` 0 error；crm-admin-001 选择 operator 后「已勾选 3 项」，提交提示「授权已提交（2 组时效）」，提交前后 DB operator 授权记录一致；资源管理 Alert 数字 3 计算样式 21.6px/`rgb(212,107,8)` |
 | 23:45 | `./scripts/verify-all.sh`（A18/A19 后） | **15 项全过**：api **151** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、08/09 迁移、凭据/admin 保护产物、3 平台脚本 |
 | 23:40 | 全量验收（v9 全新库 01→09 + 两版 SDK 示例系统） | **108/108 PASS**（新增 §9.16c 凭据/admin 7 项；SDK e2e 8/8；后端 151） |
 | 23:40 | 系统凭据页 + admin 授权排除（front/API E2E） | crm-admin current 返回 crm 完整凭据、operator 403、缺头 403；superadmin by-id 跨系统 200；crm-admin by-id 403；admin grant/revoke 400；前端菜单/页面/密钥显示验证通过 |

@@ -181,6 +181,84 @@ body {
   border-radius: 6px;
 }
 
+/* 角色授权：左侧操作面板 + 右侧已授权列表，避免大表格空旷与操作分散 */
+.grant-workspace {
+  display: grid;
+  grid-template-columns: minmax(430px, 0.95fr) minmax(0, 1.05fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .grant-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.grant-workspace .grant-tree-panel {
+  max-height: 190px;
+}
+
+.grant-selected-list {
+  max-height: 204px;
+  overflow: auto;
+  padding: 2px 4px 2px 0;
+}
+
+.grant-selected-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.grant-selected-row:last-child {
+  border-bottom: none;
+}
+
+.grant-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.grant-rule-list {
+  margin: 0;
+  padding-left: 18px;
+  color: rgb(0 0 0 / 55%);
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.grant-grant-list {
+  max-height: 680px;
+  overflow: auto;
+}
+
+.grant-grant-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 2px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.grant-grant-row:last-child {
+  border-bottom: none;
+}
+
+.grant-grant-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.grant-grant-meta {
+  margin-top: 4px;
+}
+
 /* 侧边栏折叠时隐藏 logo 文本 */
 .ant-layout-sider-collapsed .app-logo span {
   display: none;
