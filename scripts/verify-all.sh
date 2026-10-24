@@ -81,6 +81,9 @@ fi
 echo "node $(node -v) / npm $(npm -v)"
 ( cd telbank-rbac-front && npm run build )
 [ -f telbank-rbac-front/dist/index.html ] || die "前端 dist/index.html 不存在"
+if grep -rq 'expiring-grants' telbank-rbac-front/src; then
+  die "前端仍引用已移除的到期提醒路由/菜单"
+fi
 ok "前端类型检查 + 构建通过，dist 产物存在"
 
 # ---------------------------------------------------------------- 5) 产物核对

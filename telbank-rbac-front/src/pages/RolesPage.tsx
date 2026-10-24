@@ -137,7 +137,6 @@ function RolesContent({ systemId }: { systemId: number }) {
       title: '操作',
       key: 'action',
       width: 160,
-      fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openEditModal(record)}>
@@ -227,7 +226,6 @@ function RolesContent({ systemId }: { systemId: number }) {
             columns={columns}
             dataSource={rolesQuery.data?.items ?? []}
             loading={rolesQuery.isLoading || rolesQuery.isFetching}
-            scroll={{ x: 960 }}
             pagination={createPaginationConfig(page, size, rolesQuery.data?.total ?? 0, (nextPage, nextSize) => {
               setPage(nextPage)
               setSize(nextSize)

@@ -157,7 +157,6 @@ export default function SystemsPage() {
       title: '操作',
       key: 'action',
       width: 150,
-      fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openEditModal(record)}>
@@ -238,7 +237,6 @@ export default function SystemsPage() {
             columns={columns}
             dataSource={systemsQuery.data?.items ?? []}
             loading={systemsQuery.isLoading || systemsQuery.isFetching}
-            scroll={{ x: 1000 }}
             pagination={createPaginationConfig(page, size, systemsQuery.data?.total ?? 0, (nextPage, nextSize) => {
               setPage(nextPage)
               setSize(nextSize)

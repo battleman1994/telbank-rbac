@@ -8,6 +8,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -19,9 +20,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 管理端整体布局 */
+/* 管理端整体布局：占满视口，仅内容区内部滚动 */
 .app-layout {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-layout > .ant-layout {
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .app-sider {
@@ -60,8 +69,31 @@ body {
 }
 
 .app-content {
-  padding: 24px;
-  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px 24px;
+  overflow: auto;
+}
+
+/* 表格自适应内容区宽度：不产生内部横向滚动条 */
+.ant-table-wrapper,
+.ant-table-container,
+.ant-table-content {
+  width: 100%;
+}
+
+.ant-table table {
+  width: 100% !important;
+  table-layout: fixed;
+}
+
+.ant-table-cell {
+  overflow-wrap: anywhere;
+}
+
+.ant-table-content {
+  overflow-x: hidden !important;
 }
 
 /* 登录页 */

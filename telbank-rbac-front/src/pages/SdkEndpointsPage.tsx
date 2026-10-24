@@ -221,7 +221,6 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
       title: '操作',
       key: 'action',
       width: 170,
-      fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openLinkModal(record)}>
@@ -309,7 +308,6 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
             columns={columns}
             dataSource={endpointsQuery.data?.items ?? []}
             loading={endpointsQuery.isLoading || endpointsQuery.isFetching}
-            scroll={{ x: 1180 }}
             pagination={createPaginationConfig(page, size, endpointsQuery.data?.total ?? 0, (nextPage, nextSize) => {
               setPage(nextPage)
               setSize(nextSize)

@@ -260,7 +260,6 @@ function PermissionsContent({ systemId }: { systemId: number }) {
       title: '操作',
       key: 'action',
       width: 210,
-      fixed: 'right',
       render: (_, record) => (
         <Space size={2} wrap>
           <Button type="link" size="small" onClick={() => openCreateModal(record)}>
@@ -331,7 +330,6 @@ function PermissionsContent({ systemId }: { systemId: number }) {
             dataSource={treeData}
             loading={permissionsQuery.isLoading || permissionsQuery.isFetching}
             pagination={false}
-            scroll={{ x: 1180 }}
             expandable={{
               expandedRowKeys,
               onExpandedRowsChange: (keys) => setExpandedRowKeys([...keys]),

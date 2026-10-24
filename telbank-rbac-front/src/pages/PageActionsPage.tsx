@@ -135,36 +135,37 @@ function PageActionsContent({ systemId }: { systemId: number }) {
   }
 
   const columns: TableProps<PageActionVO>['columns'] = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
+    { title: 'ID', dataIndex: 'id', width: 50 },
     {
       title: '页面编码',
       dataIndex: 'pageCode',
-      width: 200,
+      width: 130,
+      ellipsis: true,
       render: (value: string) => <Tag color="blue">{value}</Tag>,
     },
     {
       title: '操作码',
       dataIndex: 'code',
-      width: 200,
+      width: 130,
+      ellipsis: true,
       render: (value: string) => <Tag color="geekblue">{value}</Tag>,
     },
-    { title: '按钮文本', dataIndex: 'text', width: 140 },
-    { title: '类型', dataIndex: 'type', width: 110, render: (value: string) => <Tag>{value}</Tag> },
-    { title: '动作', dataIndex: 'action', width: 180, render: (value: string) => <PageActionTag action={value} /> },
+    { title: '按钮文本', dataIndex: 'text', width: 90 },
+    { title: '类型', dataIndex: 'type', width: 75, render: (value: string) => <Tag>{value}</Tag> },
+    { title: '动作', dataIndex: 'action', width: 100, render: (value: string) => <PageActionTag action={value} /> },
     {
       title: 'config',
       dataIndex: 'config',
-      width: 220,
+      width: 160,
       ellipsis: true,
       render: (value: unknown) => <span className="mono-text">{formatJson(value)}</span>,
     },
-    { title: '排序', dataIndex: 'sort', width: 80 },
-    { title: '状态', dataIndex: 'status', width: 90, render: (value: number) => <StatusTag status={value} /> },
+    { title: '排序', dataIndex: 'sort', width: 60 },
+    { title: '状态', dataIndex: 'status', width: 70, render: (value: number) => <StatusTag status={value} /> },
     {
       title: '操作',
       key: 'action',
-      width: 150,
-      fixed: 'right',
+      width: 110,
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openEditModal(record)}>
@@ -254,7 +255,6 @@ function PageActionsContent({ systemId }: { systemId: number }) {
             columns={columns}
             dataSource={pageActionsQuery.data?.items ?? []}
             loading={pageActionsQuery.isLoading || pageActionsQuery.isFetching}
-            scroll={{ x: 1200 }}
             pagination={createPaginationConfig(page, size, pageActionsQuery.data?.total ?? 0, (nextPage, nextSize) => {
               setPage(nextPage)
               setSize(nextSize)

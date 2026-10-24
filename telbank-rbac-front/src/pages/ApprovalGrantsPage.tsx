@@ -111,7 +111,6 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
       title: '操作',
       key: 'action',
       width: 100,
-      fixed: 'right',
       render: (_, record) => (
         <Button type="link" size="small" onClick={() => setDetail(record)}>
           详情
@@ -181,6 +180,7 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
           ) : null}
 
           <Table<ApprovalGrantVO>
+            tableLayout="auto"
             rowKey={(record) =>
               [
                 record.kind,
@@ -195,7 +195,6 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
             columns={columns}
             dataSource={grantsQuery.data?.items ?? []}
             loading={grantsQuery.isLoading || grantsQuery.isFetching}
-            scroll={{ x: 1220 }}
             pagination={createPaginationConfig(page, size, grantsQuery.data?.total ?? 0, (nextPage, nextSize) => {
               setPage(nextPage)
               setSize(nextSize)

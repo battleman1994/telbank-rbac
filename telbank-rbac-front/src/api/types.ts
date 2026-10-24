@@ -334,7 +334,3 @@ export interface ApprovalGrantListQuery extends PageQuery {
   externalUserId?: string
 }
 
-export interface ExpiringGrantListQuery {
-  systemId?: number
-  withinDays?: number
-}

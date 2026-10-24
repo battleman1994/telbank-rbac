@@ -3,7 +3,6 @@ import { HomeRedirect, PermissionGuard, PlatformAdminGuard } from './components/
 import { MANAGEMENT_PERMISSIONS } from './config/menu'
 import AdminLayout from './layouts/AdminLayout'
 import ApprovalGrantsPage from './pages/ApprovalGrantsPage'
-import ExpiringGrantsPage from './pages/ExpiringGrantsPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 import PageActionsPage from './pages/PageActionsPage'
@@ -16,7 +15,7 @@ import UserRolesPage from './pages/UserRolesPage'
 
 /**
  * 管理端路由（系统隔离模型）：
- * - 登录页 + 受保护布局 + 8 个权限管理页面 + 平台超管专属「系统接入」
+ * - 登录页 + 受保护布局 + 7 个权限管理页面 + 平台超管专属「系统接入」
  * - 权限管理页面绑定当前系统内的短码权限（role:manage / permission:manage /
  *   resource:manage / page:manage / user:manage / audit:view），
  *   由 PermissionGuard 做路由级权限守卫（无权限渲染 403 页）
@@ -93,14 +92,6 @@ export const router = createBrowserRouter([
         element: (
           <PermissionGuard permission={MANAGEMENT_PERMISSIONS.audit}>
             <ApprovalGrantsPage />
-          </PermissionGuard>
-        ),
-      },
-      {
-        path: 'expiring-grants',
-        element: (
-          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.audit}>
-            <ExpiringGrantsPage />
           </PermissionGuard>
         ),
       },

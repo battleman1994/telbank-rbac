@@ -7,7 +7,7 @@
  * - resource:manage    → 资源管理（SDK 端点资源）
  * - page:manage        → 页面元素
  * - user:manage        → 用户授权
- * - audit:view         → 授权记录、到期提醒
+ * - audit:view         → 授权记录
  * 顶级「系统接入」（/systems）仅平台超管可见，无权限码。
  */
 
@@ -91,12 +91,6 @@ export const MANAGEMENT_MENU_ITEMS: readonly ManagementMenuItem[] = [
   {
     path: '/approval-grants',
     label: '授权记录',
-    permission: MANAGEMENT_PERMISSIONS.audit,
-    group: MENU_GROUP_NAME,
-  },
-  {
-    path: '/expiring-grants',
-    label: '到期提醒',
     permission: MANAGEMENT_PERMISSIONS.audit,
     group: MENU_GROUP_NAME,
   },

@@ -4,7 +4,6 @@ import {
   ApiOutlined,
   AuditOutlined,
   BankOutlined,
-  ClockCircleOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -55,7 +54,6 @@ const MENU_ICON_BY_PATH: Record<string, ReactNode> = {
   '/sdk-endpoints': <ApiOutlined />,
   '/page-actions': <SettingOutlined />,
   '/approval-grants': <AuditOutlined />,
-  '/expiring-grants': <ClockCircleOutlined />,
 }
 
 function toMenuItem(item: ManagementMenuItem): MenuItemNode {

@@ -119,7 +119,6 @@ cd telbank-rbac-front && npm run dev
 | 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点资源上报与权限码关联 |
 | 页面元素 | `/page-actions` | `page:manage` | 页面操作元数据（模式 B） |
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
-| 到期提醒 | `/expiring-grants` | `audit:view` | 即将到期授权查询 |
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。
 - `/systems` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页。
@@ -151,7 +150,7 @@ cd telbank-rbac-front && npm run dev
 | 用户授权 `GET/POST /api/user-roles` | 查询参数 / 请求体 `systemId` | 用户授权 |
 | 页面元素 `GET/POST /api/page-actions` | 查询参数 / 请求体 `systemId` | 页面元素 |
 | 资源管理 `GET /api/sdk-endpoints`、`link/unlink` | 查询参数 `systemId` + 当前系统端点 | 资源管理 |
-| 授权记录 / 到期提醒 `GET /api/approval-grants`、`/api/expiring-grants` | 查询参数 `systemId` | 授权记录、到期提醒 |
+| 授权记录 `GET /api/approval-grants` | 查询参数 `systemId` | 授权记录（`/api/expiring-grants` 后端接口保留，前端不再展示） |
 
 - `/api/me`、`/api/me/systems` 仅要求认证，不带 `X-System-Code`；其余 `/api/**` 均带 `X-System-Code: <currentSystemCode>`。
 - 切换系统（含平台超管）：更新 `currentSystemCode` + `localStorage` → 失效并重拉 `admin-session`（bootstrap 带新系统头）→ 所有数据查询按新 `systemId` 重取；角色授权页清空上一系统所选角色、资源管理页关闭关联弹窗，且授权关系查询仅在「所选角色属于当前系统角色列表」时才发起，杜绝切换瞬间用旧 roleId 跨系统查询。
@@ -161,8 +160,8 @@ cd telbank-rbac-front && npm run dev
 
 - **TanStack Query** 管理服务端状态：
   - `['admin-session']`：`/api/me` → `/api/me/systems` →（选当前系统）→ `/api/me/bootstrap` 串联结果；切换系统时失效重取
-  - `['permissions', systemId]`、`['roles', systemId, {...}]`、`['role-permissions', systemId, roleId]`、`['user-roles', systemId, externalUserId]`、`['page-actions', systemId, {...}]`、`['sdk-endpoints', systemId, {...}]`、`['approval-grants', systemId, {...}]`、`['expiring-grants', systemId, withinDays]`
-  - 切换系统后 `queryClient.invalidateQueries()` 让数据查询失效重取（含 admin-session）
+  - `['permissions', systemId]`、`['roles', systemId, {...}]`、`['role-permissions', systemId, roleId]`、`['user-roles', systemId, externalUserId]`、`['page-actions', systemId, {...}]`、`['sdk-endpoints', systemId, {...}]`、`['approval-grants', systemId, {...}]`
+  - 切换系统时**只 refetch `admin-session`**，不全局 invalidate 旧 systemId 查询；页面 queryKey 含 systemId，系统上下文变化后自动按新 key 重取（避免「旧 systemId + 新系统头」的跨系统 403）
 - **Zustand**（`src/stores/app.ts`）：`token`、`currentUser`、`systems`、`currentSystemCode`、`platformAdmin`、`permissions: Set<string>`、`hasPerm(code)`（平台超管恒 true）、`setBootstrap`、`logout`
   - 持久化：`rbac.token`（JWT）、`rbac.currentSystemCode`（当前业务系统上下文）
 
@@ -223,7 +222,7 @@ dist/assets/index-*.js          1,399.10 kB │ gzip: 442.35 kB
 
 - 后端新契约（系统隔离、`platform:admin` 数据驱动超管、系统接入管理员字段）由 api-dev 并行改造；联调阶段若字段名有差异需要对齐。
 - 未做路由级 code splitting：生产包单 chunk 约 1.4 MB（gzip 约 442 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
-- 授权记录、到期提醒按契约仅提供查询（只读）。
+- 授权记录按契约仅提供查询（只读）；「到期提醒」菜单/路由已移除（后端 `/api/expiring-grants` 接口保留）。
 
 ## 本地验证记录
 

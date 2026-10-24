@@ -50,7 +50,7 @@ telbank-rbac/
 - **系统接入（仅超管）**：新增系统时必须录入系统管理员账号；服务端自动创建默认 `admin` 角色 + **一条 `*` 通配权限**并授权给该账号。
 - **通配权限（A 方案）**：管理员只授一条 `*`；匹配规则 `*` > `前缀:*` > 精确，后端 `@perm`、前端 `hasPerm`、SDK 拦截器一致。
 - **严格系统隔离**：每次请求只查/只写 `X-System-Code` 当前系统数据；**超管也必须切换系统上下文**，禁止单请求跨系统（否则 403）。
-- **菜单 IA**：`权限管理` 组（角色管理、角色授权、权限管理、资源管理、页面元素、用户授权、授权记录、到期提醒）+ 顶级「系统接入」（仅超管）；已移除「用户-系统开通」。
+- **菜单 IA**：`权限管理` 组（角色管理、角色授权、权限管理、资源管理、页面元素、用户授权、授权记录）+ 顶级「系统接入」（仅超管）；已移除「用户-系统开通」与「到期提醒」菜单（`/api/expiring-grants` 接口保留）。
 
 ---
 
@@ -171,7 +171,7 @@ MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/demo-temp-permission.sh
 MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/demo-temp-permission.sh 13700137000 order:delete crm 1
 ```
 
-- **1 分钟内**：按脚本提示生成 `TOKEN=$(./scripts/gen-demo-jwt.sh demo-1min)` 登录管理前端，可见「授权记录 / 到期提醒」，对应接口 200；
+- **1 分钟内**：按脚本提示生成 `TOKEN=$(./scripts/gen-demo-jwt.sh demo-1min)` 登录管理前端，可见「授权记录」，对应接口 200；
 - **1 分钟后**：刷新页面菜单消失，直接访问 `/approval-grants` 显示无权限页（后端返回 403）；
 - 重新计时：再执行一次脚本；清理演示角色：`./scripts/demo-temp-permission.sh --clean`。
 
@@ -380,6 +380,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 11. **A11 · 系统隔离重构（v2.0）**：删除用户-系统开通（表/接口/页面），系统访问由有效角色推导；平台超管改为数据驱动（platform 系统 + super-admin + platform:admin，删除 `rbac.platform-admin-ids` 配置）；管理上下文改为 `X-System-Code=当前业务系统`，非超管跨系统 403；管理权限改为系统内短码（role:manage 等）；系统接入仅超管且必须录入系统管理员，自动创建默认 admin 角色并授权；菜单统一收在「权限管理」组，新增「系统接入」。
 12. **A12 · A 方案通配权限 + 严格上下文**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再写 6 条短码；`06_cleanup_admin_redundant_grants.sql` 清理 admin 角色残留业务授权，使角色授权只剩一条 `*`（`common:profile` 等 `is_public=1` 公共权限仍对所有登录用户生效，不计入角色授权）；所有权限/角色/资源查询严格限定当前 `X-System-Code` 系统，列表缺省 `systemId` 收敛上下文、by-id 校验实体 systemId，**超管也不能单请求跨系统**。
 13. **A13 · 持久层替换为 MyBatis-Plus**：移除 JPA/Hibernate 与 Spring Data Repository；改为 MyBatis-Plus 3.5.17（Boot4 starter + jsqlparser）实体注解/BaseMapper/注解 SQL/MP 分页；REST 契约与数据库表结构不变。
+14. **A14 · 前端菜单/布局优化**：移除「到期提醒」菜单、路由与页面（后端 `/api/expiring-grants` 接口保留）；管理台布局改为占满 100% 视口、内容区独立滚动，表格宽度自适应，去除页面/表格横向滚动条。
 
 其他实现说明（非偏差，需求本身已明确）：
 

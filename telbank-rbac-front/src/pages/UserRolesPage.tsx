@@ -159,7 +159,6 @@ function UserRolesContent({ systemId }: { systemId: number }) {
       title: '操作',
       key: 'action',
       width: 100,
-      fixed: 'right',
       render: (_, record) => (
         <Popconfirm
           title="撤销用户角色"
@@ -236,7 +235,6 @@ function UserRolesContent({ systemId }: { systemId: number }) {
               columns={columns}
               dataSource={userRolesQuery.data ?? []}
               loading={userRolesQuery.isLoading || userRolesQuery.isFetching}
-              scroll={{ x: 1100 }}
               pagination={false}
               locale={{ emptyText: `用户 ${externalUserId} 在当前系统下暂无角色分配` }}
             />

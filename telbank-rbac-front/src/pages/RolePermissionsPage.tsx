@@ -435,7 +435,6 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
                 loading={grantsQuery.isLoading || grantsQuery.isFetching}
                 pagination={false}
                 size="small"
-                scroll={{ x: 800 }}
                 locale={{ emptyText: '该角色暂无任何权限授权' }}
               />
             )}
