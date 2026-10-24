@@ -378,7 +378,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 9. **A9 · SDK 的 JDK 版本覆盖**：需求只定义 JDK 8 版 SDK；实现新增 JDK 21 + Spring Boot 4 变体（协议/配置一致、同包名不可共存），供 JDK 21 业务系统接入。
 10. **A10 · 移除 Flyway**：按用户要求去掉 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `telbank-rbac-api/src/main/resources/db/manual/*.sql` 手动初始化（`scripts/init-db.sh` 建库并按序导入，`--temp-db` 自动执行），后端启动前库表须已存在。
 11. **A11 · 系统隔离重构（v2.0）**：删除用户-系统开通（表/接口/页面），系统访问由有效角色推导；平台超管改为数据驱动（platform 系统 + super-admin + platform:admin，删除 `rbac.platform-admin-ids` 配置）；管理上下文改为 `X-System-Code=当前业务系统`，非超管跨系统 403；管理权限改为系统内短码（role:manage 等）；系统接入仅超管且必须录入系统管理员，自动创建默认 admin 角色并授权；菜单统一收在「权限管理」组，新增「系统接入」。
-12. **A12 · A 方案通配权限 + 严格上下文**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再写 6 条短码；所有权限/角色/资源查询严格限定当前 `X-System-Code` 系统，列表缺省 `systemId` 收敛上下文、by-id 校验实体 systemId，**超管也不能单请求跨系统**。
+12. **A12 · A 方案通配权限 + 严格上下文**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再写 6 条短码；`06_cleanup_admin_redundant_grants.sql` 清理 admin 角色残留业务授权，使角色授权只剩一条 `*`（`common:profile` 等 `is_public=1` 公共权限仍对所有登录用户生效，不计入角色授权）；所有权限/角色/资源查询严格限定当前 `X-System-Code` 系统，列表缺省 `systemId` 收敛上下文、by-id 校验实体 systemId，**超管也不能单请求跨系统**。
 13. **A13 · 持久层替换为 MyBatis-Plus**：移除 JPA/Hibernate 与 Spring Data Repository；改为 MyBatis-Plus 3.5.17（Boot4 starter + jsqlparser）实体注解/BaseMapper/注解 SQL/MP 分页；REST 契约与数据库表结构不变。
 
 其他实现说明（非偏差，需求本身已明确）：

@@ -58,10 +58,11 @@
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
 - 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。平台一键脚本（`start-all-macos.sh` / `start-all-linux.sh` / `start-all-windows.ps1`）的 `--temp-db` 会在临时库启动后自动执行。
 - `05_wildcard_permissions.sql`（v2.1）：业务系统 admin 角色与平台超管各只授一条 `*` 权限（删除 6 条短码与 `platform:admin`）。
+- `06_cleanup_admin_redundant_grants.sql`（v2.1 补充）：清理业务系统 `admin` 角色残留的 `order:*` 等冗余业务授权，使角色授权只剩唯一一条 `*`（公共权限 `is_public=1` 不属于角色授权，仍对所有登录用户生效）。
 - `04_system_isolation.sql`（v2.0）：删除 `sys_user_system`；`sys_system` 增加 `is_platform/admin_external_user_id/admin_name`；新增平台系统、`super-admin` 角色、`platform:admin` 权限、种子超管 `superadmin`；新增各业务系统短管理权限码与两个系统管理员演示账号。
 - 启动前提：数据库与表已经存在（持久层 MyBatis-Plus 不会自动建表）。
 - 持久层：MyBatis-Plus 3.5.17（`mybatis-plus-spring-boot4-starter` + `mybatis-plus-jsqlparser` 分页），实体 `@TableName/@TableId`、`BaseMapper` + 注解 SQL，MP `Page` 分页；不使用 JPA/Hibernate/Spring Data Repository。
-- SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `05_xxx.sql` 递增并在 README/验收文档登记。
+- SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `06_xxx.sql` 递增并在 README/验收文档登记。
 
 ## 3. 权限中心管理端 API（api ↔ front）
 
