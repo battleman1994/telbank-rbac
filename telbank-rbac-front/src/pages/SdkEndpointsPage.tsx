@@ -12,6 +12,8 @@ import {
   Input,
   InputNumber,
   Modal,
+  Row,
+  Col,
   Popconfirm,
   Select,
   Space,
@@ -322,7 +324,7 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
         forceRender
         onCancel={() => setLinkTarget(null)}
         footer={null}
-        width={680}
+        width={720}
       >
         {linkTarget ? (
           <Flex vertical gap={16}>
@@ -403,17 +405,23 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
                       <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
                         <Input placeholder="如 删除订单" maxLength={100} />
                       </Form.Item>
-                      <Space size={16} style={{ display: 'flex' }}>
-                        <Form.Item label="资源类型" name="type" style={{ flex: 1 }}>
-                          <Select options={PERMISSION_TYPE_OPTIONS} />
-                        </Form.Item>
-                        <Form.Item label="是否公开" name="isPublic" style={{ flex: 1 }}>
-                          <Select options={YES_NO_OPTIONS} />
-                        </Form.Item>
-                        <Form.Item label="排序" name="sort" style={{ flex: 1 }}>
-                          <InputNumber min={0} max={9999} style={{ width: '100%' }} />
-                        </Form.Item>
-                      </Space>
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="资源类型" name="type">
+                            <Select options={PERMISSION_TYPE_OPTIONS} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item label="是否公开" name="isPublic">
+                            <Select options={YES_NO_OPTIONS} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item label="排序" name="sort">
+                            <InputNumber min={0} max={9999} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
                       <Alert
                         type="info"
                         showIcon

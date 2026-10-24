@@ -347,7 +347,7 @@ function PermissionsContent({ systemId }: { systemId: number }) {
         confirmLoading={saveMutation.isPending}
         okText="保存"
         cancelText="取消"
-        width={680}
+        width={720}
       >
         <Form<PermissionFormValues> form={form} layout="vertical" onFinish={handleFinish}>
           <Row gutter={16}>

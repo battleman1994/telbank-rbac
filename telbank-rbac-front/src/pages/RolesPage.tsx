@@ -12,6 +12,8 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Row,
+  Col,
   Select,
   Space,
   Table,
@@ -243,7 +245,7 @@ function RolesContent({ systemId }: { systemId: number }) {
         confirmLoading={saveMutation.isPending}
         okText="保存"
         cancelText="取消"
-        width={520}
+        width={600}
       >
         <Form<RoleFormValues> form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
           <Form.Item
@@ -260,16 +262,20 @@ function RolesContent({ systemId }: { systemId: number }) {
           <Form.Item label="角色名称" name="name" rules={[{ required: true, message: '请输入角色名称' }]}>
             <Input placeholder="如 管理员" maxLength={100} />
           </Form.Item>
-          <Space size={16} style={{ display: 'flex' }}>
-            <Form.Item label="状态" name="status" rules={[{ required: true, message: '请选择状态' }]} style={{ flex: 1 }}>
-              <Select options={STATUS_OPTIONS} />
-            </Form.Item>
-            <Form.Item label="排序" name="sort" style={{ flex: 1 }}>
-              <InputNumber min={0} max={9999} style={{ width: '100%' }} />
-            </Form.Item>
-          </Space>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label="状态" name="status" rules={[{ required: true, message: '请选择状态' }]}>
+                <Select options={STATUS_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="排序" name="sort">
+                <InputNumber min={0} max={9999} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={3} maxLength={255} showCount placeholder="选填" />
+            <Input.TextArea rows={3} maxLength={255} placeholder="选填" />
           </Form.Item>
         </Form>
       </Modal>

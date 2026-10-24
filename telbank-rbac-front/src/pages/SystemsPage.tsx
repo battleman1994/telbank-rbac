@@ -10,6 +10,8 @@ import {
   Form,
   Input,
   Modal,
+  Row,
+  Col,
   Popconfirm,
   Select,
   Space,
@@ -254,56 +256,74 @@ export default function SystemsPage() {
         confirmLoading={saveMutation.isPending}
         okText="保存"
         cancelText="取消"
-        width={600}
+        width={680}
       >
         <Form<SystemFormValues>
           form={form}
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Form.Item
-            label="系统编码"
-            name="code"
-            rules={[
-              { required: true, message: '请输入系统编码' },
-              {
-                pattern: /^[A-Za-z0-9_-]{2,64}$/,
-                message: '系统编码为 2-64 位字母、数字、下划线或连字符',
-              },
-            ]}
-            tooltip="系统编码全局唯一，创建后不可修改；SDK 的 system-code 与此一致"
-          >
-            <Input placeholder="如 crm" disabled={Boolean(editing)} maxLength={64} />
-          </Form.Item>
-          <Form.Item
-            label="系统名称"
-            name="name"
-            rules={[{ required: true, message: '请输入系统名称' }]}
-          >
-            <Input placeholder="如 CRM系统" maxLength={100} />
-          </Form.Item>
-          <Form.Item
-            label="所属区域"
-            name="region"
-            rules={[{ required: true, message: '请输入所属区域' }]}
-            tooltip="区域用于路由 Redis 变更通知频道：rbac:change:{region}:{systemCode}"
-          >
-            <Input placeholder="如 region_a" maxLength={32} />
-          </Form.Item>
-          <Form.Item
-            label="系统管理员账号"
-            name="adminExternalUserId"
-            rules={[{ required: true, message: '请输入系统管理员账号' }]}
-            tooltip="接入时后端会为该账号自动创建本系统默认 admin 角色并授权，账号来自外部认证系统（external_user_id）"
-          >
-            <Input placeholder="如 crm-admin-001" maxLength={255} />
-          </Form.Item>
-          <Form.Item label="管理员姓名（可选）" name="adminName">
-            <Input placeholder="如 张三" maxLength={100} />
-          </Form.Item>
-          <Form.Item label="状态" name="status" rules={[{ required: true, message: '请选择状态' }]}>
-            <Select options={STATUS_OPTIONS} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="系统编码"
+                name="code"
+                rules={[
+                  { required: true, message: '请输入系统编码' },
+                  {
+                    pattern: /^[A-Za-z0-9_-]{2,64}$/,
+                    message: '系统编码为 2-64 位字母、数字、下划线或连字符',
+                  },
+                ]}
+                tooltip="系统编码全局唯一，创建后不可修改；SDK 的 system-code 与此一致"
+              >
+                <Input placeholder="如 crm" disabled={Boolean(editing)} maxLength={64} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="系统名称"
+                name="name"
+                rules={[{ required: true, message: '请输入系统名称' }]}
+              >
+                <Input placeholder="如 CRM系统" maxLength={100} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="所属区域"
+                name="region"
+                rules={[{ required: true, message: '请输入所属区域' }]}
+                tooltip="区域用于路由 Redis 变更通知频道：rbac:change:{region}:{systemCode}"
+              >
+                <Input placeholder="如 region_a" maxLength={32} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="状态" name="status" rules={[{ required: true, message: '请选择状态' }]}>
+                <Select options={STATUS_OPTIONS} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="系统管理员账号"
+                name="adminExternalUserId"
+                rules={[{ required: true, message: '请输入系统管理员账号' }]}
+                tooltip="接入时后端会为该账号自动创建本系统默认 admin 角色并授权，账号来自外部认证系统（external_user_id）"
+              >
+                <Input placeholder="如 crm-admin-001" maxLength={255} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="管理员姓名（可选）" name="adminName">
+                <Input placeholder="如 张三" maxLength={100} />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </PageShell>

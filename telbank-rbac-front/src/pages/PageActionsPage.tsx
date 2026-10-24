@@ -11,6 +11,8 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Row,
+  Col,
   Select,
   Space,
   Table,
@@ -281,46 +283,51 @@ function PageActionsContent({ systemId }: { systemId: number }) {
         confirmLoading={saveMutation.isPending}
         okText="保存"
         cancelText="取消"
-        width={560}
+        width={600}
       >
         <Form<PageActionFormValues>
           form={form}
           layout="vertical"
           onFinish={(values) => saveMutation.mutate(values)}
         >
-          <Space size={16} style={{ display: 'flex' }}>
-            <Form.Item
-              label="页面编码"
-              name="pageCode"
-              rules={[{ required: true, message: '请输入页面编码' }]}
-              style={{ flex: 1 }}
-              tooltip="元素所属页面，如 order:list"
-            >
-              <Input placeholder="如 order:list" maxLength={128} />
-            </Form.Item>
-            <Form.Item
-              label="元素标识"
-              name="code"
-              rules={[{ required: true, message: '请输入元素标识' }]}
-              style={{ flex: 1 }}
-              tooltip="页面内唯一，如 order:export"
-            >
-              <Input placeholder="如 order:export" maxLength={128} />
-            </Form.Item>
-          </Space>
-          <Space size={16} style={{ display: 'flex' }}>
-            <Form.Item
-              label="元素名称"
-              name="text"
-              rules={[{ required: true, message: '请输入元素名称' }]}
-              style={{ flex: 1 }}
-            >
-              <Input placeholder="如 导出" maxLength={64} />
-            </Form.Item>
-            <Form.Item label="元素类型" name="type" style={{ flex: 1 }}>
-              <Select options={ELEMENT_TYPE_OPTIONS} placeholder="按钮" />
-            </Form.Item>
-          </Space>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="页面编码"
+                name="pageCode"
+                rules={[{ required: true, message: '请输入页面编码' }]}
+                tooltip="元素所属页面，如 order:list"
+              >
+                <Input placeholder="如 order:list" maxLength={128} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="元素标识"
+                name="code"
+                rules={[{ required: true, message: '请输入元素标识' }]}
+                tooltip="页面内唯一，如 order:export"
+              >
+                <Input placeholder="如 order:export" maxLength={128} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="元素名称"
+                name="text"
+                rules={[{ required: true, message: '请输入元素名称' }]}
+              >
+                <Input placeholder="如 导出" maxLength={64} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="元素类型" name="type">
+                <Select options={ELEMENT_TYPE_OPTIONS} placeholder="按钮" />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </PageShell>

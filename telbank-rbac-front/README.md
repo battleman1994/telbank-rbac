@@ -156,6 +156,13 @@ cd telbank-rbac-front && npm run dev
 - 切换系统（含平台超管）：更新 `currentSystemCode` + `localStorage` → 失效并重拉 `admin-session`（bootstrap 带新系统头）→ 所有数据查询按新 `systemId` 重取；角色授权页清空上一系统所选角色、资源管理页关闭关联弹窗，且授权关系查询仅在「所选角色属于当前系统角色列表」时才发起，杜绝切换瞬间用旧 roleId 跨系统查询。
 - mock 冒烟日志审计：CRM 阶段所有业务查询均为 `systemId=1` + `X-System-Code=crm`，无 `systemId=2`；superadmin 切到 ERP 后仅出现 `systemId=2` + `erp` 请求，权限树/角色/授权记录均为 ERP 数据，无 CRM 残留。
 
+## 弹窗表单规范
+
+- 统一使用 `Form layout="vertical"`；同一行字段用 `Row gutter={16} + Col`，不使用 `Space` 拼 flex；
+- 弹窗宽度按字段量统一：普通 2 列 600–680、权限/资源关联 720；
+- `.ant-modal` 内 `Select/TreeSelect/DatePicker/InputNumber` 统一 `width:100%`，避免控件过短；
+- 字段间距 18px，textarea 不使用 `showCount`，避免与 footer 重叠。
+
 ## 状态管理
 
 - **TanStack Query** 管理服务端状态：

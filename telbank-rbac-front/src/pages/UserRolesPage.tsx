@@ -293,7 +293,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
             />
           </Form.Item>
           <Form.Item label="授权原因" name="grantReason">
-            <Input.TextArea rows={3} maxLength={255} showCount placeholder="选填" />
+            <Input.TextArea rows={3} maxLength={255} placeholder="选填" />
           </Form.Item>
         </Form>
       </Modal>

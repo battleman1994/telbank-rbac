@@ -165,3 +165,24 @@ body {
 .ant-layout-sider-collapsed .app-logo span {
   display: none;
 }
+
+/* 弹窗表单：统一控件占满列宽、字段间距，避免输入框过短/不齐 */
+.ant-modal .ant-form-item {
+  margin-bottom: 18px;
+}
+
+.ant-modal .ant-form {
+  padding-bottom: 4px;
+}
+
+.ant-modal .ant-form .ant-select,
+.ant-modal .ant-form .ant-tree-select,
+.ant-modal .ant-form .ant-picker,
+.ant-modal .ant-form .ant-input-number,
+.ant-modal .ant-form .ant-cascader {
+  width: 100%;
+}
+
+.ant-modal .ant-form .ant-form-item-control-input {
+  min-height: 32px;
+}

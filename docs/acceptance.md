@@ -220,6 +220,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 22:24 | 弹窗表单 UI 优化（headless Chrome 截图复核） | 角色/权限/页面元素/用户授权/系统接入弹窗统一宽度（600–720）、控件占满列宽；双列用 Row/Col 对齐；移除 textarea showCount 避免与 footer 重叠；SVG 截图人工复核通过 |
 | 22:18 | 页面元素简化 + 07 类型归一（用户库/headless Chrome） | 表头 = 页面编码/元素标识/元素名称/元素类型/状态/操作；新建弹窗字段仅 4 个（无 action/config/sort）；类型显示“按钮/链接”；`npm run build` 0 error |
 | 22:05 | 前端 A14 布局/菜单验证（headless Chrome 1440×900、1366×768） | 7 个页面 `doc.cw==doc.sw`、`doc.ch==doc.sh`，表格无横向溢出；菜单仅剩 7 个权限管理页面 + 系统接入；`npm run build` 0 error |
 | 21:45 | `06_cleanup_admin_redundant_grants.sql`（用户库 + 全新库 v5） | admin 角色授权记录均为 **1 条 `*`**；crm-admin bootstrap 权限 = `['*','common:profile']`（后者为 `is_public=1` 公共权限）；验收冒烟 **45/45 PASS** |
