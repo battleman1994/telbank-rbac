@@ -3,7 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v1.0（2026-10-24）· 维护：Lead
+> 版本：v1.1（2026-10-24）· 维护：Lead
+> 修订：v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -268,6 +269,8 @@ Content-Type: application/json
 - SDK 收到任意消息：重新全量拉取 mappings + pageActions + 失效该用户权限集缓存（`PERMISSION_CHANGED` 时失效所有用户缓存；`PAGE_ACTION_CHANGED` 时只刷 pageActions）。
 - Redis 不可用：api 发布失败只记 warn 日志，不影响主流程（SDK 有短轮询兜底）。
 
+> 验证：已用 Redis 8.10.2 实测两区域链路（`rbac:change:region_a:crm` / `region_b:erp` 各 1 订阅者，变更后 API `receivers=1`，SDK 收到通知并刷新），见 `docs/acceptance.md` §9.11.1 执行记录。
+
 ---
 
 ## 7. SDK 行为契约
@@ -394,6 +397,8 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0。
+
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
 3. **审批回调 `grantType=permission`**：数据模型没有 user_permission 表，无法绕过角色直接授权。**实现口径：仅支持 `grantType=role`，`permission` 返回 400 并说明原因**；`permissionCodes` 仅用于校验审批内容与角色授权一致。
@@ -416,9 +421,11 @@ rbac:
 
 ---
 
-## 11. 验收与命令（占位，README 会补全）
+## 11. 验收与命令（已落地）
 
-- api：`mvn -pl telbank-rbac-api -am spring-boot:run`（JDK 21）
-- starter：`mvn -pl telbank-rbac-starter -am install`（JDK 21 编译，产物为 JDK 8 字节码）
-- front：`cd telbank-rbac-front && npm install && npm run dev`（nvm node 22）
-- 验收脚本：`scripts/acceptance.sh`（Lead 维护，逐条覆盖需求第 9 节关键项）
+- 一键验证：`./scripts/verify-all.sh`（后端 46 单测 + SDK 90 单测 + 前端类型检查/构建 + 产物核对）
+- 权限中心：`./scripts/start-api.sh`（需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
+- SDK：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
+- 管理前端：`cd telbank-rbac-front && npm install && npm run dev|build`（nvm Node 22）
+- 示例业务系统：`samples/business-demo`（Boot 2.7.18，JDK 8+ 运行时）
+- 验收矩阵与执行记录：`docs/acceptance.md`

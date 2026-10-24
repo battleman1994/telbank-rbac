@@ -2,8 +2,9 @@
 
 `telbank-rbac` 权限管理平台的管理端 Web 界面，对接权限中心后端 `telbank-rbac-api` 的 `/api/**` 管理接口。
 
-- 需求基线：`docs/telbank-rbac.md` §3.3 / §5.7 / §10
+- 需求基线：`docs/telbank-rbac.md` §3.3 / §5.7
 - 接口契约：`docs/impl/contracts.md` §3 / §10
+- 完整文档地图：[`../docs/README.md`](../docs/README.md)
 
 ## 技术栈（锁定版本）
 
@@ -50,6 +51,23 @@ npm run preview        # 预览 dist 构建产物（4173 端口）
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:8080
 ```
+
+## 与权限中心后端联调
+
+本前端默认请求 `http://localhost:8080`。本地联调步骤（详见仓库根 README §4）：
+
+```bash
+# 1) 启动权限中心（JDK 21+，demo profile；HS256 演示 JWT）
+cd .. && ./scripts/start-api.sh
+
+# 2) 生成演示 JWT（另开终端）
+TOKEN=$(./scripts/gen-demo-jwt.sh 13800138000)
+
+# 3) 启动前端并在浏览器打开 http://localhost:5173，粘贴 TOKEN 登录
+cd telbank-rbac-front && npm run dev
+```
+
+> 真实后端联调尚未纳入自动化验收（见 `docs/acceptance.md` 已知限制）；页面操作时可在浏览器 DevTools 观察 `/api/**` 请求头（`Authorization: Bearer` + `X-System-Code`）。
 
 ## 登录与系统上下文
 
@@ -147,6 +165,12 @@ dist/assets/index-*.js          1,406.55 kB │ gzip: 443.48 kB
 ```
 
 `npm run build` 总耗时约 6~15 秒（含 `tsc -b` 类型检查，视机器负载），`dist/` 总大小约 1.4 MB（JS gzip 约 443 kB）。
+
+## 已知限制 / 后续
+
+- 未做路由级 code splitting：生产包单 chunk 1.4 MB（gzip 443 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
+- 真实权限中心后端的浏览器人工联调待补（当前验证为类型检查 / 构建 / mock 冒烟）。
+- 审批授权记录、即将到期授权按契约仅提供查询（只读）。
 
 ## 本地验证记录
 

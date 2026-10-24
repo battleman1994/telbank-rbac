@@ -5,6 +5,8 @@
 [![SDK JDK 8 compatibility](https://github.com/battleman1994/telbank-rbac/actions/workflows/sdk-jdk8-compat.yml/badge.svg)](https://github.com/battleman1994/telbank-rbac/actions/workflows/sdk-jdk8-compat.yml)
 [![Repo](https://img.shields.io/badge/GitHub-battleman1994%2Ftelbank--rbac-blue)](https://github.com/battleman1994/telbank-rbac)
 
+**文档地图**：[`docs/README.md`](docs/README.md) —— 需求基线 / 接口契约 / 验收矩阵 / 各端说明与文档维护规则。
+
 需求基线：[`docs/telbank-rbac.md`](docs/telbank-rbac.md)　接口/实现契约：[`docs/impl/contracts.md`](docs/impl/contracts.md)　验收矩阵：[`docs/acceptance.md`](docs/acceptance.md)
 
 ---
@@ -21,10 +23,13 @@
 ```text
 telbank-rbac/
 ├── docs/
-│   ├── telbank-rbac.md            # 需求基线（锁定）
+│   ├── README.md                  # 文档总览（权威性/维护规则/修订记录）
+│   ├── telbank-rbac.md            # 需求基线（含附录 A 实现修订记录）
 │   ├── acceptance.md              # 第 9 节验收矩阵与证据
 │   └── impl/contracts.md          # 三端接口契约 + 偏差口径
-├── scripts/                       # 数据库初始化、启动、演示 JWT、签名、验收
+├── scripts/                       # 数据库初始化、启动、演示 JWT、签名、构建、一键验收
+├── .github/workflows/             # CI（SDK JDK 8 兼容性）
+├── samples/business-demo/         # 示例业务系统（验收用，非交付物）
 ├── telbank-rbac-api/              # 权限中心后端（JDK 21 + Boot 4.1.x）
 ├── telbank-rbac-starter/          # SDK（JDK 8 字节码 + Boot 2.7.x）
 ├── telbank-rbac-front/            # 管理前端（React 19 + Vite 8）
@@ -283,23 +288,30 @@ RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 
 
 ## 9. 与需求文档的偏差（已拍板，实现按此执行）
 
-需求基线 `docs/telbank-rbac.md` 中有几处内部冲突/未定义，实现口径如下（详细论证见 `docs/impl/contracts.md` §9）：
+需求基线 `docs/telbank-rbac.md` 中有几处内部冲突/未定义，实现口径如下。编号与需求文档「附录 A 实现修订记录」一一对应，详细论证见 `docs/impl/contracts.md` §9：
 
-1. **“重新提权旧记录置 status=0、新记录插入”与唯一键冲突**：`sys_user_role`/`sys_role_permission` 的唯一键不允许同一关系存在两条记录，两者不可同时满足。实现为**同关系更新原行**（`valid_from/valid_until/source_approval_id/grant_reason/status`），不新增行。
-2. **SDK 端点上报缺少持久化表**：需求 7 张表无法承载 §5.7 的端点上报列表，实现新增第 8 张表 `sys_sdk_endpoint`（其余 7 张严格按需求）。
-3. **审批回调 `grantType=permission` 无法落地**：无 user_permission 表，实现仅支持 `grantType=role`，`permission` 返回 400 并说明；`permissionCodes` 仅用于校验审批内容与角色授权一致。
-4. **AppSecret / 区域 Redis 密码“数据库加密存储”无对应表**：实现为环境变量注入（配置中仅 `${ENV:本地默认值}`），未新增密钥表。
-5. **权限中心二级缓存**：Caffeine 做管理端查询一级缓存；Redis 用于 Pub/Sub、Nonce 防重放与通知，不实现复杂的跨节点缓存协议。
-6. **不容器化**：按需求只交付源码 + 启动脚本，不提供 Docker/K8s 清单。
+1. **A1 · SDK 端点上报缺少持久化表**：需求 7 张表无法承载 §5.7 的端点上报列表，实现新增第 8 张表 `sys_sdk_endpoint`（其余 7 张严格按需求）。
+2. **A2 · “重新提权旧记录置 status=0、新记录插入”与唯一键冲突**：`sys_user_role`/`sys_role_permission` 的唯一键不允许同一关系存在两条记录，两者不可同时满足。实现为**同关系更新原行**（`valid_from/valid_until/source_approval_id/grant_reason/status`），不新增行。
+3. **A3 · 审批回调 `grantType=permission` 无法落地**：无 user_permission 表，实现仅支持 `grantType=role`，`permission` 返回 400 并说明；`permissionCodes` 仅用于校验审批内容与角色授权一致。
+4. **A4 · AppSecret / 区域 Redis 密码“数据库加密存储”无对应表**：实现为环境变量注入（配置中仅 `${ENV:本地默认值}`），未新增密钥表。
+5. **A5 · `api_pattern` 仅写“Ant 风格”**：实现同时接受 Spring 模板 `{id}`（单段，与 `*` 等价）与 Ant `*`、末尾 `**`；`**` 非末尾视为非法。
+6. **A6 · `/rbac/me/systems` 数据来源未定义**：新增开放接口 `GET /openapi/sdk/user-systems` 供 SDK 使用（管理端 `/api/user-systems` 需 JWT，SDK 不能直接调用）。
+7. **A7 · SDK「JDK 8 字节码」的构建方式**：字节码目标保持 Java 8（major=52），但构建工具链为 **JDK 17+**（`--release 8`）——Apple Silicon 无官方 JDK 8；运行时仍兼容 JDK 8+（GitHub Actions 已用真实 JDK 8 运行时验证）。
 
-> 版本说明：需求锁定 React 19.2.x / Vite 8 / antd 6 / React Router 8 / TanStack Query v5 / Zustand v5，`telbank-rbac-front/package.json` 已按此约束；`npm install` 解析到的具体补丁版本以 lockfile 为准。
+其他实现说明（非偏差，需求本身已明确）：
+
+- **缓存口径**：管理端高频查询用 Caffeine 一级缓存；Redis 用于 Pub/Sub、Nonce 防重放与通知，不实现复杂跨节点缓存协议。
+- **不容器化**：按需求只交付源码 + 启动脚本，不提供 Docker/K8s 清单。
+- **不存储菜单**：权限中心不管理菜单/路由结构（需求 §2），由业务系统前端自行维护。
+
+> 版本说明：需求锁定 React 19.2.x / Vite 8 / antd 6 / React Router 8 / TanStack Query v5 / Zustand v5；`telbank-rbac-front/package.json` 按此约束（React `~19.2.0`），lockfile 实际解析为 React 19.2.9 / Vite 8.3.5 / antd 6.6.7 / React Router 8.5.0 / TanStack Query 5.104.5 / Zustand 5.0.16。
 
 ---
 
 ## 10. 常见问题
 
 - **启动报 `Access denied for user 'root'@'localhost'`**：检查 `MYSQL_USER/MYSQL_PASSWORD`，或先 `./scripts/init-db.sh`。
-- **JDK 版本不对**：`java -version` 必须是 21+（权限中心）。`./scripts/start-api.sh` 会优先寻找 JDK 21。
+- **JDK 版本不对**：权限中心需要 **JDK 21+**（`java -version` 校验；`./scripts/start-api.sh` 会自动寻找 JDK 21+/SDKMAN/Homebrew 路径）；SDK 用 **JDK 17+ 构建**（产物 Java 8 字节码），业务系统运行时 **JDK 8+** 即可。
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。
 - **切系统后接口 403**：该用户未被开通目标系统（`sys_user_system`）或没有对应角色/权限码，到管理端「用户-系统开通」「用户-角色分配」处理。
@@ -311,12 +323,12 @@ RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 
 
 - 权限中心后端：`clean test` **46/46 PASS**（JDK 21.0.13，字节码 major=65）。
 - SDK：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，`clean test` 通过、产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
-- **SDK 的 JDK 8 兼容性（GitHub Actions 实测）**：`SDK JDK 8 compatibility` workflow 通过 —— JDK 17 构建 SDK（90 单测 + 断言 major=52）→ 在 **JDK 8 运行时**启动示例业务系统并成功探测 `/api/health`（[run 40071190930](https://github.com/battleman1994/telbank-rbac/actions/runs/40071190930)）。
+- **SDK 的 JDK 8 兼容性（GitHub Actions 实测）**：`SDK JDK 8 compatibility` workflow 通过 —— JDK 17 构建 SDK（90 单测 + 断言 major=52）→ 在 **JDK 8 运行时**启动示例业务系统并成功探测 `/api/health`（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)）。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布；期间验收 50/50、SDK e2e 4/4。
 - 第 9 节 API 级验收：**50/50 PASS**（JDK 21 运行 + 干净库 + demo profile，Flyway V1+V2）。
 - SDK 端到端：示例业务系统 CRM/ERP 双实例 **4/4 PASS**（CRM 有权限 200、同用户 ERP 同码接口 403、未配置权限码接口默认放行）。
-- 管理前端：`tsc -b && vite build` 通过，dist 1.4 MB（JS gzip 443 kB）。
-- 验证机无 Redis（降级路径已实测），对应说明与已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
+- 管理前端：`tsc -b && vite build` 通过，dist 1.4 MB（JS gzip 443 kB）；与真实后端的浏览器人工联调待补（当前为 build + mock 冒烟，见验收文档）。
+- 验证机已安装 Redis 8.10.2（真实 Pub/Sub 联调通过）；Redis 不可用时的降级路径也有测试覆盖；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 
 ---
 

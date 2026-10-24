@@ -1,6 +1,8 @@
 # 多系统 RBAC 权限管理平台 — 最终需求文档（DeepSeek Harness 执行版）
 
 > 本文档为最终执行基线。所有技术栈和需求范围已拍板。权限中心为独立 JDK 21 进程；SDK 以 JDK 8 字节码编译，运行于业务系统后端；两者通过 HTTPS 和区域化 Redis Pub/Sub 通信，运行时完全隔离。业务系统前端只调业务系统后端或 SDK 自动注册的 `/rbac/me/*`，不直接访问权限中心。本文档不包含 OAuth2.0 服务间调用。
+>
+> **实现修订（2026-10-24）**：交付阶段确认的 7 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
 
 **工程名称**：`telbank-rbac` 权限管理系统（多系统 RBAC 权限管理平台）
 
@@ -1070,6 +1072,24 @@ interface AppState {
 | Q34 | 权限中心返回 `serverTime`，SDK 计算时钟偏移量用于时效判断 |
 | Q35 | 重新提权时旧记录标记 `status=0`，新记录插入，不修改原记录 |
 | Q36 | 拦截器判断顺序：映射表未命中直接放行，不查用户权限集、不回源；命中后才查用户权限集 |
+
+---
+
+## 附录 A：实现修订记录（2026-10-24）
+
+> 原始需求条目保留不动；以下为交付阶段确认的差异与补充，详细论证见 `docs/impl/contracts.md` §9，验收证据见 `docs/acceptance.md`。
+
+| 编号 | 原文档条目 | 实现修订 | 原因 / 依据 |
+|---|---|---|---|
+| A1 | §4.1 表清单「共 7 张」 | 新增第 8 张表 `sys_sdk_endpoint` | §5.7 要求 SDK 端点上报列表与关联权限码，需要持久化；契约 §9.2 |
+| A2 | §5.6 / Q35 重新提权：旧行 `status=0` + 新行插入 | 同关系**更新原行**（时效/审批号/原因/状态） | `sys_user_role`/`sys_role_permission` 唯一键不允许同一关系存在两行；契约 §9.1 |
+| A3 | §5.6 审批回调 `permissionCodes` | 仅支持 `grantType=role`；`permissionCodes` 仅用于校验审批内容与角色授权一致 | 无 `user_permission` 表，无法绕过角色直接授权；契约 §9.3 |
+| A4 | §3.5 / §4 AppSecret、区域 Redis 密码「数据库加密存储」 | 环境变量注入，不新增密钥表 | 7 张表中无对应存储表；契约 §9.4 |
+| A5 | §3.4 / §6.8 / §9.10 `api_pattern` 仅 Ant 风格 | 额外支持 Spring 模板 `{id}`（单段，与 `*` 等价）；`**` 仅允许末尾 | 端点上报 path 为 Spring 模板，`link` 需直接复用；契约 §3.4 / §7.7 |
+| A6 | §6.4 `/rbac/me/systems` 数据来源未定义 | 新增开放接口 `GET /openapi/sdk/user-systems` | 管理端 `/api/user-systems` 需 JWT，SDK 不能调用；契约 §4.2 |
+| A7 | §3.2 SDK「JDK 8 字节码」 | 字节码目标仍为 Java 8（major=52），但**构建工具链为 JDK 17+**（`--release 8`）；运行时 JDK 8+ | 官方 OpenJDK 8 无 macOS ARM 原生版本；GitHub Actions 已用 JDK 8 运行时验证；README §5 |
+
+> 补充验证：真实 Redis Pub/Sub 联调、JDK 8 运行时 CI、验收 50/50 与 SDK 端到端 4/4 的记录见 `docs/acceptance.md`。
 
 ---
 

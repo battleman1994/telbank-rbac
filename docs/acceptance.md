@@ -1,6 +1,6 @@
 # telbank-rbac 验收矩阵（对照需求第 9 节）
 
-> 需求基线：[`docs/telbank-rbac.md`](telbank-rbac.md) §9。
+> 需求基线：[`docs/telbank-rbac.md`](telbank-rbac.md) §9。文档总览与维护规则见 [`docs/README.md`](README.md)。
 > 本文件逐条给出**验证方式、预期结果、证据状态**。证据状态分三类：
 > - `API 脚本`：`python3 scripts/acceptance.py`（权限中心 API 级，真实 HTTP + 签名）
 > - `单元测试`：`mvn -pl <module> test`（SDK 行为 / 算法类）
@@ -176,26 +176,31 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.11.3 Redis 不可用降级 | ✅ | 示例业务系统日志：`Redis 变更订阅启动失败，降级为兜底短轮询（不影响业务）`，业务接口正常 |
 | §9.12.7 时钟偏移 | 🧪 | `RbacUserPermissionCacheTest`（offset 计算与时效判定） |
 | §9.13.3 全链路 HTTPS | 🔶 | 配置/README 生产说明 + 代码强制不走 HTTP 生产；本机验收为 HTTP（demo） |
-| SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071190930](https://github.com/battleman1994/telbank-rbac/actions/runs/40071190930)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
+| SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
+| 管理前端 ↔ 真实后端联调 | 🔶 | 前端已通过 `tsc` 类型检查、生产构建、mock 后端 + headless Chrome 10 页面冒烟；**尚未在真实 `telbank-rbac-api` 上做浏览器人工联调**（启动方式见 README §4） |
 
-## 已知限制（不阻塞验收，生产前建议处理）
+## 已完成的补验（原限制项，保留记录）
 
 1. **JDK 21 实机复核（已完成）**：2026-10-24 14:16–14:17 在 **JDK 21.0.13（Homebrew）** 下全量复跑：权限中心 `clean test` 46/46、SDK `clean test` 90/90、API 验收 50/50、SDK 端到端 4/4，字节码 major 分别为 65/52。
-2. **Redis Pub/Sub（已在本机补验）**：已安装 Redis 8.10.2，并以 `rbac.redis.enabled=true` 启动权限中心做真实联调：两个 SDK 按区域订阅频道成功、变更通知 `receivers=1`、SDK 收到通知后刷新映射/页面元数据/权限缓存、过期收回任务经 Redis 发布，且 nonce 防重放改用 Redis 存储（`rbac:nonce:*`）。
-3. **审批幂等边界**：同关系重新授权会更新原行并覆盖 `source_approval_id`（数据模型无审批历史表），因此「新审批覆盖后回放更早 approvalId」无法再幂等；同一 approvalId 重复回调幂等已实测通过。
-4. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
-5. **MySQL 版本**：本机临时 MySQL 26.7 高于 Flyway 官方已验证版本（9.4），启动有 WARN；生产用 MySQL 8.0+ 即无此告警。
-6. **前端包体**：未做路由级 code splitting（单 chunk 1.4 MB / gzip 443 kB），可后续优化。
-7. **SDK 的 JDK 8 运行时冒烟（已由 CI 补验）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8。已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功，两个 job 均 success（run 40071190930）。
+2. **Redis Pub/Sub（已完成）**：已安装 Redis 8.10.2，并以 `rbac.redis.enabled=true` 启动权限中心做真实联调：两个 SDK 按区域订阅频道成功、变更通知 `receivers=1`、SDK 收到通知后刷新映射/页面元数据/权限缓存、过期收回任务经 Redis 发布，且 nonce 防重放改用 Redis 存储（`rbac:nonce:*`）。
+3. **SDK 的 JDK 8 运行时冒烟（已完成，CI）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8；已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功，两个 job 均 success（run 40071190930 / 40071295904）。
+
+## 已知限制（生产前建议处理）
+
+1. **审批幂等边界**：同关系重新授权会更新原行并覆盖 `source_approval_id`（数据模型无审批历史表），因此「新审批覆盖后回放更早 approvalId」无法再幂等；同一 approvalId 重复回调幂等已实测通过。
+2. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
+3. **MySQL 版本**：本机临时 MySQL 26.7 高于 Flyway 官方已验证版本（9.4），启动有 WARN；生产用 MySQL 8.0+ 即无此告警。
+4. **前端包体**：未做路由级 code splitting（单 chunk 1.4 MB / gzip 443 kB），可后续优化。
+5. **管理前端真实后端联调（待补）**：前端已通过类型检查、构建与 mock 冒烟，尚未在真实权限中心后端上做浏览器人工联调（启动方式见 README §4，验收时可逐页操作并观察 `/api/**` 请求）。
 
 ## 执行记录
 
-> 验证机：macOS arm64（`hellokitty`）· 临时 MySQL 26.7（`127.0.0.1:3307`，独立临时实例）· 本机无 Redis · Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
+> 验证机：macOS arm64（`hellokitty`）· 临时 MySQL 26.7（`127.0.0.1:3307`，独立临时实例）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
 | 14:47 | Redis 8.10.2 + 权限中心 `--rbac.redis.enabled=true` + CRM/ERP 示例系统 | **真实跨区域 Pub/Sub 通过**：频道 `rbac:change:region_a:crm`/`region_b:erp` 各 1 订阅者；变更后 API `receivers=1`，CRM SDK 收到 `PAGE_ACTION_CHANGED` 刷新页面元数据、ERP SDK 收到 `PERMISSION_CHANGED` 刷新映射并失效权限缓存；Redis nonce 键 `rbac:nonce:*` 生效；同期验收 50/50、SDK e2e 4/4 |
-| 14:44 | GitHub Actions `SDK JDK 8 compatibility`（push 自动触发） | **两个 job 全部 success**：JDK 17 构建 SDK（90/90、major=52 断言）→ JDK 8 运行时启动示例业务系统，`/api/health` 返回 200 |
+| 14:44 | GitHub Actions `SDK JDK 8 compatibility`（push 自动触发，含 Actions 升级后二次运行） | **两个 job 全部 success**：JDK 17 构建 SDK（90/90、major=52 断言）→ JDK 8 运行时启动示例业务系统，`/api/health` 返回 200（run 40071190930 / 40071295904） |
 | 14:30 | `./scripts/build-sdk.sh`（**JDK 17.0.20.1** 工具链，`--release 8`） | **90/90 PASS**，BUILD SUCCESS，产物字节码 **major=52（Java 8）** 校验通过 |
 | 14:17 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-api clean test`（**JDK 21.0.13**，release 21） | **46/46 PASS**，BUILD SUCCESS，字节码 major=65 |
 | 14:16 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-starter clean test`（**JDK 21.0.13**，release 8） | **90/90 PASS**，BUILD SUCCESS，字节码 major=52 |
