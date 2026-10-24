@@ -138,6 +138,15 @@ fi
 [ -d telbank-rbac-api/src/main/java/com/telbank/rbac/domain/mapper ] \
   || die "缺少 MyBatis-Plus Mapper 目录"
 ok "持久层使用 MyBatis-Plus（无 JPA/Hibernate）"
+# A18 凭据查看 + admin 授权保护产物
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/web/admin/SystemCredentialController.java ] \
+  || die "缺少 SystemCredentialController"
+[ -f telbank-rbac-front/src/pages/SystemCredentialPage.tsx ] \
+  || die "缺少接入凭据页面"
+grep -q 'system:credential' telbank-rbac-front/src/config/menu.ts \
+  || die "前端菜单缺少 system:credential"
+ok "系统接入凭据查看 + admin 授权保护产物存在"
+
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"
 done

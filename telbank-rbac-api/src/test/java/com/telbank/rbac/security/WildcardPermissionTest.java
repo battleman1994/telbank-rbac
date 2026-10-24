@@ -92,6 +92,7 @@ class WildcardPermissionTest {
         assertThat(permBean.has("page:manage")).isTrue();
         assertThat(permBean.has("user:manage")).isTrue();
         assertThat(permBean.has("audit:view")).isTrue();
+        assertThat(permBean.has("system:credential")).isTrue();
         assertThat(permBean.has("role:manage", "permission:manage", "page:manage")).isTrue();
         assertThat(permBean.hasAny("any:code")).isTrue();
         assertThat(permBean.isPlatformAdmin()).isFalse();

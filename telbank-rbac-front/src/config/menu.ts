@@ -8,7 +8,9 @@
  * - page:manage        → 页面元素
  * - user:manage        → 用户授权
  * - audit:view         → 授权记录
- * 顶级「系统接入」（/systems）仅平台超管可见，无权限码。
+ * - system:credential  → 接入凭据（admin 角色由 `*` 通配通过）
+ * 顶级「系统接入」（/systems）仅平台超管可见，无权限码；
+ * 「接入凭据」（/system-credential）在权限管理组内，对拥有 system:credential（含 `*`）的系统管理员/超管可见。
  */
 
 /** 当前系统内的管理权限码常量（与后端 @perm.has(...) 口径一致） */
@@ -19,6 +21,7 @@ export const MANAGEMENT_PERMISSIONS = {
   page: 'page:manage',
   user: 'user:manage',
   audit: 'audit:view',
+  credential: 'system:credential',
 } as const
 
 export type ManagementPermissionCode =
@@ -92,6 +95,12 @@ export const MANAGEMENT_MENU_ITEMS: readonly ManagementMenuItem[] = [
     path: '/approval-grants',
     label: '授权记录',
     permission: MANAGEMENT_PERMISSIONS.audit,
+    group: MENU_GROUP_NAME,
+  },
+  {
+    path: '/system-credential',
+    label: '接入凭据',
+    permission: MANAGEMENT_PERMISSIONS.credential,
     group: MENU_GROUP_NAME,
   },
 ]

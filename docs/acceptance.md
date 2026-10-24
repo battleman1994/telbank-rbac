@@ -182,6 +182,8 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 | §9.15 系统隔离 / 数据驱动超管 / bootstrap（v2.1 A 方案） | ✅ | 全量 API 脚本：`superadmin` DB 判定为超管；`crm-admin-001` 只看到 CRM、bootstrap 含通配 `*`，跨系统/系统接入 403；超管在 CRM 上下文跨系统查 ERP 也 403（须切上下文）；139 仅 CRM；137 过期无系统；`/api/user-systems` 404 |
 | §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + **一条 `*` 权限** + 授权；新管理员凭 `*` 可管理本系统（权限树仅一条 `*`）；非超管 403；PUT status=0 停用后移除 |
+| A19 表格内容优先展示（v2.6） | ✅ | 表格 auto 布局；宽度足够不换行、不够换行完整展示，不使用省略号；时间列短格式；headless 1440×900 验证所有页面表格无横向滚动、字段完整展示 |
+| A18 凭据查看 + admin 授权保护（v2.6） | ✅ | 「接入凭据」页（system:credential）系统管理员可看本系统完整 AppKey/AppSecret、默认隐藏；平台超管可查看任意系统；角色授权排除 admin，后端 grant/revoke 400；验收 7 项 + 单测 151 |
 | A17 系统接入凭据（v2.5） | ✅ | `sys_system` 增加 appKey/appSecret（09 回填 crm/erp）；手动/审核创建均分配 appKey=code + 32 位 secret；列表返回 AppKey/掩码、创建/审批响应一次性返回完整 secret；开放接口 DB 凭据优先仍可正常验签 | 
 | A16 系统接入双通道 + 审核（v2.5） | ✅ | 手动录入保留；SDK 上报 `POST /openapi/onboarding/systems`（onboarding AppKey/HMAC）→ PENDING 申请；超管 GET/approve/reject；approve 自动创建系统/`admin` 角色/`*`/管理员授权并返回凭据；单 system_code 最新状态、驳回可重报；真实 SDK 启动上报验证通过；全量验收 101/101 |
 | A15 页面元素管理简化（v2.4） | ✅ | 页面元素只展示 页面编码/元素标识/元素名称/语义类型/状态/操作；新建/编辑表单仅 4 个字段；`07` 将历史 type 归一（button/link）；header/headless 验证无 action/config/sort 字段；API/SDK 字段保持兼容 |
@@ -225,6 +227,9 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
 | 22:45 | 修复切换系统 toast 遮挡系统下拉框 | `.ant-message*` 设为 `pointer-events:none`；headless 验证切换 ERP 后系统下拉框顶部元素由 message 容器变回 input，页面下拉框可正常展开 |
 | 22:36 | 资源管理「提示」列替代候选码列 | 候选码不再单独成列：未关联行提示「确认权限码后生效，候选码为：xxx」；已关联行提示「已确认权限码，已生效」；表格仍无横向滚动，`npm run build` 0 error |
+| 23:45 | `./scripts/verify-all.sh`（A18/A19 后） | **15 项全过**：api **151** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、08/09 迁移、凭据/admin 保护产物、3 平台脚本 |
+| 23:40 | 全量验收（v9 全新库 01→09 + 两版 SDK 示例系统） | **108/108 PASS**（新增 §9.16c 凭据/admin 7 项；SDK e2e 8/8；后端 151） |
+| 23:40 | 系统凭据页 + admin 授权排除（front/API E2E） | crm-admin current 返回 crm 完整凭据、operator 403、缺头 403；superadmin by-id 跨系统 200；crm-admin by-id 403；admin grant/revoke 400；前端菜单/页面/密钥显示验证通过 |
 | 23:30 | 全局表格字段不换行优化（headless Chrome 1440×900） | `.ant-table-cell` 统一 `white-space:nowrap + ellipsis`；短时间格式（YYYY-MM-DD HH:mm）；调整系统接入/资源管理/授权记录列宽；所有页面表格 `cw==sw==1110`、无 wrap、无横向滚动；长路径/长原因省略并保留 tooltip |
 | 23:15 | GitHub Actions `telbank-rbac CI`（commit 440a525） | **6 个 job 全部 success**：权限中心(138)/SDK v1(121)/SDK v2(122)/前端/Windows 脚本/JDK 8 运行时（[run 40105622849](https://github.com/battleman1994/telbank-rbac/actions/runs/40105622849)） |
 | 23:12 | `./scripts/verify-all.sh`（A16/A17 后） | **14 项全过**：api **138** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09 迁移、3 平台脚本 |

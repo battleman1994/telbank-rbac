@@ -17,6 +17,7 @@ import {
   Row,
   Select,
   Space,
+  Spin,
   Table,
   Tabs,
   Tag,
@@ -27,6 +28,7 @@ import {
   approveSystemApplication,
   createSystem,
   disableSystem,
+  getSystemCredential,
   listSystemApplications,
   listSystems,
   rejectSystemApplication,
@@ -352,6 +354,14 @@ function BusinessSystemsTab({
     },
   })
 
+  // 「查看密钥」：平台超管按系统 id 调用 /api/system-credentials/{id} 获取完整 AppSecret
+  const credentialQuery = useQuery({
+    queryKey: ['system-credential', viewingKeys?.id ?? null],
+    queryFn: () => getSystemCredential((viewingKeys as SysSystemVO).id),
+    enabled: viewingKeys !== null,
+    retry: 1,
+  })
+
   const disableMutation = useMutation({
     mutationFn: (id: number) => disableSystem(id),
     onSuccess: () => {
@@ -636,29 +646,66 @@ function BusinessSystemsTab({
         {viewingKeys ? (
           <Flex vertical gap={12}>
             <Alert
-              type="info"
+              type="warning"
               showIcon
-              title="AppSecret 已脱敏展示"
-              description="完整 AppSecret 仅在创建系统或审核通过时返回一次；如需重置密钥，请等待后续版本开放。"
+              title="以下为完整接入凭据（敏感信息）"
+              description="AppSecret 用于开放接口 HMAC 签名，请妥善保管、勿在不可信环境展示；如疑似泄露请联系平台超管重置。"
             />
-            <div>
-              <Text strong>AppKey</Text>
-              <Input
-                readOnly
-                value={viewingKeys.appKey ?? '-'}
-                className="mono-text"
-                style={{ marginTop: 8 }}
+            {credentialQuery.isLoading ? (
+              <Flex justify="center" style={{ padding: '24px 0' }}>
+                <Spin description="正在读取完整凭据…">
+                  <div style={{ width: 200, height: 80 }} />
+                </Spin>
+              </Flex>
+            ) : credentialQuery.isError ? (
+              <Alert
+                type="error"
+                showIcon
+                title="完整凭据加载失败"
+                description={credentialQuery.error.message}
+                action={
+                  <Button size="small" onClick={() => void credentialQuery.refetch()}>
+                    重试
+                  </Button>
+                }
               />
-            </div>
-            <div>
-              <Text strong>AppSecret（脱敏）</Text>
-              <Input
-                readOnly
-                value={viewingKeys.appSecretMasked ?? '-'}
-                className="mono-text"
-                style={{ marginTop: 8 }}
-              />
-            </div>
+            ) : credentialQuery.data ? (
+              <>
+                <div>
+                  <Text strong>AppKey</Text>
+                  <Flex gap={8} align="center" style={{ marginTop: 8 }}>
+                    <Input
+                      readOnly
+                      value={credentialQuery.data.appKey}
+                      className="mono-text"
+                    />
+                    <Button
+                      onClick={() => void copyText(credentialQuery.data?.appKey ?? '', message)}
+                    >
+                      复制
+                    </Button>
+                  </Flex>
+                </div>
+                <div>
+                  <Text strong>AppSecret（完整）</Text>
+                  <Flex gap={8} align="center" style={{ marginTop: 8 }}>
+                    <Input
+                      readOnly
+                      value={credentialQuery.data.appSecret}
+                      className="mono-text"
+                    />
+                    <Button
+                      onClick={() => void copyText(credentialQuery.data?.appSecret ?? '', message)}
+                    >
+                      复制
+                    </Button>
+                  </Flex>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  凭据读取自 /api/system-credentials/{viewingKeys.id}（仅平台超管可访问）。
+                </Text>
+              </>
+            ) : null}
           </Flex>
         ) : null}
       </Modal>

@@ -10,6 +10,7 @@ import PermissionsPage from './pages/PermissionsPage'
 import RolePermissionsPage from './pages/RolePermissionsPage'
 import RolesPage from './pages/RolesPage'
 import SdkEndpointsPage from './pages/SdkEndpointsPage'
+import SystemCredentialPage from './pages/SystemCredentialPage'
 import SystemsPage from './pages/SystemsPage'
 import UserRolesPage from './pages/UserRolesPage'
 
@@ -20,6 +21,7 @@ import UserRolesPage from './pages/UserRolesPage'
  *   resource:manage / page:manage / user:manage / audit:view），
  *   由 PermissionGuard 做路由级权限守卫（无权限渲染 403 页）
  * - /systems（系统接入）仅平台超管可访问（PlatformAdminGuard）
+ * - /system-credential（接入凭据）需 system:credential（admin 角色由 `*` 通配通过）
  */
 export const router = createBrowserRouter([
   {
@@ -37,6 +39,14 @@ export const router = createBrowserRouter([
           <PlatformAdminGuard>
             <SystemsPage />
           </PlatformAdminGuard>
+        ),
+      },
+      {
+        path: 'system-credential',
+        element: (
+          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.credential}>
+            <SystemCredentialPage />
+          </PermissionGuard>
         ),
       },
       {

@@ -681,6 +681,41 @@ def test_sdk_data_prereq():
           any(m.get("code") == "order:delete" for m in erp), erp)
 
 
+def test_credentials_and_admin_guard():
+    section("§9.16c 系统接入凭据查看 + admin 角色授权保护")
+    crm_admin = token_of(CRM_ADMIN)
+    operator = token_of(USER_OPERATOR)
+
+    status, body = http("GET", "/api/system-credentials/current", token=crm_admin, system=CRM)
+    cred = data_of((status, body)) or {}
+    check("CRM 管理员可查看本系统完整凭据",
+          status == 200 and cred.get("systemCode") == "crm"
+          and cred.get("appKey") == "crm" and cred.get("appSecret"),
+          (status, cred))
+
+    status, _ = http("GET", "/api/system-credentials/current", token=operator, system=CRM)
+    check("普通运营无 system:credential → 403", status == 403, status)
+
+    status, _ = http("GET", "/api/system-credentials/current", token=crm_admin)
+    check("凭据接口缺 X-System-Code → 403", status == 403, status)
+
+    status, body = http("GET", "/api/system-credentials/2",
+                        token=token_of(SUPER_ADMIN), system=CRM)
+    check("平台超管可按 systemId 查看任意系统完整凭据",
+          status == 200 and (data_of((status, body)) or {}).get("systemCode") == "erp",
+          (status, body))
+
+    status, _ = http("GET", "/api/system-credentials/1", token=crm_admin, system=CRM)
+    check("系统管理员不能跨系统按 id 查看凭据 → 403", status == 403, status)
+
+    status, _ = http("POST", "/api/roles/1/permissions/grant", token=crm_admin, system=CRM,
+                     body={"permissionIds": [2]})
+    check("admin 角色 grant → 400（默认全部权限）", status == 400, status)
+    status, _ = http("POST", "/api/roles/1/permissions/revoke", token=crm_admin, system=CRM,
+                     body={"permissionIds": [2]})
+    check("admin 角色 revoke → 400（默认全部权限）", status == 400, status)
+
+
 def test_sdk_onboarding():
     section("§9.16b SDK 自动上报系统接入 + 超管审核")
     suffix = str(int(time.time()))[-6:]
@@ -777,6 +812,7 @@ TESTS = [
     ("9.1", test_multi_system),
     ("9.16", test_system_onboarding),
     ("9.16b", test_sdk_onboarding),
+    ("9.16c", test_credentials_and_admin_guard),
     ("9.2", test_permission_model),
     ("9.7", test_public_and_platform_admin),
     ("9.5", test_page_actions),

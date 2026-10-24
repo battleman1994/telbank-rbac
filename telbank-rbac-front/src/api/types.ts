@@ -112,6 +112,20 @@ export interface SystemUpdatePayload {
 }
 
 /* ------------------------------------------------------------------ */
+/* §3.2c 系统接入凭据（A18：当前系统 / 超管按 systemId 查看完整密钥）    */
+/* ------------------------------------------------------------------ */
+
+export interface SystemCredentialVO {
+  systemId: number
+  systemCode: string
+  systemName: string
+  region: string
+  appKey: string
+  /** 完整 AppSecret（敏感信息，仅授权页面/超管展示） */
+  appSecret: string
+}
+
+/* ------------------------------------------------------------------ */
 /* §3.2b 系统接入申请（A16：SDK 自动上报 + 平台超管审核）                */
 /* ------------------------------------------------------------------ */
 

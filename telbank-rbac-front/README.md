@@ -112,6 +112,7 @@ cd telbank-rbac-front && npm run dev
 | 菜单 | 路由 | 所需权限码（当前系统内短码） | 页面说明 |
 |---|---|---|---|
 | 系统接入（顶级，仅平台超管） | `/systems` | 无 | 系统接入管理：编码、名称、区域、系统管理员账号/姓名、状态 |
+| 接入凭据（顶级） | `/system-credential` | `system:credential` | 查看当前系统 AppKey / AppSecret（默认隐藏，可显示/复制）；admin 角色经通配 `*` 通过 |
 | 角色管理 | `/roles` | `role:manage` | 当前系统角色 CRUD |
 | 权限管理 | `/permissions` | `permission:manage` | 权限码树（type/is_public/method/api_pattern） |
 | 角色授权 | `/role-permissions` | `role:manage` | 角色-权限授权（树勾选 + 时效） |
@@ -119,6 +120,7 @@ cd telbank-rbac-front && npm run dev
 | 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点上报与权限码关联；未关联端点显式标记「未生效」 |
 | 页面元素 | `/page-actions` | `page:manage` | 页面元素标识：pageCode/code/text/type（语义类型） |
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
+| 接入凭据 | `/system-credential` | `system:credential` | 查看当前系统 AppKey/AppSecret（admin `*`/超管可见） |
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。
 - `/systems` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页。
@@ -134,7 +136,7 @@ cd telbank-rbac-front && npm run dev
 
 - 列表列：系统编码 / 系统名称 / 区域 / 管理员账号 / 管理员姓名 / **AppKey** / **AppSecret（掩码）** / 状态 / 操作（查看密钥 / 编辑 / 停用）。
 - AppKey 以等宽字体展示并支持一键复制；AppSecret 只展示后端返回的脱敏值（`appSecretMasked`）。
-- 「查看密钥」弹窗展示 AppKey 与脱敏 AppSecret；「重置密钥」暂未开放（按钮置灰提示）。
+- 「查看密钥」弹窗打开时调用 `GET /api/system-credentials/{id}`（平台超管专属）获取完整 AppKey/AppSecret 并支持复制，弹窗内提示敏感信息妥善保管；「重置密钥」暂未开放（按钮置灰提示）。
 - 新建 / 编辑表单必填：系统编码（编辑不可改）、系统名称、所属区域、**系统管理员账号（adminExternalUserId）**；可选：管理员姓名（adminName）；另有状态（启用/停用）。
 - 后端在接入时自动为管理员账号创建该系统默认 `admin` 角色并授权（A 方案为通配权限 `*`）；前端只负责提交 `adminExternalUserId` / `adminName`。
 - **手动新建成功后弹出结果弹窗**：展示系统 AppKey + 完整 AppSecret，并提示「完整密钥仅显示一次，请立即复制保存」；关闭后列表只展示掩码。
@@ -154,6 +156,21 @@ cd telbank-rbac-front && npm run dev
   - **驳回**：弹窗必填驳回原因 → `POST /api/system-applications/{id}/reject`；成功后刷新列表。
 - 已通过显示「已开通（systemId=xx）」；已驳回在「审核信息」列展示驳回原因。
 - API：`listSystemApplications({status,page,size})`、`approveSystemApplication(id,{adminExternalUserId,adminName?})`、`rejectSystemApplication(id,{reason})`；query key 为 `['system-applications', status, page, size]`（Badge 使用 `['system-applications','PENDING',1,1]`，审核/驳回后按前缀统一失效）。
+
+## 接入凭据页（A18）
+
+- 路由 `/system-credential`，菜单顶级「接入凭据」，权限码 `system:credential`（admin 角色由通配 `*` 通过；普通角色无该码，菜单/路由均不可见）；平台超管同样可见。
+- 数据接口：`GET /api/system-credentials/current` → `{systemId,systemCode,systemName,region,appKey,appSecret}`（当前 `X-System-Code` 系统，严格系统隔离）。
+- 页面展示：当前系统名称/编码/区域/系统 ID；AppKey 等宽可复制，AppSecret **默认隐藏**（掩码展示），点击「显示」后展示完整值并可复制、可再次隐藏；切换系统后自动重新隐藏；页面 Alert 提示凭据属敏感信息请妥善保管。
+- 加载中骨架、失败 Alert + 重试、当前系统上下文缺失提示；路由守卫无权限渲染 403（不白屏）。
+
+**系统接入页完整密钥**：平台超管在「业务系统」Tab 点击「查看密钥」时，按系统 id 调用 `GET /api/system-credentials/{id}` 获取完整 AppSecret（该接口仅平台超管可访问，404/403 均有错误提示与重试）。
+
+**admin 角色授权保护（A18）**：
+
+- 角色授权页角色下拉**过滤 `code='admin'` 的角色**（admin 默认拥有全部权限，无需授权）；若历史状态选中 admin 会自动清空。
+- 页面顶部 Alert：「系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息」。
+- 角色管理页对 `admin` 角色展示「内置」金色 Tag；后端对 admin 角色的 grant/revoke 返回 400 作为双保险。
 
 ## 只查当前系统数据（前端审计）
 
@@ -179,6 +196,10 @@ cd telbank-rbac-front && npm run dev
 - 弹窗宽度按字段量统一：普通 2 列 600–680、权限/资源关联 720；
 - `.ant-modal` 内 `Select/TreeSelect/DatePicker/InputNumber` 统一 `width:100%`，避免控件过短；
 - 字段间距 18px，textarea 不使用 `showCount`，避免与 footer 重叠。
+
+## 表格展示
+
+- 表格 `table-layout:auto`：宽度足够不换行，不够时换行完整展示，不使用省略号；时间列 `YYYY-MM-DD HH:mm`；表格 100% 宽度、无横向滚动。
 
 ## 状态管理
 
@@ -233,10 +254,10 @@ telbank-rbac-front/
 > tsc -b && vite build
 
 vite v8.3.5 building client environment for production...
-✓ 3255 modules transformed.
+✓ 3257 modules transformed.
 dist/index.html                     0.60 kB │ gzip:   0.40 kB
-dist/assets/index-*.css             2.66 kB │ gzip:   1.08 kB
-dist/assets/index-*.js          1,417.16 kB │ gzip: 447.51 kB
+dist/assets/index-*.css             2.94 kB │ gzip:   1.14 kB
+dist/assets/index-*.js          1,423.56 kB │ gzip: 449.11 kB
 ✓ built in ~0.5s
 ```
 
@@ -274,3 +295,9 @@ dist/assets/index-*.js          1,417.16 kB │ gzip: 447.51 kB
   - 审核弹窗必填校验（空提交提示「请输入系统管理员账号」）、通过后结果弹窗展示新系统 AppKey/完整 AppSecret，列表状态刷新为「已开通（systemId=4）」、Badge 数量递减。
   - 驳回弹窗必填原因校验（空提交提示「请输入驳回原因」），驳回后「已驳回」筛选展示驳回原因。
   - 两个 Tab 的表格 `scrollWidth === clientWidth`（无横向滚动）。
+- 接入凭据 + admin 授权保护冒烟（mock 后端 + headless Chrome，零 console 错误）：
+  - `crm-admin-001`（permissions=["*"]）：顶级「接入凭据」可见、「系统接入」不可见；`/system-credential` 展示 CRM系统/crm/region_a，AppSecret 默认掩码，点「显示」后展示 `crm-dev-secret`、点「隐藏」恢复掩码，复制按钮可用。
+  - `superadmin`：系统接入页「查看密钥」调用 `/api/system-credentials/1`，弹窗展示完整 `crm-app` / `crm-dev-secret` + 敏感提示 + 复制按钮；业务系统表格无横向滚动。
+  - 角色授权页：顶部 admin 提示 Alert 存在；角色下拉仅有「运营（operator）」，无 admin 选项。
+  - 普通运营账号：无任何管理菜单，直接访问 `/system-credential` 显示无权限空态。
+  - 接口日志：`/api/system-credentials/current` 由当前系统上下文发起；`/api/system-credentials/{id}` 仅 superadmin 调用（其他账号 403）。

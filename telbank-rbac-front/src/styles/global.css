@@ -85,23 +85,31 @@ body {
 
 .ant-table table {
   width: 100% !important;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
+/* 内容优先：列宽能容纳就不换行，不够时换行，不用省略号截断 */
 .ant-table-cell {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 
-.ant-table-thead > tr > th {
-  white-space: nowrap;
+/* 覆盖 Ant 的 ellipsis 样式，让长文本换行完整展示 */
+.ant-table-cell.ant-table-cell-ellipsis {
+  white-space: normal !important;
+  text-overflow: clip !important;
 }
 
-/* 表格内长路径/代码不主动断行，超出列宽用省略号 */
 .ant-table .mono-text {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.ant-table-cell .ant-btn,
+.ant-table-cell .ant-tag {
   white-space: nowrap;
-  word-break: normal;
 }
 
 .ant-table-content {

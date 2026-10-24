@@ -31,6 +31,9 @@ import com.telbank.rbac.web.dto.GrantDtos.RolePermissionsVO;
  *
  * <p>落库口径按契约 §9.1：同一 {@code (role_id, permission_id)} 关系已存在时更新原行的
  * {@code valid_from/valid_until/source_approval_id/grant_reason/status=1}，不新增行。</p>
+ *
+ * <p>A18：admin 角色（code={@code admin}）默认拥有全部权限，grant/revoke 返回 400；
+ * 读取授权列表保持原行为。</p>
  */
 @Service
 public class RolePermissionService {
@@ -81,6 +84,7 @@ public class RolePermissionService {
     public RolePermissionsVO grant(Long roleId, RolePermissionGrantRequest request) {
         SysRole role = requireRole(roleId);
         systemScopeGuard.requireAccess(role.getSystemId());
+        rejectAdminRoleChanges(role);
         validateValidity(request.validFrom(), request.validUntil());
         List<SysRolePermission> toSave = new ArrayList<>(request.permissionIds().size());
         for (Long permissionId : request.permissionIds()) {
@@ -113,6 +117,7 @@ public class RolePermissionService {
     public RolePermissionsVO revoke(Long roleId, RolePermissionRevokeRequest request) {
         SysRole role = requireRole(roleId);
         systemScopeGuard.requireAccess(role.getSystemId());
+        rejectAdminRoleChanges(role);
         for (Long permissionId : request.permissionIds()) {
             SysRolePermission relation = rolePermissionRepository
                     .findByRoleIdAndPermissionId(roleId, permissionId)
@@ -123,6 +128,15 @@ public class RolePermissionService {
         }
         changeNotifyService.publishAfterCommit(role.getSystemId(), RbacConstants.CHANGE_TYPE_PERMISSION);
         return grants(roleId);
+    }
+
+    /**
+     * A18：admin 角色默认拥有全部权限（{@code *}），禁止通过角色授权接口添加/撤销授权。
+     */
+    private static void rejectAdminRoleChanges(SysRole role) {
+        if (SystemService.DEFAULT_ADMIN_ROLE_CODE.equals(role.getCode())) {
+            throw ApiException.badRequest("系统管理员角色默认拥有全部权限，无需授权");
+        }
     }
 
     private SysRole requireRole(Long roleId) {

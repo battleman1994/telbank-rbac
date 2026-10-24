@@ -125,16 +125,29 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     enabled: selectedRoleBelongsToSystem,
   })
 
+  // 角色下拉过滤内置 admin 角色：admin 默认拥有全部权限（`*`），无需也不允许在此授权
   const roleOptions = useMemo(
     () =>
       (rolesQuery.data?.items ?? [])
-        .filter((role) => role.status === 1)
+        .filter((role) => role.status === 1 && role.code !== 'admin')
         .map((role: RoleVO) => ({
           value: role.id,
           label: `${role.name}（${role.code}）`,
         })),
     [rolesQuery.data],
   )
+
+  // 兜底：若当前选中角色是 admin（历史状态/接口返回），清空选择并提示改用角色信息编辑
+  useEffect(() => {
+    if (selectedRoleId === null) return
+    const selected = (rolesQuery.data?.items ?? []).find((role) => role.id === selectedRoleId)
+    if (selected?.code === 'admin') {
+      setSelectedRoleId(null)
+      setCheckedKeys([])
+      setValidRange(null)
+      setGrantReason('')
+    }
+  }, [rolesQuery.data, selectedRoleId])
 
   const flatPermissions = useMemo(
     () => flattenTree(permissionsQuery.data ?? []),
@@ -261,6 +274,13 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
         </Space>
       }
     >
+      <Alert
+        type="info"
+        showIcon
+        title="系统管理员角色（admin）默认拥有全部权限，无需授权"
+        description="系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息（backend 会拒绝对 admin 角色的 grant/revoke 操作）。"
+      />
+
       <Card>
         <Flex align="center" gap={16} wrap>
           <Text strong>选择角色</Text>

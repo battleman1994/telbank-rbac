@@ -124,7 +124,12 @@ function RolesContent({ systemId }: { systemId: number }) {
       title: '角色编码',
       dataIndex: 'code',
       width: 160,
-      render: (value: string) => <Tag color="blue">{value}</Tag>,
+      render: (value: string) => (
+        <Space size={4}>
+          <Tag color="blue">{value}</Tag>
+          {value === 'admin' ? <Tag color="gold">内置</Tag> : null}
+        </Space>
+      ),
     },
     { title: '角色名称', dataIndex: 'name', width: 180 },
     {
