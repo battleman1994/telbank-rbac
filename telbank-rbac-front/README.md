@@ -112,7 +112,7 @@ cd telbank-rbac-front && npm run dev
 | 菜单 | 路由 | 所需权限码（当前系统内短码） | 页面说明 |
 |---|---|---|---|
 | 系统接入（顶级，仅平台超管） | `/systems` | 无 | 系统接入管理：编码、名称、区域、系统管理员账号/姓名、状态 |
-| 接入凭据（顶级） | `/system-credential` | `system:credential` | 查看当前系统 AppKey / AppSecret（默认隐藏，可显示/复制）；admin 角色经通配 `*` 通过 |
+| 接入凭据（权限管理组内） | `/system-credential` | `system:credential` | 查看当前系统 AppKey / AppSecret（默认隐藏，可显示/复制）；admin 角色经通配 `*` 通过 |
 | 角色管理 | `/roles` | `role:manage` | 当前系统角色 CRUD |
 | 权限管理 | `/permissions` | `permission:manage` | 权限码树（type/is_public/method/api_pattern） |
 | 角色授权 | `/role-permissions` | `role:manage` | 角色-权限授权（树勾选 + 时效） |
@@ -159,7 +159,7 @@ cd telbank-rbac-front && npm run dev
 
 ## 接入凭据页（A18）
 
-- 路由 `/system-credential`，菜单顶级「接入凭据」，权限码 `system:credential`（admin 角色由通配 `*` 通过；普通角色无该码，菜单/路由均不可见）；平台超管同样可见。
+- 路由 `/system-credential`，菜单在「权限管理」组内（末位，避免系统管理员落地页变成凭据页），权限码 `system:credential`（admin 角色由通配 `*` 通过；普通角色无该码，菜单/路由均不可见）；平台超管同样可见。
 - 数据接口：`GET /api/system-credentials/current` → `{systemId,systemCode,systemName,region,appKey,appSecret}`（当前 `X-System-Code` 系统，严格系统隔离）。
 - 页面展示：当前系统名称/编码/区域/系统 ID；AppKey 等宽可复制，AppSecret **默认隐藏**（掩码展示），点击「显示」后展示完整值并可复制、可再次隐藏；切换系统后自动重新隐藏；页面 Alert 提示凭据属敏感信息请妥善保管。
 - 加载中骨架、失败 Alert + 重试、当前系统上下文缺失提示；路由守卫无权限渲染 403（不白屏）。
