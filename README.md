@@ -90,6 +90,8 @@ java -version
 
 ## 4. 快速开始（本地 demo）
 
+> **一键启动（推荐）**：数据库就绪后执行 `./scripts/start-all.sh`，会同时启动权限中心（默认 8080）与管理前端（默认 5173）；日志在 `logs/`，`Ctrl+C` 会同时停止前后端并释放端口。支持 `API_PORT=18080 FRONT_PORT=5174 ./scripts/start-all.sh`、`--init-db`（自动建库）。以下 4.1–4.4 为分步说明。
+
 ### 4.1 初始化数据库
 
 ```bash

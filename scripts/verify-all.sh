@@ -97,7 +97,7 @@ for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/i
 done
 ok "需求/验收/契约/README/文档总览齐备"
 for f in scripts/init-db.sh scripts/start-api.sh scripts/start-front.sh scripts/gen-demo-jwt.sh \
-         scripts/acceptance.py scripts/build-sdk.sh scripts/verify-all.sh; do
+         scripts/acceptance.py scripts/build-sdk.sh scripts/verify-all.sh scripts/start-all.sh; do
   [ -x "$f" ] || die "脚本不可执行或缺失：$f"
 done
 ok "启动/验收/构建脚本齐备且可执行"

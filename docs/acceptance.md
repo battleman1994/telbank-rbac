@@ -10,6 +10,8 @@
 
 ## 0. 如何复现
 
+> 想一条命令起前后端：`./scripts/start-all.sh`（默认 8080/5173，`Ctrl+C` 同时停止，日志见 `logs/`）。
+
 ```bash
 # 1) 一次性本地 MySQL（不影响系统已有实例；root 无密码，端口 3307）
 ./scripts/start-temp-mysql.sh start

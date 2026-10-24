@@ -37,7 +37,13 @@ echo "使用 JAVA_HOME=${JAVA_HOME_21}"
 export JAVA_HOME="${JAVA_HOME_21}"
 export PATH="${JAVA_HOME}/bin:${PATH}"
 
-exec mvn -pl telbank-rbac-api -am spring-boot:run \
+# 可选：自定义 Maven 本地仓库（如沙箱/CI 环境无法写 ~/.m2 时）
+MVN_ARGS=()
+if [ -n "${RBAC_M2_REPO:-}" ]; then
+  MVN_ARGS+=("-Dmaven.repo.local=${RBAC_M2_REPO}")
+fi
+
+exec mvn "${MVN_ARGS[@]}" -pl telbank-rbac-api -am spring-boot:run \
   -Dspring-boot.run.profiles=demo \
   -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
   "$@"
