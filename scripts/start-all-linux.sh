@@ -175,6 +175,24 @@ elif [ "$INIT_DB" = "1" ]; then
   "$ROOT/scripts/init-db.sh" || { echo "❌ 数据库初始化失败，请检查 MySQL 连接配置" >&2; exit 1; }
 fi
 
+# 非临时库模式：把 MYSQL_* 映射给后端（否则只设 MYSQL_PASSWORD 会导致 Access denied）
+if [ "$TEMP_DB" != "1" ]; then
+  if [ -z "${RBAC_DB_USER:-}" ] && [ -n "${MYSQL_USER:-}" ]; then
+    export RBAC_DB_USER="$MYSQL_USER"
+  fi
+  if [ -z "${RBAC_DB_PASSWORD:-}" ] && [ -n "${MYSQL_PASSWORD:-}" ]; then
+    export RBAC_DB_PASSWORD="$MYSQL_PASSWORD"
+  fi
+  if [ -z "${RBAC_DB_URL:-}" ] && { [ -n "${MYSQL_HOST:-}" ] || [ -n "${MYSQL_PORT:-}" ] || [ -n "${RBAC_DB_NAME:-}" ]; }; then
+    export RBAC_DB_URL="jdbc:mysql://${MYSQL_HOST:-127.0.0.1}:${MYSQL_PORT:-3306}/${RBAC_DB_NAME:-telbank_rbac}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false"
+  fi
+  if [ -n "${RBAC_DB_URL:-}" ]; then
+    echo "    数据源：${RBAC_DB_URL}"
+  else
+    echo "    数据源：默认 jdbc:mysql://localhost:3306/telbank_rbac（用户 ${RBAC_DB_USER:-root}）"
+  fi
+fi
+
 # ---------- 启动后端 ----------
 echo "==> 启动权限中心后端（端口 ${API_PORT}，日志 logs/api.log）"
 "$ROOT/scripts/start-api.sh" "-Dspring-boot.run.arguments=--server.port=${API_PORT}" >"$API_LOG" 2>&1 &

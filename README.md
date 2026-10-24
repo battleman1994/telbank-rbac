@@ -99,7 +99,7 @@ java -version
 > | Windows | `scripts\start-all.cmd --temp-db`（PowerShell 实现 `start-all-windows.ps1`，参数用 `-TempDb -InitDb -ApiPort -FrontPort`） |
 >
 > - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`（Flyway 自动迁移），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
-> - 已有 MySQL：去掉 `--temp-db`；建库用 `--init-db`（需 `MYSQL_*` 环境变量）。
+> - 已有 MySQL：去掉 `--temp-db`；首次建库用 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db`（脚本会自动把 `MYSQL_*` 映射为后端 `RBAC_DB_*`）；之后直接 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh`。
 > - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.4 为分步说明。
 
 ### 4.1 初始化数据库
@@ -110,6 +110,7 @@ export MYSQL_USER=root MYSQL_PASSWORD='你的密码'
 ```
 
 > 只需建空库 `telbank_rbac`；8 张表与 CRM/ERP 示例数据由权限中心启动时 Flyway 自动迁移（`telbank-rbac-api/src/main/resources/db/migration/`）。
+> 用 `start-all.sh` 时无需再单独导出：脚本会把 `MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/RBAC_DB_NAME` 自动映射为后端的 `RBAC_DB_*`（含 `RBAC_DB_URL`）。
 > 如果本机已有 MySQL 且 root 密码未知，可起一个一次性实例：`./scripts/start-temp-mysql.sh start`（127.0.0.1:3307，root 无密码），启动后端时用 `RBAC_DB_URL` 指向它（脚本会打印完整命令）。
 
 ### 4.2 启动权限中心后端（demo profile）
@@ -363,7 +364,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 ## 10. 常见问题
 
-- **启动报 `Access denied for user 'root'@'localhost'`**：检查 `MYSQL_USER/MYSQL_PASSWORD`，或先 `./scripts/init-db.sh`。
+- **启动报 `Access denied ... (using password: NO)` 或 `Unable to determine Dialect without JDBC metadata`**：Hibernate 方言报错通常是「连不上库」的表象。确认 MySQL 已启动、`telbank_rbac` 已创建，并且把密码传给后端：`MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db`（启动脚本会自动映射 `MYSQL_*` → `RBAC_DB_*`）；也可显式设置 `RBAC_DB_URL/RBAC_DB_USER/RBAC_DB_PASSWORD`。
 - **JDK 版本不对**：权限中心需要 **JDK 21+**（`java -version` 校验；`./scripts/start-api.sh` 会自动寻找 JDK 21+/SDKMAN/Homebrew 路径）；SDK 用 **JDK 17+ 构建**（产物 Java 8 字节码），业务系统运行时 **JDK 8+** 即可。
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。

@@ -276,6 +276,23 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "数据库初始化失败" }
     }
 
+    # 非临时库模式：把 MYSQL_* 映射给后端（否则只设 MYSQL_PASSWORD 会导致 Access denied）
+    if (-not $TempDb) {
+        if (-not $env:RBAC_DB_USER -and $env:MYSQL_USER) { $env:RBAC_DB_USER = $env:MYSQL_USER }
+        if (-not $env:RBAC_DB_PASSWORD -and $env:MYSQL_PASSWORD) { $env:RBAC_DB_PASSWORD = $env:MYSQL_PASSWORD }
+        if (-not $env:RBAC_DB_URL -and ($env:MYSQL_HOST -or $env:MYSQL_PORT -or $env:RBAC_DB_NAME)) {
+            $dbHost = if ($env:MYSQL_HOST) { $env:MYSQL_HOST } else { '127.0.0.1' }
+            $dbPort = if ($env:MYSQL_PORT) { $env:MYSQL_PORT } else { '3306' }
+            $dbName = if ($env:RBAC_DB_NAME) { $env:RBAC_DB_NAME } else { 'telbank_rbac' }
+            $env:RBAC_DB_URL = "jdbc:mysql://${dbHost}:${dbPort}/${dbName}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false"
+        }
+        if ($env:RBAC_DB_URL) {
+            Write-Host "    数据源：$($env:RBAC_DB_URL)"
+        } else {
+            Write-Host "    数据源：默认 jdbc:mysql://localhost:3306/telbank_rbac"
+        }
+    }
+
     # 后端：通过临时 cmd 启动，保证重定向与工作目录可靠
     Write-Host "==> 启动权限中心后端（端口 ${ApiPort}，日志 logs\api.log）"
     $apiRunner = Join-Path $LogDir 'run-api.cmd'
