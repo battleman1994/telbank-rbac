@@ -117,7 +117,7 @@ cd telbank-rbac-front && npm run dev
 | 角色授权 | `/role-permissions` | `role:manage` | 角色-权限授权（树勾选 + 时效） |
 | 用户授权 | `/user-roles` | `user:manage` | 用户-角色分配（含时效） |
 | 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点资源上报与权限码关联 |
-| 页面元素 | `/page-actions` | `page:manage` | 页面操作元数据（模式 B） |
+| 页面元素 | `/page-actions` | `page:manage` | 页面元素标识：pageCode/code/text/type（语义类型） |
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。

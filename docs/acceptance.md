@@ -182,6 +182,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 | §9.15 系统隔离 / 数据驱动超管 / bootstrap（v2.1 A 方案） | ✅ | 全量 API 脚本：`superadmin` DB 判定为超管；`crm-admin-001` 只看到 CRM、bootstrap 含通配 `*`，跨系统/系统接入 403；超管在 CRM 上下文跨系统查 ERP 也 403（须切上下文）；139 仅 CRM；137 过期无系统；`/api/user-systems` 404 |
 | §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + **一条 `*` 权限** + 授权；新管理员凭 `*` 可管理本系统（权限树仅一条 `*`）；非超管 403；PUT status=0 停用后移除 |
+| A15 页面元素管理简化（v2.4） | ✅ | 页面元素只展示 页面编码/元素标识/元素名称/语义类型/状态/操作；新建/编辑表单仅 4 个字段；`07` 将历史 type 归一（button/link）；header/headless 验证无 action/config/sort 字段；API/SDK 字段保持兼容 |
 | A14 前端菜单/布局优化（v2.3） | ✅ | 「到期提醒」菜单/路由/页面已移除（`/api/expiring-grants` 后端接口保留）；管理台布局占满 100% 视口、内容区独立滚动；headless Chrome 1440×900/1366×768 验证所有页面无外层滚动条、表格无横向滚动条 |
 | A13 持久层 MyBatis-Plus（v2.2） | ✅ | JPA/Hibernate 依赖、实体注解、Repository、分页全部移除；112 单测（含 MapperContractTest）+ 真库 v4 全量验收 88/88；源码/依赖树无 JPA 残留 |
 | A12 通配权限 + 严格上下文（v2.1） | ✅ | admin/超管均一条 `*`（`06` 清理后 admin 角色授权记录 = 1 条 `*`；公共权限 `common:profile` 除外）；`*`/`前缀:*`/精确匹配在后端、前端、SDK 单测与 e2e 验证；所有权限/角色/资源列表按当前系统收敛，超管跨系统 systemId 403；全量验收 88/88 |
@@ -219,6 +220,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 22:18 | 页面元素简化 + 07 类型归一（用户库/headless Chrome） | 表头 = 页面编码/元素标识/元素名称/元素类型/状态/操作；新建弹窗字段仅 4 个（无 action/config/sort）；类型显示“按钮/链接”；`npm run build` 0 error |
 | 22:05 | 前端 A14 布局/菜单验证（headless Chrome 1440×900、1366×768） | 7 个页面 `doc.cw==doc.sw`、`doc.ch==doc.sh`，表格无横向溢出；菜单仅剩 7 个权限管理页面 + 系统接入；`npm run build` 0 error |
 | 21:45 | `06_cleanup_admin_redundant_grants.sql`（用户库 + 全新库 v5） | admin 角色授权记录均为 **1 条 `*`**；crm-admin bootstrap 权限 = `['*','common:profile']`（后者为 `is_public=1` 公共权限）；验收冒烟 **45/45 PASS** |
 | 21:24 | GitHub Actions `telbank-rbac CI`（commit e4e059e） | **6 个 job 全部 success**：权限中心(112)/SDK v1(113)/SDK v2(114)/前端/Windows 脚本/JDK 8 运行时（[run 40098002904](https://github.com/battleman1994/telbank-rbac/actions/runs/40098002904)） |

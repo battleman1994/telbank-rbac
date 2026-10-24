@@ -9,7 +9,6 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -26,24 +25,44 @@ import {
 } from '../api'
 import type { PageActionPayload, PageActionVO } from '../api/types'
 import { PageShell } from '../components/PageShell'
-import { PageActionTag, StatusTag } from '../components/StatusTags'
+import { StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
 import { useCurrentSystemId } from '../stores/app'
-import { formatJson } from '../utils/format'
-import { PAGE_ACTION_OPTIONS } from '../utils/labels'
 import { createPaginationConfig } from '../utils/pagination'
+
+/** 页面元素类型：只表达元素类别，不表达样式（primary/danger 等样式不再维护） */
+const ELEMENT_TYPE_OPTIONS = [
+  { value: 'button', label: '按钮' },
+  { value: 'link', label: '链接' },
+  { value: 'menu', label: '菜单' },
+  { value: 'icon', label: '图标' },
+  { value: 'input', label: '输入框' },
+]
+
+const ELEMENT_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  ELEMENT_TYPE_OPTIONS.map((option) => [option.value, option.label]),
+)
+
+const LEGACY_TYPE_MAP: Record<string, string> = {
+  primary: 'button',
+  danger: 'button',
+  default: 'button',
+  link: 'link',
+}
+
+function normalizeType(type: string | null | undefined): string {
+  if (!type) return 'button'
+  return LEGACY_TYPE_MAP[type] ?? type
+}
 
 interface PageActionFormValues {
   pageCode: string
   code: string
   text: string
   type: string
-  action: PageActionPayload['action']
-  configText?: string
-  sort: number
 }
 
-/** 页面操作元数据（模式 B，契约 §3.8）：页面按钮配置的 CRUD */
+/** 页面元素元数据：只维护“哪个页面、哪个元素、名称、类型” */
 export default function PageActionsPage() {
   const systemId = useCurrentSystemId()
   if (!systemId) {
@@ -75,19 +94,17 @@ function PageActionsContent({ systemId }: { systemId: number }) {
 
   const saveMutation = useMutation({
     mutationFn: (values: PageActionFormValues) => {
-      let config: unknown = undefined
-      if (values.configText?.trim()) {
-        config = JSON.parse(values.configText) as unknown
-      }
+      // action/config/sort 不再在页面维护，但接口与 SDK 契约保持兼容：
+      // 新建给安全默认值，编辑保留原值，避免历史数据被清空。
       const payload: PageActionPayload = {
         systemId,
         pageCode: values.pageCode.trim(),
         code: values.code.trim(),
         text: values.text.trim(),
-        type: values.type.trim() || 'default',
-        action: values.action,
-        config,
-        sort: values.sort ?? 0,
+        type: values.type.trim() || 'button',
+        action: (editing?.action ?? 'callApi') as PageActionPayload['action'],
+        config: editing?.config ?? undefined,
+        sort: editing?.sort ?? 0,
       }
       if (editing) return updatePageAction(editing.id, payload)
       return createPageAction(payload)
@@ -112,9 +129,7 @@ function PageActionsContent({ systemId }: { systemId: number }) {
     form.resetFields()
     form.setFieldsValue({
       pageCode: pageCode || undefined,
-      type: 'default',
-      action: 'callApi',
-      sort: 0,
+      type: 'button',
     })
     setModalOpen(true)
   }
@@ -126,54 +141,48 @@ function PageActionsContent({ systemId }: { systemId: number }) {
       pageCode: record.pageCode,
       code: record.code,
       text: record.text,
-      type: record.type,
-      action: record.action as PageActionPayload['action'],
-      configText: record.config == null ? undefined : formatJson(record.config, ''),
-      sort: record.sort,
+      type: normalizeType(record.type),
     })
     setModalOpen(true)
   }
 
   const columns: TableProps<PageActionVO>['columns'] = [
-    { title: 'ID', dataIndex: 'id', width: 50 },
     {
       title: '页面编码',
       dataIndex: 'pageCode',
-      width: 130,
+      width: 160,
       ellipsis: true,
       render: (value: string) => <Tag color="blue">{value}</Tag>,
     },
     {
-      title: '操作码',
+      title: '元素标识',
       dataIndex: 'code',
-      width: 130,
+      width: 180,
       ellipsis: true,
       render: (value: string) => <Tag color="geekblue">{value}</Tag>,
     },
-    { title: '按钮文本', dataIndex: 'text', width: 90 },
-    { title: '类型', dataIndex: 'type', width: 75, render: (value: string) => <Tag>{value}</Tag> },
-    { title: '动作', dataIndex: 'action', width: 100, render: (value: string) => <PageActionTag action={value} /> },
+    { title: '元素名称', dataIndex: 'text', width: 140 },
     {
-      title: 'config',
-      dataIndex: 'config',
-      width: 160,
-      ellipsis: true,
-      render: (value: unknown) => <span className="mono-text">{formatJson(value)}</span>,
+      title: '元素类型',
+      dataIndex: 'type',
+      width: 100,
+      render: (value: string) => (
+        <Tag>{ELEMENT_TYPE_LABELS[normalizeType(value)] ?? value}</Tag>
+      ),
     },
-    { title: '排序', dataIndex: 'sort', width: 60 },
-    { title: '状态', dataIndex: 'status', width: 70, render: (value: number) => <StatusTag status={value} /> },
+    { title: '状态', dataIndex: 'status', width: 80, render: (value: number) => <StatusTag status={value} /> },
     {
       title: '操作',
       key: 'action',
-      width: 110,
+      width: 100,
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openEditModal(record)}>
             编辑
           </Button>
           <Popconfirm
-            title="停用页面操作"
-            description={`确认停用「${record.text}」吗？停用后业务前端将不再渲染该按钮。`}
+            title="停用页面元素"
+            description={`确认停用「${record.text}」吗？`}
             okText="确认停用"
             cancelText="取消"
             onConfirm={() => disableMutation.mutate(record.id)}
@@ -190,14 +199,14 @@ function PageActionsContent({ systemId }: { systemId: number }) {
   return (
     <PageShell
       title="页面元素"
-      description="模式 B：标准 CRUD 操作区按钮由当前系统的 sys_page_action 配置驱动，业务前端通过 /rbac/me/bootstrap 的 pageActions 渲染。"
+      description="维护页面元素标识：页面编码、元素标识、元素名称、类型（按钮/链接/菜单/图标/输入框）。不在这里维护样式、动作与 config；业务前端按需渲染。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void pageActionsQuery.refetch()}>
             刷新
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-            新建页面操作
+            新建页面元素
           </Button>
         </Space>
       }
@@ -207,7 +216,7 @@ function PageActionsContent({ systemId }: { systemId: number }) {
           <Space wrap>
             <Input
               allowClear
-              placeholder="按 pageCode 精确筛选，如 order:list"
+              placeholder="按页面编码精确筛选，如 order:list"
               style={{ width: 300 }}
               value={pageCodeInput}
               onChange={(event) => setPageCodeInput(event.target.value)}
@@ -264,7 +273,7 @@ function PageActionsContent({ systemId }: { systemId: number }) {
       </Card>
 
       <Modal
-        title={editing ? `编辑页面操作：${editing.code}` : '新建页面操作'}
+        title={editing ? `编辑页面元素：${editing.code}` : '新建页面元素'}
         open={modalOpen}
         forceRender
         onCancel={() => setModalOpen(false)}
@@ -272,75 +281,46 @@ function PageActionsContent({ systemId }: { systemId: number }) {
         confirmLoading={saveMutation.isPending}
         okText="保存"
         cancelText="取消"
-        width={620}
+        width={560}
       >
         <Form<PageActionFormValues>
           form={form}
           layout="vertical"
-          onFinish={(values) => {
-            if (values.configText?.trim()) {
-              try {
-                JSON.parse(values.configText)
-              } catch {
-                form.setFields([{ name: 'configText', errors: ['config 必须是合法的 JSON'] }])
-                return
-              }
-            }
-            saveMutation.mutate(values)
-          }}
+          onFinish={(values) => saveMutation.mutate(values)}
         >
           <Space size={16} style={{ display: 'flex' }}>
             <Form.Item
-              label="页面编码 pageCode"
+              label="页面编码"
               name="pageCode"
-              rules={[{ required: true, message: '请输入 pageCode' }]}
+              rules={[{ required: true, message: '请输入页面编码' }]}
               style={{ flex: 1 }}
+              tooltip="元素所属页面，如 order:list"
             >
               <Input placeholder="如 order:list" maxLength={128} />
             </Form.Item>
             <Form.Item
-              label="操作码 code"
+              label="元素标识"
               name="code"
-              rules={[{ required: true, message: '请输入操作码' }]}
+              rules={[{ required: true, message: '请输入元素标识' }]}
               style={{ flex: 1 }}
-              tooltip="通常与权限码一致，如 order:export"
+              tooltip="页面内唯一，如 order:export"
             >
               <Input placeholder="如 order:export" maxLength={128} />
             </Form.Item>
           </Space>
           <Space size={16} style={{ display: 'flex' }}>
             <Form.Item
-              label="按钮文本"
+              label="元素名称"
               name="text"
-              rules={[{ required: true, message: '请输入按钮文本' }]}
+              rules={[{ required: true, message: '请输入元素名称' }]}
               style={{ flex: 1 }}
             >
               <Input placeholder="如 导出" maxLength={64} />
             </Form.Item>
-            <Form.Item label="按钮类型 type" name="type" style={{ flex: 1 }}>
-              <Input placeholder="default" maxLength={32} />
+            <Form.Item label="元素类型" name="type" style={{ flex: 1 }}>
+              <Select options={ELEMENT_TYPE_OPTIONS} placeholder="按钮" />
             </Form.Item>
           </Space>
-          <Space size={16} style={{ display: 'flex' }}>
-            <Form.Item
-              label="动作 action"
-              name="action"
-              rules={[{ required: true, message: '请选择动作' }]}
-              style={{ flex: 2 }}
-            >
-              <Select options={PAGE_ACTION_OPTIONS} />
-            </Form.Item>
-            <Form.Item label="排序" name="sort" style={{ flex: 1 }}>
-              <InputNumber min={0} max={9999} style={{ width: '100%' }} />
-            </Form.Item>
-          </Space>
-          <Form.Item
-            label="config（JSON，可选）"
-            name="configText"
-            tooltip="动作所需的配置，如接口路径、弹窗参数等"
-          >
-            <Input.TextArea rows={4} className="mono-text" placeholder='如 {"api":"/api/order/export","method":"POST"}' />
-          </Form.Item>
         </Form>
       </Modal>
     </PageShell>

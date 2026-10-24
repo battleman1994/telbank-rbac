@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v2.3（2026-10-24）· 维护：Lead
-> 修订：v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v2.4（2026-10-24）· 维护：Lead
+> 修订：v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -58,6 +58,7 @@
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
 - 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。平台一键脚本（`start-all-macos.sh` / `start-all-linux.sh` / `start-all-windows.ps1`）的 `--temp-db` 会在临时库启动后自动执行。
 - `05_wildcard_permissions.sql`（v2.1）：业务系统 admin 角色与平台超管各只授一条 `*` 权限（删除 6 条短码与 `platform:admin`）。
+- `07_page_action_semantic_type.sql`（v2.4）：把历史页面元素样式 type（primary/danger/default）归一为语义类型 button/link 等。
 - `06_cleanup_admin_redundant_grants.sql`（v2.1 补充）：清理业务系统 `admin` 角色残留的 `order:*` 等冗余业务授权，使角色授权只剩唯一一条 `*`（公共权限 `is_public=1` 不属于角色授权，仍对所有登录用户生效）。
 - `04_system_isolation.sql`（v2.0）：删除 `sys_user_system`；`sys_system` 增加 `is_platform/admin_external_user_id/admin_name`；新增平台系统、`super-admin` 角色、`platform:admin` 权限、种子超管 `superadmin`；新增各业务系统短管理权限码与两个系统管理员演示账号。
 - 启动前提：数据库与表已经存在（持久层 MyBatis-Plus 不会自动建表）。
@@ -165,7 +166,7 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/page-actions?systemId=&pageCode=&page=&size=` | items: `{id,systemId,pageCode,code,text,type,action,config,sort,status}` |
-| POST | `/api/page-actions` | `{systemId,pageCode,code,text,type?="default",action,config?,sort?}`，`action ∈ {openDialog,callApi,download,navigate,confirmThenCallApi}` |
+| POST | `/api/page-actions` | `{systemId,pageCode,code,text,type?="button",action,config?,sort?}`；**管理端页面只维护 pageCode/code/text/type（语义类型 button/link/menu/icon/input）**；`action`/`config` 仅为 SDK/接口兼容保留，页面不再编辑 |
 | PUT | `/api/page-actions/{id}` | 同字段更新 |
 | DELETE | `/api/page-actions/{id}` | 停用 |
 
@@ -423,7 +424,7 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -442,7 +443,7 @@ rbac:
 - 登录：`/login` 页面粘贴 JWT（外部认证系统签发；本地用 `scripts/gen-demo-jwt.sh` 生成），存 `localStorage["rbac.token"]`；请求头注入 `Authorization: Bearer`；当前系统存 `localStorage["rbac.systemCode"]`。
 - 系统上下文：登录后 GET `/api/me` → `/api/me/systems` → 选择 `currentSystemCode`（本地缓存命中否则第一条）→ 带 `X-System-Code` 拉 `/api/me/bootstrap`；所有管理端查询都带当前业务系统头；超管可切换所有业务系统并看到「系统接入」，系统管理员只能看到自己的系统。
 - 菜单 IA：`权限管理` 组（角色管理/角色授权/权限管理/资源管理/页面元素/用户授权/授权记录）+ 顶级「系统接入」（仅超管）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」与「到期提醒」菜单（接口仍保留）。
-- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管，含管理员账号录入）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效）、用户授权（含时效）、资源管理（SDK 端点）、页面元素、授权记录。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
+- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管，含管理员账号录入）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效）、用户授权（含时效）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
 - 状态：TanStack Query 管理服务端状态；Zustand 管理当前用户/系统/权限码集合；不使用 Axios，使用封装的 `request()`（原生 fetch）。
 - 必须 `npm run build` 通过（含 `tsc` 类型检查）。
 

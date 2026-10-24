@@ -421,7 +421,7 @@ def test_page_actions():
     code = "order:accept" + suffix
     status, body = http("POST", "/api/page-actions", token=admin, system=MGMT_SYSTEM, body={
         "systemId": 1, "pageCode": "order:list", "code": code, "text": "验收按钮",
-        "type": "default", "action": "callApi", "config": "{\"api\":\"POST /api/order/accept\"}", "sort": 99,
+        "type": "button", "action": "callApi", "config": "{\"api\":\"POST /api/order/accept\"}", "sort": 99,
     })
     created = status < 300
     check("管理端新增页面操作 order:list → %s" % code, created, (status, body))
