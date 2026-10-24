@@ -391,35 +391,28 @@ function BusinessSystemsTab({
     {
       title: '系统编码',
       dataIndex: 'code',
-      width: 100,
+      width: 90,
       render: (value: string) => <Tag color="blue">{value}</Tag>,
     },
-    { title: '系统名称', dataIndex: 'name', width: 130, ellipsis: true },
+    { title: '系统名称', dataIndex: 'name', width: 120, ellipsis: true },
     {
       title: '区域',
       dataIndex: 'region',
-      width: 80,
+      width: 95,
       render: (value: string) => <Tag>{value}</Tag>,
     },
     {
       title: '管理员账号',
       dataIndex: 'adminExternalUserId',
-      width: 140,
+      width: 130,
       ellipsis: true,
       render: (value: string | null | undefined) =>
         value ? <Tag color="geekblue">{value}</Tag> : '-',
     },
     {
-      title: '管理员姓名',
-      dataIndex: 'adminName',
-      width: 90,
-      ellipsis: true,
-      render: (value: string | null | undefined) => value || '-',
-    },
-    {
       title: 'AppKey',
       dataIndex: 'appKey',
-      width: 120,
+      width: 125,
       ellipsis: true,
       render: (value: string | null | undefined) =>
         value ? (
@@ -433,7 +426,7 @@ function BusinessSystemsTab({
     {
       title: 'AppSecret',
       dataIndex: 'appSecretMasked',
-      width: 110,
+      width: 130,
       ellipsis: true,
       render: (value: string | null | undefined) =>
         value ? (
@@ -453,7 +446,7 @@ function BusinessSystemsTab({
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 230,
       render: (_, record) => (
         <Space size={2}>
           <Button type="link" size="small" onClick={() => setViewingKeys(record)}>

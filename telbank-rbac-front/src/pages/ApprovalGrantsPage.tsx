@@ -21,7 +21,7 @@ import { PageShell } from '../components/PageShell'
 import { ApprovalKindTag, StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
 import { useCurrentSystemId } from '../stores/app'
-import { formatDateTime, formatValidity } from '../utils/format'
+import { formatDateTime } from '../utils/format'
 import { createPaginationConfig } from '../utils/pagination'
 
 const { Text } = Typography
@@ -58,23 +58,28 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
       }),
   })
 
+  // 表格只展示日期，避免完整时间戳在窄列中换行；详情抽屉仍展示完整时间
+  const shortDate = (value?: string | null) => (value ? formatDateTime(value).slice(0, 10) : null)
+  const shortValidity = (validFrom?: string | null, validUntil?: string | null) =>
+    `${shortDate(validFrom) ?? '立即生效'} ~ ${shortDate(validUntil) ?? '永久有效'}`
+
   const columns: TableProps<ApprovalGrantVO>['columns'] = [
     {
       title: '类型',
       dataIndex: 'kind',
-      width: 130,
+      width: 100,
       render: (value: ApprovalGrantVO['kind']) => <ApprovalKindTag kind={value} />,
     },
     {
       title: '审批单号',
       dataIndex: 'sourceApprovalId',
-      width: 200,
+      width: 160,
       render: (value: string | null) => (value ? <Tag color="blue">{value}</Tag> : '-'),
     },
     {
       title: '用户 / 角色 / 权限',
       key: 'subject',
-      width: 260,
+      width: 180,
       render: (_, record) => (
         <Space orientation="vertical" size={0}>
           {record.externalUserId ? <Text>用户：{record.externalUserId}</Text> : null}
@@ -86,31 +91,40 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
     {
       title: '授权时效',
       key: 'validity',
-      width: 300,
-      render: (_, record) => formatValidity(record.validFrom, record.validUntil),
+      width: 190,
+      render: (_, record) => shortValidity(record.validFrom, record.validUntil),
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 90,
+      width: 70,
       render: (value: number) => <StatusTag status={value} />,
     },
     {
       title: '授权原因',
       dataIndex: 'grantReason',
+      width: 110,
       ellipsis: true,
       render: (value: string | null) => value || '-',
     },
     {
       title: '授权时间',
       dataIndex: 'grantedAt',
-      width: 180,
-      render: (value: string | null) => formatDateTime(value),
+      width: 140,
+      render: (value: string | null) => {
+        if (!value) return '-'
+        const full = formatDateTime(value)
+        return (
+          <span title={full} className="mono-text">
+            {full.length > 16 ? full.slice(0, 16) : full}
+          </span>
+        )
+      },
     },
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 80,
       render: (_, record) => (
         <Button type="link" size="small" onClick={() => setDetail(record)}>
           详情
@@ -180,7 +194,6 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
           ) : null}
 
           <Table<ApprovalGrantVO>
-            tableLayout="auto"
             rowKey={(record) =>
               [
                 record.kind,

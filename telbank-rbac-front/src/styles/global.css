@@ -89,7 +89,19 @@ body {
 }
 
 .ant-table-cell {
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ant-table-thead > tr > th {
+  white-space: nowrap;
+}
+
+/* 表格内长路径/代码不主动断行，超出列宽用省略号 */
+.ant-table .mono-text {
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .ant-table-content {

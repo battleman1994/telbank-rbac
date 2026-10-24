@@ -225,6 +225,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
 | 22:45 | 修复切换系统 toast 遮挡系统下拉框 | `.ant-message*` 设为 `pointer-events:none`；headless 验证切换 ERP 后系统下拉框顶部元素由 message 容器变回 input，页面下拉框可正常展开 |
 | 22:36 | 资源管理「提示」列替代候选码列 | 候选码不再单独成列：未关联行提示「确认权限码后生效，候选码为：xxx」；已关联行提示「已确认权限码，已生效」；表格仍无横向滚动，`npm run build` 0 error |
+| 23:30 | 全局表格字段不换行优化（headless Chrome 1440×900） | `.ant-table-cell` 统一 `white-space:nowrap + ellipsis`；短时间格式（YYYY-MM-DD HH:mm）；调整系统接入/资源管理/授权记录列宽；所有页面表格 `cw==sw==1110`、无 wrap、无横向滚动；长路径/长原因省略并保留 tooltip |
 | 23:15 | GitHub Actions `telbank-rbac CI`（commit 440a525） | **6 个 job 全部 success**：权限中心(138)/SDK v1(121)/SDK v2(122)/前端/Windows 脚本/JDK 8 运行时（[run 40105622849](https://github.com/battleman1994/telbank-rbac/actions/runs/40105622849)） |
 | 23:12 | `./scripts/verify-all.sh`（A16/A17 后） | **14 项全过**：api **138** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09 迁移、3 平台脚本 |
 | 23:06 | 8080 切 A16/A17 后端（用户库 08/09） | 系统列表返回 appKey/掩码（crm/crm-****cret）；`/api/system-applications` 返回 finance 待审核；前端系统接入双 Tab 真实 API 验证通过 |

@@ -184,13 +184,13 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
     {
       title: '方法',
       dataIndex: 'method',
-      width: 70,
+      width: 85,
       render: (value: string) => <Tag color="purple">{value}</Tag>,
     },
     {
       title: '路径 path',
       dataIndex: 'path',
-      width: 210,
+      width: 140,
       ellipsis: true,
       render: (value: string) => (
         <span className="mono-text" title={value}>
@@ -201,24 +201,24 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
     {
       title: '权限码',
       dataIndex: 'permissionCode',
-      width: 140,
+      width: 125,
       render: (value: string | null) =>
         value ? <Tag color="green">{value}</Tag> : <Tag color="default">未关联</Tag>,
     },
     {
       title: '来源',
       dataIndex: 'source',
-      width: 70,
+      width: 95,
       render: (value: string) => (
         <Tag color={value === 'ANNOTATION' ? 'gold' : 'cyan'} title={value}>
-          {value === 'ANNOTATION' ? '注解' : '自动生成'}
+          {value === 'ANNOTATION' ? '注解' : '自动'}
         </Tag>
       ),
     },
     {
       title: '生效状态',
       key: 'effective',
-      width: 80,
+      width: 90,
       render: (_, record) =>
         record.permissionId ? (
           <Tag color="green" title="已确认权限码并写入 mappings；若该权限后续停用，映射会停止下发">
@@ -233,13 +233,14 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
     {
       title: '提示',
       key: 'hint',
-      width: 250,
+      width: 280,
+      ellipsis: true,
       render: (_, record) =>
         record.permissionId ? (
-          <Typography.Text type="secondary">已确认权限码，已生效</Typography.Text>
+          <Typography.Text type="secondary">已确认，已生效</Typography.Text>
         ) : (
           <span>
-            <Typography.Text type="secondary">确认权限码后生效，候选码为：</Typography.Text>
+            <Typography.Text type="secondary">确认后生效，候选：</Typography.Text>
             {record.candidateCode ? (
               <Tag color="blue">{record.candidateCode}</Tag>
             ) : (
@@ -251,13 +252,21 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
     {
       title: '上报时间',
       dataIndex: 'reportedAt',
-      width: 130,
-      render: (value: string | null) => formatDateTime(value),
+      width: 155,
+      render: (value: string | null) => {
+        if (!value) return '-'
+        const full = formatDateTime(value)
+        return (
+          <span title={full} className="mono-text">
+            {full.length > 16 ? full.slice(0, 16) : full}
+          </span>
+        )
+      },
     },
     {
       title: '操作',
       key: 'action',
-      width: 140,
+      width: 135,
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openLinkModal(record)}>
