@@ -44,4 +44,13 @@ public interface RbacOpenApiClient {
      * （排除 platform 平台系统），用户无有效角色时返回空列表。</p>
      */
     List<SystemInfo> fetchUserSystems(String externalUserId);
+
+    /**
+     * 上报系统接入申请（A16）：{@code POST /openapi/onboarding/systems}。
+     *
+     * <p>使用 onboarding 专用 AppKey/AppSecret 签名（canonical 规则与其它开放接口一致）；
+     * 权限中心只创建待审核申请（PENDING），不直接开通系统。失败抛 {@link RbacRemoteException}，
+     * 由启动上报器吞掉并 warning。</p>
+     */
+    OnboardingApplyResult reportOnboarding(OnboardingApplyRequest request);
 }

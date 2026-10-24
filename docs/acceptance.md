@@ -182,6 +182,8 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 | §9.15 系统隔离 / 数据驱动超管 / bootstrap（v2.1 A 方案） | ✅ | 全量 API 脚本：`superadmin` DB 判定为超管；`crm-admin-001` 只看到 CRM、bootstrap 含通配 `*`，跨系统/系统接入 403；超管在 CRM 上下文跨系统查 ERP 也 403（须切上下文）；139 仅 CRM；137 过期无系统；`/api/user-systems` 404 |
 | §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + **一条 `*` 权限** + 授权；新管理员凭 `*` 可管理本系统（权限树仅一条 `*`）；非超管 403；PUT status=0 停用后移除 |
+| A17 系统接入凭据（v2.5） | ✅ | `sys_system` 增加 appKey/appSecret（09 回填 crm/erp）；手动/审核创建均分配 appKey=code + 32 位 secret；列表返回 AppKey/掩码、创建/审批响应一次性返回完整 secret；开放接口 DB 凭据优先仍可正常验签 | 
+| A16 系统接入双通道 + 审核（v2.5） | ✅ | 手动录入保留；SDK 上报 `POST /openapi/onboarding/systems`（onboarding AppKey/HMAC）→ PENDING 申请；超管 GET/approve/reject；approve 自动创建系统/`admin` 角色/`*`/管理员授权并返回凭据；单 system_code 最新状态、驳回可重报；真实 SDK 启动上报验证通过；全量验收 101/101 |
 | A15 页面元素管理简化（v2.4） | ✅ | 页面元素只展示 页面编码/元素标识/元素名称/语义类型/状态/操作；新建/编辑表单仅 4 个字段；`07` 将历史 type 归一（button/link）；header/headless 验证无 action/config/sort 字段；API/SDK 字段保持兼容 |
 | A14 前端菜单/布局优化（v2.3） | ✅ | 「到期提醒」菜单/路由/页面已移除（`/api/expiring-grants` 后端接口保留）；管理台布局占满 100% 视口、内容区独立滚动；headless Chrome 1440×900/1366×768 验证所有页面无外层滚动条、表格无横向滚动条 |
 | A13 持久层 MyBatis-Plus（v2.2） | ✅ | JPA/Hibernate 依赖、实体注解、Repository、分页全部移除；112 单测（含 MapperContractTest）+ 真库 v4 全量验收 88/88；源码/依赖树无 JPA 残留 |
@@ -199,6 +201,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 5. **JDK 21 版 SDK（已完成）**：新增 `telbank-rbac2-starter`（JDK21 + Boot 4，协议一致），91 单测 + JDK21 示例业务系统 e2e 4/4 通过；真实 Redis Pub/Sub 亦已联调（订阅 + 变更通知驱动刷新）；CI 新增对应构建 job。
 6. **移除 Flyway（已完成）**：按用户要求删除 Flyway 依赖与配置类，数据库初始化改为 `db/manual/*.sql` 手动执行；`init-db.sh` 与 `--temp-db` 一键启动均已验证（全新库 8 表、验收 59/59）。
 7. **系统隔离重构（v2.0，A11，已完成）**：删除用户-系统开通；数据驱动超管；管理上下文=当前业务系统；管理权限短码；系统接入仅超管并录入管理员自动建角色授权；全新库 01→04 迁移 + 88 后端单测 + 全量验收 81/81（含两个 SDK e2e 各 4/4）。
+9. **系统接入双通道 + 系统凭据（v2.5，A16/A17，已完成）**：手动录入 + SDK onboarding 上报（onboarding AppKey/HMAC）；单申请单最新状态；审核通过自动建系统并分配 appKey/appSecret；页面展示 AppKey/掩码与一次性完整 secret；138 后端单测 + 121/122 SDK 单测 + 全量验收 101/101；真实 SDK 上报验证通过。
 8. **A 方案通配权限 + 严格上下文（v2.1，A12，已完成）**：admin/超管各一条 `*`；前端 hasPerm 与两版 SDK 支持 `*`/`前缀:*`；所有查询按当前 X-System-Code 收敛、超管也禁止单请求跨系统；104 后端单测 + 113/114 SDK 单测 + 全量验收 88/88。
 
 ## 已知限制（生产前建议处理）
@@ -222,6 +225,11 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
 | 22:45 | 修复切换系统 toast 遮挡系统下拉框 | `.ant-message*` 设为 `pointer-events:none`；headless 验证切换 ERP 后系统下拉框顶部元素由 message 容器变回 input，页面下拉框可正常展开 |
 | 22:36 | 资源管理「提示」列替代候选码列 | 候选码不再单独成列：未关联行提示「确认权限码后生效，候选码为：xxx」；已关联行提示「已确认权限码，已生效」；表格仍无横向滚动，`npm run build` 0 error |
+| 23:12 | `./scripts/verify-all.sh`（A16/A17 后） | **14 项全过**：api **138** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09 迁移、3 平台脚本 |
+| 23:06 | 8080 切 A16/A17 后端（用户库 08/09） | 系统列表返回 appKey/掩码（crm/crm-****cret）；`/api/system-applications` 返回 finance 待审核；前端系统接入双 Tab 真实 API 验证通过 |
+| 23:05 | 全量 API 验收（v7 全新库 01→09 + 两版 SDK 示例系统） | **101/101 PASS**（新增 §9.16b SDK 上报/审核 13 项；两个 SDK e2e 各 4/4） |
+| 23:04 | 真实 SDK 启动上报 | v1 示例开启 onboarding → `POST /openapi/onboarding/systems` 验签成功，管理端出现 sdkdemo PENDING 申请 |
+| 22:57 | `mvn -pl telbank-rbac-api clean test` / SDK clean test | 后端 **138/138**；SDK v1 **121/121**、v2 **122/122**；BUILD SUCCESS |
 | 22:31 | 资源管理「生效状态」展示优化（headless Chrome） | 未关联端点显示「未生效」+「未关联」、当前页黄色提示、行轻微高亮、关联按钮为主按钮；已关联显示「已生效」；表格仍 1110px 无横向滚动；映射/接口行为未改 |
 | 22:24 | 弹窗表单 UI 优化（headless Chrome 截图复核） | 角色/权限/页面元素/用户授权/系统接入弹窗统一宽度（600–720）、控件占满列宽；双列用 Row/Col 对齐；移除 textarea showCount 避免与 footer 重叠；SVG 截图人工复核通过 |
 | 22:18 | 页面元素简化 + 07 类型归一（用户库/headless Chrome） | 表头 = 页面编码/元素标识/元素名称/元素类型/状态/操作；新建弹窗字段仅 4 个（无 action/config/sort）；类型显示“按钮/链接”；`npm run build` 0 error |

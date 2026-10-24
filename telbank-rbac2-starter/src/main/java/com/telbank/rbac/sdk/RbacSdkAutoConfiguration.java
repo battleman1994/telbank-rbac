@@ -26,6 +26,7 @@ import com.telbank.rbac.sdk.client.RbacSigner;
 import com.telbank.rbac.sdk.config.RbacSdkProperties;
 import com.telbank.rbac.sdk.filter.RbacPermissionFilter;
 import com.telbank.rbac.sdk.notify.RbacChangeSubscriber;
+import com.telbank.rbac.sdk.notify.RbacOnboardingReporter;
 import com.telbank.rbac.sdk.notify.RbacPollingFallback;
 import com.telbank.rbac.sdk.scan.RbacCodeGenerator;
 import com.telbank.rbac.sdk.scan.RbacEndpointScanner;
@@ -100,6 +101,15 @@ public class RbacSdkAutoConfiguration {
     public RbacPollingFallback rbacPollingFallback(RbacCacheRefresher rbacCacheRefresher,
             RbacSdkProperties properties) {
         return new RbacPollingFallback(rbacCacheRefresher, properties);
+    }
+
+    /**
+     * 系统接入自动上报器（A16）：应用启动完成后可选上报待审核接入申请；失败仅 warning。
+     */
+    @Bean
+    public RbacOnboardingReporter rbacOnboardingReporter(RbacSdkProperties properties,
+            RbacOpenApiClient rbacOpenApiClient) {
+        return new RbacOnboardingReporter(properties, rbacOpenApiClient);
     }
 
     /**

@@ -10,6 +10,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.config.RbacProperties;
+import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.testutil.TestProxies;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletRequest;
@@ -26,16 +29,21 @@ class AppKeyAuthFilterTest {
 
     private static final String CRM_SECRET = "crm-dev-secret";
     private static final String APPROVAL_SECRET = "approval-dev-secret";
+    private static final String ONBOARDING_APP_KEY = "onboarding-app";
+    private static final String ONBOARDING_SECRET = "onboarding-secret";
 
     private final JsonMapper jsonMapper = JsonMapper.builder().build();
+    private RbacProperties properties;
     private AppKeyAuthFilter filter;
 
     @BeforeEach
     void setUp() {
-        RbacProperties properties = new RbacProperties();
+        properties = new RbacProperties();
         properties.setClients(List.of(client("crm", "crm", CRM_SECRET), client("erp", "erp", "erp-dev-secret")));
         properties.getApproval().setAppKey("approval-system");
         properties.getApproval().setAppSecret(APPROVAL_SECRET);
+        properties.getOnboarding().setAppKey(ONBOARDING_APP_KEY);
+        properties.getOnboarding().setAppSecret(ONBOARDING_SECRET);
         filter = new AppKeyAuthFilter(jsonMapper, properties, new CaffeineNonceStore());
     }
 
@@ -157,6 +165,137 @@ class AppKeyAuthFilterTest {
         assertThat(chain.invoked).isTrue();
         OpenApiCaller caller = (OpenApiCaller) request.getAttribute(RbacConstants.ATTR_OPENAPI_CALLER);
         assertThat(caller.approval()).isTrue();
+    }
+
+    @Test
+    void verifiesOnboardingReportWithDedicatedAppKeyWithoutSystemCodeBinding() throws Exception {
+        String body = "{\"systemCode\":\"finance\",\"name\":\"财务系统\",\"region\":\"region_a\"}";
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/openapi/onboarding/systems");
+        request.setContent(body.getBytes(StandardCharsets.UTF_8));
+        request.setContentType("application/json");
+        sign(request, ONBOARDING_APP_KEY, ONBOARDING_SECRET, "nonce-onboarding-01", System.currentTimeMillis());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.invoked).isTrue();
+        OpenApiCaller caller = (OpenApiCaller) request.getAttribute(RbacConstants.ATTR_OPENAPI_CALLER);
+        assertThat(caller.onboarding()).isTrue();
+        assertThat(caller.approval()).isFalse();
+        assertThat(caller.systemCode()).isNull();
+        assertThat(caller.appKey()).isEqualTo(ONBOARDING_APP_KEY);
+    }
+
+    @Test
+    void rejectsOnboardingReportWithBadSignature() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/openapi/onboarding/systems");
+        request.setContent("{\"systemCode\":\"finance\"}".getBytes(StandardCharsets.UTF_8));
+        sign(request, ONBOARDING_APP_KEY, "wrong-secret", "nonce-onboarding-02", System.currentTimeMillis());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.invoked).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    void rejectsUnknownOnboardingAppKey() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/openapi/onboarding/systems");
+        request.setContent("{}".getBytes(StandardCharsets.UTF_8));
+        sign(request, "crm", CRM_SECRET, "nonce-onboarding-03", System.currentTimeMillis());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.invoked).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    void rejectsOnboardingWhenDisabled() throws Exception {
+        properties.getOnboarding().setEnabled(false);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/openapi/onboarding/systems");
+        request.setContent("{}".getBytes(StandardCharsets.UTF_8));
+        sign(request, ONBOARDING_APP_KEY, ONBOARDING_SECRET, "nonce-onboarding-04", System.currentTimeMillis());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.invoked).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    void databaseAppKeyTakesPrecedenceOverYamlClients() throws Exception {
+        SysSystem system = new SysSystem();
+        system.setId(1L);
+        system.setCode("crm");
+        system.setStatus(1);
+        system.setIsPlatform(0);
+        system.setAppKey("crm");
+        system.setAppSecret("db-crm-secret");
+        SysSystemMapper systemMapper = TestProxies.proxy(SysSystemMapper.class,
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "selectOne" -> system;
+                    default -> TestProxies.defaultValue(method.getReturnType());
+                });
+        AppKeyAuthFilter dbFilter = new AppKeyAuthFilter(jsonMapper, properties, new CaffeineNonceStore(),
+                new SystemAppKeyRegistry(systemMapper));
+
+        // DB secret 生效：用 YAML demo secret 签名应 401
+        MockHttpServletRequest yamlSigned = new MockHttpServletRequest("GET", "/openapi/sdk/mappings");
+        yamlSigned.setQueryString("systemCode=crm");
+        sign(yamlSigned, "crm", CRM_SECRET, "nonce-db-priority-1", System.currentTimeMillis());
+        MockHttpServletResponse yamlResponse = new MockHttpServletResponse();
+        RecordingChain yamlChain = new RecordingChain();
+        dbFilter.doFilter(yamlSigned, yamlResponse, yamlChain);
+        assertThat(yamlChain.invoked).isFalse();
+        assertThat(yamlResponse.getStatus()).isEqualTo(401);
+
+        // DB secret 生效：签名放行
+        MockHttpServletRequest dbSigned = new MockHttpServletRequest("GET", "/openapi/sdk/mappings");
+        dbSigned.setQueryString("systemCode=crm");
+        sign(dbSigned, "crm", "db-crm-secret", "nonce-db-priority-2", System.currentTimeMillis());
+        MockHttpServletResponse dbResponse = new MockHttpServletResponse();
+        RecordingChain dbChain = new RecordingChain();
+        dbFilter.doFilter(dbSigned, dbResponse, dbChain);
+        assertThat(dbChain.invoked).isTrue();
+        OpenApiCaller caller = (OpenApiCaller) dbSigned.getAttribute(RbacConstants.ATTR_OPENAPI_CALLER);
+        assertThat(caller.systemCode()).isEqualTo("crm");
+        assertThat(caller.onboarding()).isFalse();
+    }
+
+    @Test
+    void disabledDatabaseSystemDoesNotFallBackToYaml() throws Exception {
+        SysSystem system = new SysSystem();
+        system.setId(1L);
+        system.setCode("crm");
+        system.setStatus(0);
+        system.setIsPlatform(0);
+        system.setAppKey("crm");
+        system.setAppSecret(CRM_SECRET);
+        SysSystemMapper systemMapper = TestProxies.proxy(SysSystemMapper.class,
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "selectOne" -> system;
+                    default -> TestProxies.defaultValue(method.getReturnType());
+                });
+        AppKeyAuthFilter dbFilter = new AppKeyAuthFilter(jsonMapper, properties, new CaffeineNonceStore(),
+                new SystemAppKeyRegistry(systemMapper));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/openapi/sdk/mappings");
+        request.setQueryString("systemCode=crm");
+        sign(request, "crm", CRM_SECRET, "nonce-db-disabled-1", System.currentTimeMillis());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+        dbFilter.doFilter(request, response, chain);
+
+        assertThat(chain.invoked).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
     }
 
     @Test

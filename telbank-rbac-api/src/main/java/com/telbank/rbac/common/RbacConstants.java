@@ -27,6 +27,7 @@ public final class RbacConstants {
 
     public static final String OPENAPI_PATH_PREFIX = "/openapi/";
     public static final String OPENAPI_APPROVAL_PATH_PREFIX = "/openapi/approval/";
+    public static final String OPENAPI_ONBOARDING_PATH_PREFIX = "/openapi/onboarding/";
     public static final String ATTR_OPENAPI_CALLER = "rbac.openapi.caller";
 
     public static final String AUTH_HEADER = "Authorization";
@@ -39,6 +40,12 @@ public final class RbacConstants {
     public static final int STATUS_DISABLED = 0;
     public static final int AUTO_REVOKE_YES = 1;
     public static final int IS_PUBLIC_YES = 1;
+
+    // 系统接入申请状态（sys_system_application.status）
+    public static final int APPLICATION_STATUS_PENDING = 0;
+    public static final int APPLICATION_STATUS_APPROVED = 1;
+    public static final int APPLICATION_STATUS_REJECTED = 2;
+    public static final String APPLICATION_SOURCE_SDK = "SDK";
 
     // ------------------------------------------------------------------
     // Redis 变更通知（契约 §6）

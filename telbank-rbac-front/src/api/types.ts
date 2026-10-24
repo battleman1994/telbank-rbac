@@ -82,6 +82,10 @@ export interface SysSystemVO {
   adminExternalUserId?: string | null
   /** 系统管理员姓名（可选） */
   adminName?: string | null
+  /** SDK 接入 AppKey（等宽展示，可复制） */
+  appKey?: string | null
+  /** 已脱敏的 AppSecret（完整密钥仅在创建/审核通过响应中返回一次） */
+  appSecretMasked?: string | null
   sort?: number
   remark?: string | null
   createdAt?: string | null
@@ -105,6 +109,55 @@ export interface SystemUpdatePayload {
   adminExternalUserId?: string
   adminName?: string
   status?: number
+}
+
+/* ------------------------------------------------------------------ */
+/* §3.2b 系统接入申请（A16：SDK 自动上报 + 平台超管审核）                */
+/* ------------------------------------------------------------------ */
+
+export type SystemApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export interface SystemApplicationVO {
+  id: number
+  systemCode: string
+  name: string
+  region: string
+  /** 来源：SDK / MANUAL */
+  source: string
+  appKey?: string | null
+  sdkVersion?: string | null
+  remark?: string | null
+  status: SystemApplicationStatus
+  rejectReason?: string | null
+  reviewedBy?: string | null
+  reviewedAt?: string | null
+  /** 审核通过后创建的业务系统 id */
+  systemId?: number | null
+  createdAt?: string | null
+}
+
+export interface SystemApplicationListQuery extends PageQuery {
+  status?: SystemApplicationStatus
+}
+
+export interface SystemApplicationApprovePayload {
+  adminExternalUserId: string
+  adminName?: string
+}
+
+export interface SystemApplicationRejectPayload {
+  reason: string
+}
+
+/** POST /api/systems 响应：系统 VO + 仅本次返回的完整 AppSecret（后续只返回掩码） */
+export interface SystemCreateResultVO extends SysSystemVO {
+  appSecret?: string | null
+}
+
+/** POST /api/system-applications/{id}/approve 响应：申请 VO + 新系统 AppKey/完整 AppSecret（仅本次返回） */
+export interface SystemApproveResultVO extends SystemApplicationVO {
+  appKey?: string | null
+  appSecret?: string | null
 }
 
 /* ------------------------------------------------------------------ */

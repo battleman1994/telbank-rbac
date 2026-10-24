@@ -4,6 +4,7 @@ import type {
   PageResult,
   SysSystemVO,
   SystemCreatePayload,
+  SystemCreateResultVO,
   SystemUpdatePayload,
 } from './types'
 
@@ -12,9 +13,12 @@ export function listSystems(params: KeywordPageQuery): Promise<PageResult<SysSys
   return requestPage<SysSystemVO>('/api/systems', { query: { ...params } })
 }
 
-/** POST /api/systems —— 新建系统 */
-export function createSystem(payload: SystemCreatePayload): Promise<SysSystemVO> {
-  return request<SysSystemVO>('/api/systems', { method: 'POST', body: payload })
+/**
+ * POST /api/systems —— 新建系统接入。
+ * 响应额外返回一次完整 appSecret（后续列表/详情只返回 appSecretMasked）。
+ */
+export function createSystem(payload: SystemCreatePayload): Promise<SystemCreateResultVO> {
+  return request<SystemCreateResultVO>('/api/systems', { method: 'POST', body: payload })
 }
 
 /** PUT /api/systems/{id} —— 修改系统（code 不可改） */

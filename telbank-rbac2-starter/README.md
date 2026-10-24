@@ -27,6 +27,25 @@
 - 用户**没有任何有效角色**时权限中心返回空数组，SDK **原样透传空数组**（不再降级为配置系统单例）；仅当权限中心不可用（回源失败）时才降级为本系统单例，保证业务页面可用。
 - v2.0 已删除「用户-系统开通」概念，SDK 不再包含用户-系统开通/管理上下文 `rbac` 语义；`/rbac/me/systems` 不读取 `X-System-Code`。
 
+## 系统接入自动上报（A16，可选）
+
+开启后 SDK 在应用启动完成（`ApplicationReadyEvent`）时，用 **onboarding 专用 AppKey/AppSecret** 对 `POST /openapi/onboarding/systems` 做 AppKey + HMAC-SHA256 签名上报（timestamp/nonce/canonical 规则与其它开放接口一致），body 为 `{systemCode,name,region,sdkVersion?,remark?}`，响应 `{applicationId,status}`：
+
+```yaml
+rbac-sdk:
+  system-name: CRM系统          # 默认空 -> 使用 system-code
+  region: region_a              # 默认空字符串
+  onboarding:
+    enabled: false              # 默认关闭
+    app-key: onboarding-app
+    app-secret: ${RBAC_SDK_ONBOARDING_SECRET}
+    report-on-startup: true     # 默认 true
+```
+
+- 上报**只创建待审核申请（PENDING），不直接开通系统**；平台超管在管理端审核通过后，页面显示分配的 appKey/appSecret，人工配置回业务系统 SDK（本轮 SDK 不自动拉取凭据）。
+- 上报在守护线程中执行：`enabled=false`/`report-on-startup=false`/凭据缺失时不发请求；任何失败（网络、401、5xx 等）只打 WARNING，**绝不影响业务系统启动**。
+- 与端点上报（`/openapi/sdk/endpoints/sync`）完全独立，互不影响。
+
 ## A 方案通配权限（`*` / `前缀:*`）
 
 v2.0 A 方案下 admin/superadmin 角色只授一条 `*` 权限，openapi user-permissions 可能下发 `*` 或 `前缀:*`（如 `order:*`）。SDK 权限判定统一使用内部 `RbacPermissionMatcher`（Java 8 兼容实现，与后端 `@perm`、前端 `hasPerm` 口径一致）：

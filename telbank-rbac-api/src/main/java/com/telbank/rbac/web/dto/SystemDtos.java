@@ -23,6 +23,9 @@ public final class SystemDtos {
                            Integer isPlatform,
                            String adminExternalUserId,
                            String adminName,
+                           String appKey,
+                           String appSecretMasked,
+                           String appSecret,
                            Instant createdAt,
                            Instant updatedAt) {
     }

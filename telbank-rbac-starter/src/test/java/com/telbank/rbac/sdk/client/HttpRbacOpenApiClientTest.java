@@ -151,6 +151,39 @@ class HttpRbacOpenApiClientTest {
     }
 
     @Test
+    void reportOnboardingUsesOnboardingKeyAndSignature() {
+        CapturingClient client = new CapturingClient(200,
+                "{\"code\":0,\"message\":\"ok\",\"data\":{\"applicationId\":123,"
+                        + "\"status\":\"PENDING\"}}");
+        RbacSdkProperties properties = properties("https://rbac.example.com");
+        properties.getOnboarding().setEnabled(true);
+        properties.getOnboarding().setAppKey("onboarding-app");
+        properties.getOnboarding().setAppSecret("onboarding-secret");
+        HttpRbacOpenApiClient api = api(properties, client);
+
+        OnboardingApplyResult result = api.reportOnboarding(new OnboardingApplyRequest("demo-sdk",
+                "Demo SDK 系统", "region_a", "1.0.0", null));
+
+        assertThat(result.getApplicationId()).isEqualTo(123L);
+        assertThat(result.getStatus()).isEqualTo("PENDING");
+
+        feign.Request request = client.lastRequest;
+        assertThat(request.httpMethod().name()).isEqualTo("POST");
+        assertThat(URI.create(request.url()).getPath()).isEqualTo("/openapi/onboarding/systems");
+        String body = new String(request.body(), UTF_8);
+        assertThat(body).contains("\"systemCode\":\"demo-sdk\"")
+                .contains("\"name\":\"Demo SDK 系统\"")
+                .contains("\"region\":\"region_a\"")
+                .contains("\"sdkVersion\":\"1.0.0\"");
+        // onboarding 专用 AppKey 签名（不是业务系统主 AppKey）
+        assertThat(header(request, RbacSigner.HEADER_APP_KEY)).isEqualTo("onboarding-app");
+        String expected = RbacSigner.computeSignature("onboarding-secret", "onboarding-app",
+                header(request, RbacSigner.HEADER_TIMESTAMP), header(request, RbacSigner.HEADER_NONCE),
+                "POST", "/openapi/onboarding/systems", "", request.body());
+        assertThat(header(request, RbacSigner.HEADER_SIGNATURE)).isEqualTo(expected);
+    }
+
+    @Test
     void malformedJsonFailsWithRemoteException() {
         CapturingClient client = new CapturingClient(200, "<html>bad gateway</html>");
         HttpRbacOpenApiClient api = api(properties("https://rbac.example.com"), client);

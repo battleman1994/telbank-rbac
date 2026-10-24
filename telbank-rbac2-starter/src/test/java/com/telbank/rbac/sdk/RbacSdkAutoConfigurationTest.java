@@ -16,6 +16,7 @@ import com.telbank.rbac.sdk.client.RbacClient;
 import com.telbank.rbac.sdk.client.RbacSigner;
 import com.telbank.rbac.sdk.filter.RbacPermissionFilter;
 import com.telbank.rbac.sdk.notify.RbacChangeSubscriber;
+import com.telbank.rbac.sdk.notify.RbacOnboardingReporter;
 import com.telbank.rbac.sdk.notify.RbacPollingFallback;
 import com.telbank.rbac.sdk.scan.RbacEndpointScanner;
 import com.telbank.rbac.sdk.web.RbacController;
@@ -51,6 +52,7 @@ class RbacSdkAutoConfigurationTest {
             assertThat(context).doesNotHaveBean(RbacEndpointScanner.class);
             assertThat(context).doesNotHaveBean(RbacPollingFallback.class);
             assertThat(context).doesNotHaveBean(RbacChangeSubscriber.class);
+            assertThat(context).doesNotHaveBean(RbacOnboardingReporter.class);
         });
     }
 
@@ -67,6 +69,7 @@ class RbacSdkAutoConfigurationTest {
             assertThat(context).hasSingleBean(RbacController.class);
             assertThat(context).hasSingleBean(RbacEndpointScanner.class);
             assertThat(context).hasSingleBean(RbacChangeSubscriber.class);
+            assertThat(context).hasSingleBean(RbacOnboardingReporter.class);
 
             FilterRegistrationBean<?> registration = context.getBean(
                     "rbacPermissionFilterRegistration", FilterRegistrationBean.class);

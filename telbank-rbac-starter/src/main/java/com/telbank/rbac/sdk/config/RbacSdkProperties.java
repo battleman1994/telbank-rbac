@@ -18,6 +18,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   app-key: crm
  *   app-secret: ${RBAC_SDK_APP_SECRET}
  *   app-version: 1.0.0
+ *   system-name: CRM系统              # 默认空 -> 使用 system-code
+ *   region: region_a                 # 默认空字符串
+ *   onboarding:                      # A16 系统接入自动上报（可选）
+ *     enabled: false
+ *     app-key: onboarding-app        # onboarding 专用 AppKey
+ *     app-secret: ${RBAC_SDK_ONBOARDING_SECRET}
+ *     report-on-startup: true
  *   endpoint:
  *     base-path: /rbac
  *   scan:
@@ -57,6 +64,15 @@ public class RbacSdkProperties {
     /** SDK 版本号，仅用于日志/User-Agent 标识。 */
     private String appVersion;
 
+    /** 系统名称；未配置（空）时默认使用 systemCode（系统接入自动上报时提交）。 */
+    private String systemName;
+
+    /** 所属区域（系统接入自动上报时提交，如 region_a）；未配置默认空字符串。 */
+    private String region;
+
+    /** 系统接入自动上报（A16，可选能力）。 */
+    private final Onboarding onboarding = new Onboarding();
+
     private final Endpoint endpoint = new Endpoint();
 
     private final Scan scan = new Scan();
@@ -83,6 +99,18 @@ public class RbacSdkProperties {
             platformBaseUrl = platformBaseUrl.substring(0, platformBaseUrl.length() - 1);
         }
         appVersion = appVersion == null ? "" : appVersion.trim();
+        // system-name 未配置时用 systemCode 兜底（系统接入自动上报 body.name）
+        systemName = systemName == null ? "" : systemName.trim();
+        if (systemName.isEmpty()) {
+            systemName = systemCode;
+        }
+        region = region == null ? "" : region.trim();
+        if (onboarding.getAppKey() != null) {
+            onboarding.setAppKey(onboarding.getAppKey().trim());
+        }
+        if (onboarding.getAppSecret() != null) {
+            onboarding.setAppSecret(onboarding.getAppSecret().trim());
+        }
 
         String basePath = endpoint.getBasePath();
         if (basePath == null || basePath.trim().isEmpty()) {
@@ -174,6 +202,26 @@ public class RbacSdkProperties {
         this.appVersion = appVersion;
     }
 
+    public String getSystemName() {
+        return systemName;
+    }
+
+    public void setSystemName(String systemName) {
+        this.systemName = systemName;
+    }
+
+    public String getRegion() {
+        return region;
+    }
+
+    public void setRegion(String region) {
+        this.region = region;
+    }
+
+    public Onboarding getOnboarding() {
+        return onboarding;
+    }
+
     public Endpoint getEndpoint() {
         return endpoint;
     }
@@ -192,6 +240,57 @@ public class RbacSdkProperties {
 
     public CodeGenerator getCodeGenerator() {
         return codeGenerator;
+    }
+
+    /**
+     * 系统接入自动上报（A16，可选）：enabled=true 时才需要 app-key/app-secret；配置不完整时
+     * 启动上报器只打 warning 并跳过，不影响业务系统启动。
+     */
+    public static class Onboarding {
+
+        /** 是否启用启动时自动上报系统接入申请，默认关闭。 */
+        private boolean enabled = false;
+
+        /** onboarding 专用 AppKey（由权限中心分配，与业务系统 AppKey 不同）。 */
+        private String appKey;
+
+        /** onboarding 专用 AppSecret，建议通过环境变量注入。 */
+        private String appSecret;
+
+        /** 是否在应用启动完成（ApplicationReadyEvent）后上报，默认 true。 */
+        private boolean reportOnStartup = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getAppKey() {
+            return appKey;
+        }
+
+        public void setAppKey(String appKey) {
+            this.appKey = appKey;
+        }
+
+        public String getAppSecret() {
+            return appSecret;
+        }
+
+        public void setAppSecret(String appSecret) {
+            this.appSecret = appSecret;
+        }
+
+        public boolean isReportOnStartup() {
+            return reportOnStartup;
+        }
+
+        public void setReportOnStartup(boolean reportOnStartup) {
+            this.reportOnStartup = reportOnStartup;
+        }
     }
 
     /** 自动注册的 {@code /rbac/me/*} 前缀。 */

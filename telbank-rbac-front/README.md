@@ -126,17 +126,34 @@ cd telbank-rbac-front && npm run dev
 - 无任何管理权限：布局显示「无管理权限」空态而非白屏。
 - **已移除「用户-系统开通」**：删除路由 `/user-systems`、页面、API 封装、菜单项与类型；系统访问权限完全由「用户-角色（有效角色）」推导。
 
-## 系统接入页（平台超管专属）
+## 系统接入页（平台超管专属，A16）
 
-- 列表列：系统编码 / 系统名称 / 区域 / 管理员账号 / 管理员姓名 / 状态 / 操作。
+页面为两个 Tab：
+
+### Tab1「业务系统」
+
+- 列表列：系统编码 / 系统名称 / 区域 / 管理员账号 / 管理员姓名 / **AppKey** / **AppSecret（掩码）** / 状态 / 操作（查看密钥 / 编辑 / 停用）。
+- AppKey 以等宽字体展示并支持一键复制；AppSecret 只展示后端返回的脱敏值（`appSecretMasked`）。
+- 「查看密钥」弹窗展示 AppKey 与脱敏 AppSecret；「重置密钥」暂未开放（按钮置灰提示）。
 - 新建 / 编辑表单必填：系统编码（编辑不可改）、系统名称、所属区域、**系统管理员账号（adminExternalUserId）**；可选：管理员姓名（adminName）；另有状态（启用/停用）。
-- 后端在接入时自动为管理员账号创建该系统默认 `admin` 角色并授权 `role:manage` 等管理权限码；前端只负责提交 `adminExternalUserId` / `adminName`。
+- 后端在接入时自动为管理员账号创建该系统默认 `admin` 角色并授权（A 方案为通配权限 `*`）；前端只负责提交 `adminExternalUserId` / `adminName`。
+- **手动新建成功后弹出结果弹窗**：展示系统 AppKey + 完整 AppSecret，并提示「完整密钥仅显示一次，请立即复制保存」；关闭后列表只展示掩码。
 - 请求模型（契约字段）：
-  - `POST /api/systems`：`{code,name,region,adminExternalUserId,adminName?,status?}`
+  - `GET /api/systems?keyword=&page=&size=`：`items[] = {id,code,name,region,status,adminExternalUserId?,adminName?,appKey?,appSecretMasked?,...}`
+  - `POST /api/systems`：`{code,name,region,adminExternalUserId,adminName?,status?}` → 响应额外返回一次 `appSecret`
   - `PUT /api/systems/{id}`：`{name,region,adminExternalUserId?,adminName?,status?}`
   - `DELETE /api/systems/{id}`：停用（status=0）
-  - `GET /api/systems?keyword=&page=&size=`：`items[] = {id,code,name,region,status,adminExternalUserId?,adminName?,...}`
-- `/api/systems/**` 仅平台超管可调用（后端 403 兜底）。
+
+### Tab2「接入申请」（SDK 自动上报审核）
+
+- SDK 启动后用 onboarding AppKey 上报 `POST /openapi/onboarding/systems`，权限中心生成待审核申请（`sys_system_application`，`system_code` 唯一，**同一系统只保留最新状态**，不展示历史）。
+- Tab 名称带**待审核数量 Badge**（`GET /api/system-applications?status=PENDING&size=1` 的 total）；顶部状态筛选：待审核 / 已通过 / 已驳回 / 全部 + 刷新。
+- 列表列：系统编码 / 系统名称 / 区域 / 来源 / SDK 版本 / 状态 / 申请时间 / 备注 / 审核信息 / 操作；表格无横向滚动，空态与错误重试齐全。
+- 待审核行操作：
+  - **审核**：弹窗展示申请信息（含上报 AppKey），表单必填「系统管理员账号」+ 可选「管理员姓名」→ `POST /api/system-applications/{id}/approve`；审核通过后弹结果弹窗展示新系统 AppKey + 完整 AppSecret（仅一次），并刷新申请列表、业务系统列表与 `admin-session`。
+  - **驳回**：弹窗必填驳回原因 → `POST /api/system-applications/{id}/reject`；成功后刷新列表。
+- 已通过显示「已开通（systemId=xx）」；已驳回在「审核信息」列展示驳回原因。
+- API：`listSystemApplications({status,page,size})`、`approveSystemApplication(id,{adminExternalUserId,adminName?})`、`rejectSystemApplication(id,{reason})`；query key 为 `['system-applications', status, page, size]`（Badge 使用 `['system-applications','PENDING',1,1]`，审核/驳回后按前缀统一失效）。
 
 ## 只查当前系统数据（前端审计）
 
@@ -218,12 +235,12 @@ telbank-rbac-front/
 vite v8.3.5 building client environment for production...
 ✓ 3255 modules transformed.
 dist/index.html                     0.60 kB │ gzip:   0.40 kB
-dist/assets/index-*.css             1.80 kB │ gzip:   0.84 kB
-dist/assets/index-*.js          1,399.10 kB │ gzip: 442.35 kB
+dist/assets/index-*.css             2.66 kB │ gzip:   1.08 kB
+dist/assets/index-*.js          1,417.16 kB │ gzip: 447.51 kB
 ✓ built in ~0.5s
 ```
 
-`npm run build` 总耗时约 3 秒（含 `tsc -b` 类型检查），`dist/` 总大小约 1.4 MB（JS gzip 约 442 kB）。
+`npm run build` 总耗时约 3 秒（含 `tsc -b` 类型检查），`dist/` 总大小约 1.5 MB（JS gzip 约 448 kB）。
 
 ## 已知限制 / 后续
 
@@ -249,3 +266,10 @@ dist/assets/index-*.js          1,399.10 kB │ gzip: 442.35 kB
   - `permissions=["role:*"]` 前缀通配账号：仅「角色管理 / 角色授权」可见；直接访问 `/permissions` 显示缺少 `permission:manage` 的 403。
   - 平台超管 `superadmin`：从 CRM 切到 ERP 后，权限树仅 ERP 权限（含 ERP 通配行）、角色列表为 ERP 角色、授权记录 roleId 为 ERP 角色；请求日志 100% 为 `systemId=2` + `X-System-Code=erp`，无 CRM 数据残留。
   - 请求审计：CRM 阶段所有权限相关查询均为 `systemId=1` + `X-System-Code=crm`；全程无跨系统 `systemId`、无空 systemId 的全系统查询（`/api/me`、`/api/me/systems` 为仅认证接口，按契约不带系统头）。
+- 系统接入页 A16 冒烟（mock 后端 + headless Chrome，零 console 错误）：
+  - Tabs「业务系统 / 接入申请」正常切换，接入申请 Tab Badge 显示待审核数量（2 → 审核后 1）。
+  - 业务系统列表展示 AppKey（等宽可复制）与 AppSecret 掩码；「查看密钥」弹窗展示 AppKey + 掩码，「重置密钥」置灰不可用。
+  - 手动新建系统后弹出结果弹窗，展示 `appKey` + 完整 `appSecret`（仅一次提示），关闭后列表新增该系统并只显示掩码。
+  - 审核弹窗必填校验（空提交提示「请输入系统管理员账号」）、通过后结果弹窗展示新系统 AppKey/完整 AppSecret，列表状态刷新为「已开通（systemId=4）」、Badge 数量递减。
+  - 驳回弹窗必填原因校验（空提交提示「请输入驳回原因」），驳回后「已驳回」筛选展示驳回原因。
+  - 两个 Tab 的表格 `scrollWidth === clientWidth`（无横向滚动）。

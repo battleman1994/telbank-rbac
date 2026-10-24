@@ -148,6 +148,38 @@ class HttpRbacOpenApiClientTest {
     }
 
     @Test
+    void reportOnboardingUsesOnboardingKeyAndSignature() {
+        RbacSdkProperties properties = properties("https://rbac.example.com");
+        properties.getOnboarding().setEnabled(true);
+        properties.getOnboarding().setAppKey("onboarding-app");
+        properties.getOnboarding().setAppSecret("onboarding-secret");
+        HttpFixture fixture = new HttpFixture(properties);
+        fixture.expectSuccess("{\"code\":0,\"message\":\"ok\",\"data\":{"
+                + "\"applicationId\":123,\"status\":\"PENDING\"}}");
+
+        OnboardingApplyResult result = fixture.api.reportOnboarding(new OnboardingApplyRequest(
+                "demo-sdk", "Demo SDK 系统", "region_a", "1.0.0", null));
+
+        assertThat(result.getApplicationId()).isEqualTo(123L);
+        assertThat(result.getStatus()).isEqualTo("PENDING");
+        CapturedRequest request = fixture.captured;
+        assertThat(request.method).isEqualTo(HttpMethod.POST);
+        assertThat(request.uri.getPath()).isEqualTo("/openapi/onboarding/systems");
+        String body = new String(request.body, java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(body).contains("\"systemCode\":\"demo-sdk\"")
+                .contains("\"name\":\"Demo SDK 系统\"")
+                .contains("\"region\":\"region_a\"")
+                .contains("\"sdkVersion\":\"1.0.0\"");
+        // onboarding 专用 AppKey 签名（不是业务系统主 AppKey）
+        assertThat(request.header(RbacSigner.HEADER_APP_KEY)).isEqualTo("onboarding-app");
+        String expected = RbacSigner.computeSignature("onboarding-secret", "onboarding-app",
+                request.header(RbacSigner.HEADER_TIMESTAMP), request.header(RbacSigner.HEADER_NONCE),
+                "POST", "/openapi/onboarding/systems", "", request.body);
+        assertThat(request.header(RbacSigner.HEADER_SIGNATURE)).isEqualTo(expected);
+        fixture.server.verify();
+    }
+
+    @Test
     void malformedJsonFailsWithRemoteException() {
         HttpFixture fixture = new HttpFixture(properties("https://rbac.example.com"));
         fixture.server.expect(fixture.captured)

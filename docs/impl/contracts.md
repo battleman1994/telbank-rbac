@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v2.4（2026-10-24）· 维护：Lead
-> 修订：v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v2.5（2026-10-24）· 维护：Lead
+> 修订：v2.5 A16 系统接入双通道（SDK onboarding 上报 + 超管审核单条最新状态，手动录入保留）+ A17 系统 appKey/appSecret 分配与展示；v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -58,6 +58,8 @@
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
 - 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。平台一键脚本（`start-all-macos.sh` / `start-all-linux.sh` / `start-all-windows.ps1`）的 `--temp-db` 会在临时库启动后自动执行。
 - `05_wildcard_permissions.sql`（v2.1）：业务系统 admin 角色与平台超管各只授一条 `*` 权限（删除 6 条短码与 `platform:admin`）。
+- `09_system_appkey.sql`（A17）：`sys_system` 增加 `app_key/app_secret`，回填 crm/erp 凭据；系统接入时分配。
+- `08_system_application.sql`（A16）：`sys_system_application`（system_code 唯一、status 0/1/2 最新状态、reviewed_*/system_id）。
 - `07_page_action_semantic_type.sql`（v2.4）：把历史页面元素样式 type（primary/danger/default）归一为语义类型 button/link 等。
 - `06_cleanup_admin_redundant_grants.sql`（v2.1 补充）：清理业务系统 `admin` 角色残留的 `order:*` 等冗余业务授权，使角色授权只剩唯一一条 `*`（公共权限 `is_public=1` 不属于角色授权，仍对所有登录用户生效）。
 - `04_system_isolation.sql`（v2.0）：删除 `sys_user_system`；`sys_system` 增加 `is_platform/admin_external_user_id/admin_name`；新增平台系统、`super-admin` 角色、`platform:admin` 权限、种子超管 `superadmin`；新增各业务系统短管理权限码与两个系统管理员演示账号。
@@ -109,12 +111,24 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/systems?keyword=&page=&size=` | 分页列表（仅业务系统，排除 platform），items = `{id,code,name,region,status,sort,remark,isPlatform,adminExternalUserId,adminName,createdAt,updatedAt}` |
-| POST | `/api/systems` | 必填 `{code,name,region,adminExternalUserId}`，可选 `adminName,status,sort,remark`；事务内自动创建默认 `admin` 角色 + 一条 `*` 权限 + 角色授权 + 管理员 `user_role` + 写入 `admin_*`；code 全局唯一（重复 409） |
+| GET | `/api/systems?keyword=&page=&size=` | 分页列表（仅业务系统，排除 platform），items = `{id,code,name,region,status,sort,remark,isPlatform,adminExternalUserId,adminName,appKey,appSecretMasked,createdAt,updatedAt}`；完整 appSecret 不在列表返回 |
+| POST | `/api/systems` | 必填 `{code,name,region,adminExternalUserId}`，可选 `adminName,status,sort,remark`；事务内自动创建默认 `admin` 角色 + 一条 `*` 权限 + 角色授权 + 管理员 `user_role` + 写入 `admin_*`，并分配 `appKey=code`、随机 `appSecret`；响应额外返回一次性完整 `appSecret`；code 全局唯一（重复 409） |
 | PUT | `/api/systems/{id}` | 必填 `{name,region}`，可选 `adminExternalUserId,adminName,status,sort,remark`；变更管理员时撤销旧管理员该 admin 角色授权并授权新管理员；code 不可改 |
 | DELETE | — | **v2.0 移除**：用 PUT `status=0` 停用 |
 
+
 > 非平台超管调用 → 403。系统接入必须录入系统管理员账号；新管理员登录后即可管理该系统的角色/权限。
+> 每个业务系统接入时分配 `appKey=code` 与随机 `appSecret`；列表仅返回 `appKey/appSecretMasked`，创建/审批通过响应一次性返回完整 `appSecret`。开放接口验签优先使用 DB 凭据（见 §4.1）。
+
+### 3.2.1 SDK 接入申请审核（A16，仅平台超管）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/system-applications?status=&page=&size=` | 分页申请单，status=`PENDING/APPROVED/REJECTED`（空=全部）；items=`SystemApplicationVO`：`{id,systemCode,name,region,source,appKey,sdkVersion,remark,status,rejectReason,reviewedBy,reviewedAt,systemId,createdAt}` |
+| POST | `/api/system-applications/{id}/approve` | body `{adminExternalUserId,adminName?}`；仅 PENDING；调用系统接入创建逻辑（admin 角色+`*`+管理员授权+appKey/appSecret），回填 `APPROVED/systemId/reviewed_*`；响应在 VO 上追加 **一次性** `appSecret`（`id` 与 `applicationId` 相同） |
+| POST | `/api/system-applications/{id}/reject` | body `{reason}`；仅 PENDING；回填 `REJECTED/rejectReason/reviewed_*`；返回 VO |
+
+> 同一 `system_code` 只保留一条申请记录（唯一键），状态原地更新、不保留历史；驳回后 SDK 重新上报会重置为 PENDING。非平台超管 403、重复审批 409、不存在 404。外部审批系统可直接复用 approve/reject API。
 
 ### 3.3 角色管理（按系统隔离）
 
@@ -210,6 +224,7 @@ appKey + "\n" + timestamp + "\n" + nonce + "\n" + HTTP_METHOD + "\n" + path + "\
 - `sortedQuery`：把**原始 query 串**按 `&` 切成片段（保留发送时的原始 `k=v` 字节，不做解码/重编码），按片段中 `=` 之前的原始 key 字符串升序排序（同一 key 保持出现顺序），再用 `&` 拼回；无 query 时为 `""`。这样 SDK 与 api 都只对「实际发送的原始串」重排，不存在两次 URL 编码差异。
 - `body`：原始请求体字节；GET 无 body 时对空串求 `sha256Hex("")`。
 - `X-Signature` = `HMAC-SHA256(appSecret, canonical)` 的小写 hex。
+- 服务端凭据解析：优先按 `sys_system.app_key` 查启用系统（A17），DB 命中即用其 `app_secret`；DB 无记录时才回退 `rbac.clients` 配置（兼容旧 demo）；系统停用/无 secret 直接 401。
 - 服务端校验：`appKey` 存在且其绑定的 `systemCode` 与请求中的 `systemCode` 一致；时间戳窗口 ±5 分钟；`nonce` 5 分钟内不可重复（Redis 实现，Redis 禁用时用 Caffeine 兜底）；签名常量时间比较。
 - 失败返回 401，`{"code":401,"message":"invalid signature"}`。
 
@@ -224,6 +239,7 @@ appKey + "\n" + timestamp + "\n" + nonce + "\n" + HTTP_METHOD + "\n" + path + "\
 | GET | `/openapi/sdk/connection?systemCode=` | — | `{"channel":"redis","region":"region_a","host":"127.0.0.1","port":6379,"password":"...","channelPrefix":"rbac:change:region_a:"}` |
 | POST | `/openapi/sdk/endpoints/sync` | `{"systemCode":"crm","endpoints":[{"method":"GET","path":"/api/order/list","candidateCode":"crm:order:list","source":"GENERATED"}]}` | `{"received":12,"created":10,"updated":2}` |
 | POST | `/openapi/approval/grant` | 见 §5 | `{"success":true,"grantId":123,"idempotent":false}` |
+| POST | `/openapi/onboarding/systems` | 见 §4.5 | `{"applicationId":7,"status":"PENDING"}` |
 
 映射表生成规则：`sys_permission` 中 `method` 与 `api_pattern` 均非空且 `status=1` 的记录，按 `system_id` 过滤后下发；`pattern` 为 Ant 风格（`**` 仅可结尾）。端点上报按 `(system_id, method, path)` 幂等 upsert，`candidateCode` 可为空。
 
@@ -240,6 +256,19 @@ appKey + "\n" + timestamp + "\n" + nonce + "\n" + HTTP_METHOD + "\n" + path + "\
 同一关系（用户+角色）重新授权会**更新原行**并覆盖 `source_approval_id`（契约 §9.1），数据模型无审批历史表；因此「新审批覆盖旧审批后，再回放更早的 approvalId」无法再幂等，属数据模型固有限制。同一 `approvalId` 的重复回调幂等必须成立（已实测）。
 
 ---
+
+### 4.5 系统接入上报（A16，onboarding 专用 AppKey）
+
+`POST /openapi/onboarding/systems`，使用独立 `rbac.onboarding.app-key/app-secret` 验签（同一 canonical 签名算法，但**不绑定 systemCode**，不要求系统已存在）：
+
+```json
+{"systemCode":"oms","name":"OMS系统","region":"region_a","sdkVersion":"1.0.0","remark":"SDK 启动自动上报"}
+```
+
+- 只创建/更新 `sys_system_application`，状态 `PENDING`，**不会直接创建系统**；
+- 同一 `systemCode` 只保留一条申请：PENDING 覆盖元数据；REJECTED 重新置 PENDING；APPROVED 幂等返回 `APPROVED`；
+- `sys_system` 已存在但无申请记录 → 409；
+- 校验失败 400；签名失败 401。
 
 ## 5. 审批回调（审批系统 → api）
 
@@ -404,6 +433,10 @@ rbac:
   approval:
     app-key: approval-system
     app-secret: ${RBAC_APPROVAL_SECRET:approval-dev-secret}
+  onboarding:
+    enabled: ${RBAC_ONBOARDING_ENABLED:true}
+    app-key: ${RBAC_ONBOARDING_APP_KEY:onboarding-app}
+    app-secret: ${RBAC_ONBOARDING_SECRET:onboarding-secret}
   regions:                 # 区域 Redis 连接（SDK 通过 /openapi/sdk/connection 获取）
     region_a:
       host: ${RBAC_REDIS_REGION_A_HOST:127.0.0.1}
@@ -418,13 +451,13 @@ rbac:
 
 ### 8.2 SDK `application.yml`（业务系统侧）
 
-见需求 §6.13，字段必须一一对应；`RbacSdkProperties` 用松散绑定。
+见需求 §6.13，字段必须一一对应；`RbacSdkProperties` 用松散绑定。A16 新增：`rbac-sdk.system-name`、`rbac-sdk.region`、`rbac-sdk.onboarding.{enabled,app-key,app-secret,report-on-startup}`（默认关闭；失败只 WARN，不影响业务启动）。
 
 ---
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10；A16（系统接入双通道 + 审核）= §3.2.1/§4.5；A17（系统 appKey/appSecret）= §3.2/§4.1。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -443,7 +476,7 @@ rbac:
 - 登录：`/login` 页面粘贴 JWT（外部认证系统签发；本地用 `scripts/gen-demo-jwt.sh` 生成），存 `localStorage["rbac.token"]`；请求头注入 `Authorization: Bearer`；当前系统存 `localStorage["rbac.systemCode"]`。
 - 系统上下文：登录后 GET `/api/me` → `/api/me/systems` → 选择 `currentSystemCode`（本地缓存命中否则第一条）→ 带 `X-System-Code` 拉 `/api/me/bootstrap`；所有管理端查询都带当前业务系统头；超管可切换所有业务系统并看到「系统接入」，系统管理员只能看到自己的系统。
 - 菜单 IA：`权限管理` 组（角色管理/角色授权/权限管理/资源管理/页面元素/用户授权/授权记录）+ 顶级「系统接入」（仅超管）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」与「到期提醒」菜单（接口仍保留）。
-- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管，含管理员账号录入）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效）、用户授权（含时效）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
+- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管）：业务系统 Tab（手动录入 + AppKey/掩码密钥展示/查看密钥）与接入申请 Tab（SDK 上报待审核，审核/驳回，一次性返回新系统凭据）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效）、用户授权（含时效）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
 - 状态：TanStack Query 管理服务端状态；Zustand 管理当前用户/系统/权限码集合；不使用 Axios，使用封装的 `request()`（原生 fetch）。
 - 必须 `npm run build` 通过（含 `tsc` 类型检查）。
 

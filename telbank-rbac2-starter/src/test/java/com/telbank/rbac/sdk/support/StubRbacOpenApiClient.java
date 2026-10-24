@@ -9,6 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.telbank.rbac.sdk.client.ConnectionInfo;
 import com.telbank.rbac.sdk.client.EndpointInfo;
 import com.telbank.rbac.sdk.client.MappingEntry;
+import com.telbank.rbac.sdk.client.OnboardingApplyRequest;
+import com.telbank.rbac.sdk.client.OnboardingApplyResult;
 import com.telbank.rbac.sdk.client.PageAction;
 import com.telbank.rbac.sdk.client.RbacOpenApiClient;
 import com.telbank.rbac.sdk.client.SystemInfo;
@@ -56,6 +58,14 @@ public class StubRbacOpenApiClient implements RbacOpenApiClient {
 
     public final AtomicInteger systemCalls = new AtomicInteger();
 
+    public final AtomicInteger onboardingCalls = new AtomicInteger();
+
+    public volatile OnboardingApplyRequest lastOnboardingRequest;
+
+    public volatile OnboardingApplyResult onboardingResult = new OnboardingApplyResult(1L, "PENDING");
+
+    public volatile RuntimeException failOnOnboarding;
+
     public volatile String lastExternalUserId;
 
     @Override
@@ -102,6 +112,16 @@ public class StubRbacOpenApiClient implements RbacOpenApiClient {
             throw failOnSync;
         }
         this.syncedEndpoints = new ArrayList<EndpointInfo>(endpoints);
+    }
+
+    @Override
+    public OnboardingApplyResult reportOnboarding(OnboardingApplyRequest request) {
+        onboardingCalls.incrementAndGet();
+        lastOnboardingRequest = request;
+        if (failOnOnboarding != null) {
+            throw failOnOnboarding;
+        }
+        return onboardingResult;
     }
 
     @Override

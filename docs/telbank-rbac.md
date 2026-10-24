@@ -2,7 +2,7 @@
 
 > 本文档为最终执行基线。所有技术栈和需求范围已拍板。权限中心为独立 JDK 21 进程；SDK 以 JDK 8 字节码编译，运行于业务系统后端；两者通过 HTTPS 和区域化 Redis Pub/Sub 通信，运行时完全隔离。业务系统前端只调业务系统后端或 SDK 自动注册的 `/rbac/me/*`，不直接访问权限中心。本文档不包含 OAuth2.0 服务间调用。
 >
-> **实现修订（2026-10-24）**：交付阶段确认的 15 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
+> **实现修订（2026-10-24）**：交付阶段确认的 17 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
 
 **工程名称**：`telbank-rbac` 权限管理系统（多系统 RBAC 权限管理平台）
 
@@ -1091,6 +1091,8 @@ interface AppState {
 | A8 | §2 / §5 未明确权限中心自身是否接入权限体系 | v1 曾实现为权限中心作为 `rbac` 系统自接入；**v2.0 已被 A11 取代并删除** | 方案 A（用户确认）→ A11 系统隔离重构；契约 v2.0 |
 | A9 | §3.2 SDK 仅面向 JDK 8 | 新增 **JDK 21 + Spring Boot 4.x SDK 变体** `telbank-rbac2-starter`：类名/包名/配置键/HTTP 协议与 JDK 8 版一致，同一业务系统二选一（同包名不可共存） | 供 JDK 21 + Boot 4 业务系统接入；契约 §0/§7.9 |
 | A10 | §3.1/§4.1 数据库迁移使用 Flyway | **移除 Flyway**（依赖 + 手动 `FlywayConfig`）；数据库改为手动 SQL：`telbank-rbac-api/src/main/resources/db/manual/*.sql`，由 `scripts/init-db.sh` 建库并按顺序导入；平台一键脚本 `--temp-db` 自动导入；后端启动前库表须已存在 | 用户确认不需要 Flyway；契约 §2、README §4/§9 |
+| A16 | §5.1/§5.2 系统接入方式 | **系统接入双通道**：平台超管手动录入（原 `POST /api/systems`）+ SDK 启动自动上报（`POST /openapi/onboarding/systems`，onboarding AppKey/HMAC）。上报只写 `sys_system_application`（system_code 唯一、仅保留最新状态 PENDING/APPROVED/REJECTED），超管审核通过后自动创建系统、默认 admin 角色、`*` 权限与管理员授权；驳回后可重新上报 | 用户确认；契约 v2.5 §3.2/§4.5 |
+| A17 | §5.1 系统接入凭据 | `sys_system` 增加 `app_key/app_secret`；手动接入与审核通过时自动分配（appKey=system code、appSecret 32 位随机），系统接入页展示 AppKey 与掩码 Secret，创建/审批响应一次性返回完整 secret；开放接口验签改为 DB 优先，YAML 仅兼容回退；`09` 迁移回填 crm/erp 凭据 | 用户要求；契约 v2.5 §3.2/§4.1 |
 | A15 | §5.7 页面元素管理 | **页面元素只维护元素标识**：`pageCode/code/text/type`（type=button/link/menu/icon/input 语义类型），不再维护样式/action/config；API 与 SDK 仍保留 action/config 兼容；`07` 迁移归一历史样式类型 | 用户要求；契约 v2.4 §3.8 |
 | A14 | §5.7 管理端菜单与页面布局 | 前端移除「到期提醒」菜单/路由/页面（后端 `/api/expiring-grants` 接口保留）；管理台布局改为占满 100% 视口、内容区独立滚动，表格宽度自适应，去除页面/表格横向滚动条 | 用户要求；README §11、前端 README |
 | A13 | §3.1/§4 持久层技术选型 | **JPA/Hibernate → MyBatis-Plus 3.5.17**（Boot4 starter + jsqlparser）：实体改 `@TableName/@TableId`、删除 Spring Data Repository、改 `BaseMapper` + 注解 SQL、MP `Page` 分页；数据库表结构/REST 契约不变 | 用户要求；契约 v2.2 §2、README §11 |

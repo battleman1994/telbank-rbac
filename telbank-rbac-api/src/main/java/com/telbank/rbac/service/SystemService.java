@@ -1,5 +1,6 @@
 package com.telbank.rbac.service;
 
+import java.security.SecureRandom;
 import java.util.List;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -39,6 +40,13 @@ public class SystemService {
     /** 系统接入时自动创建的管理角色编码。 */
     public static final String DEFAULT_ADMIN_ROLE_CODE = "admin";
     public static final String DEFAULT_ADMIN_ROLE_NAME = "系统管理员";
+
+    /** 接入时自动分配的 appSecret 长度（字母数字，SecureRandom）。 */
+    public static final int APP_SECRET_LENGTH = 32;
+
+    private static final char[] APP_SECRET_ALPHABET =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".toCharArray();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SysSystemMapper systemRepository;
     private final SysRoleMapper roleRepository;
@@ -87,6 +95,11 @@ public class SystemService {
         String adminExternalUserId = request.adminExternalUserId().trim();
         system.setAdminExternalUserId(adminExternalUserId);
         system.setAdminName(blankToNull(request.adminName()));
+        // A17：系统接入时自动分配开放接口凭据（appKey=code 全局唯一，appSecret 随机生成）
+        String appKey = code;
+        String appSecret = generateAppSecret();
+        system.setAppKey(appKey);
+        system.setAppSecret(appSecret);
         SysSystem savedSystem = systemRepository.save(system);
 
         SysRole adminRole = new SysRole();
@@ -126,7 +139,7 @@ public class SystemService {
         userRole.setGrantReason("系统管理员");
         userRole.setStatus(RbacConstants.STATUS_ENABLED);
         userRoleRepository.save(userRole);
-        return toVO(reload(savedSystem));
+        return toVO(reload(savedSystem), appSecret);
     }
 
     /**
@@ -206,10 +219,39 @@ public class SystemService {
     }
 
     public static SystemVO toVO(SysSystem system) {
+        return toVO(system, null);
+    }
+
+    /**
+     * @param fullAppSecret 仅创建/审批通过响应传入完整 secret；列表/详情为 null（不泄露）
+     */
+    private static SystemVO toVO(SysSystem system, String fullAppSecret) {
         return new SystemVO(system.getId(), system.getCode(), system.getName(), system.getRegion(),
                 system.getStatus(), system.getSort(), system.getRemark(), system.getIsPlatform(),
                 system.getAdminExternalUserId(), system.getAdminName(),
+                system.getAppKey(), maskSecret(system.getAppSecret()), fullAppSecret,
                 TimeUtils.toInstant(system.getCreatedAt()), TimeUtils.toInstant(system.getUpdatedAt()));
+    }
+
+    /** appSecret 掩码：前 4 + **** + 后 4；过短统一 ****。 */
+    public static String maskSecret(String appSecret) {
+        if (appSecret == null || appSecret.isBlank()) {
+            return null;
+        }
+        if (appSecret.length() <= 8) {
+            return "****";
+        }
+        return appSecret.substring(0, 4) + "****"
+                + appSecret.substring(appSecret.length() - 4);
+    }
+
+    /** 32 位字母数字随机 secret（SecureRandom）。 */
+    public static String generateAppSecret() {
+        StringBuilder builder = new StringBuilder(APP_SECRET_LENGTH);
+        for (int i = 0; i < APP_SECRET_LENGTH; i++) {
+            builder.append(APP_SECRET_ALPHABET[SECURE_RANDOM.nextInt(APP_SECRET_ALPHABET.length)]);
+        }
+        return builder.toString();
     }
 
     /** 重新读取，拿到 DB 维护的 created_at/updated_at。 */

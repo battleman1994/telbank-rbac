@@ -2,6 +2,7 @@ package com.telbank.rbac.security;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,8 @@ import jakarta.servlet.http.HttpServletResponse;
  *
  * <p>校验顺序：请求头完整 → 时间戳窗口（±5 分钟）→ AppKey 存在且密钥已配置
  * → 签名常量时间比较 → nonce 防重放 → appKey 绑定 systemCode 一致。
+ * 审批回调（/openapi/approval/**）与 SDK 系统接入上报（/openapi/onboarding/**）使用各自
+ * 独立的 AppKey/AppSecret，且不做 systemCode 绑定。
  * 任一失败返回 401 信封 {@code {"code":401,"message":"invalid signature","data":null}}。</p>
  */
 public class AppKeyAuthFilter extends OncePerRequestFilter {
@@ -38,11 +41,19 @@ public class AppKeyAuthFilter extends OncePerRequestFilter {
     private final JsonMapper jsonMapper;
     private final RbacProperties properties;
     private final NonceStore nonceStore;
+    /** DB appKey 注册表（可为 null：仅使用 YAML 配置，兼容单测/旧调用）。 */
+    private final SystemAppKeyRegistry appKeyRegistry;
 
     public AppKeyAuthFilter(JsonMapper jsonMapper, RbacProperties properties, NonceStore nonceStore) {
+        this(jsonMapper, properties, nonceStore, null);
+    }
+
+    public AppKeyAuthFilter(JsonMapper jsonMapper, RbacProperties properties, NonceStore nonceStore,
+                            SystemAppKeyRegistry appKeyRegistry) {
         this.jsonMapper = jsonMapper;
         this.properties = properties;
         this.nonceStore = nonceStore;
+        this.appKeyRegistry = appKeyRegistry;
     }
 
     @Override
@@ -100,6 +111,7 @@ public class AppKeyAuthFilter extends OncePerRequestFilter {
         }
 
         boolean approval = path.startsWith(RbacConstants.OPENAPI_APPROVAL_PATH_PREFIX);
+        boolean onboarding = !approval && path.startsWith(RbacConstants.OPENAPI_ONBOARDING_PATH_PREFIX);
         String appSecret;
         String boundSystemCode = null;
         if (approval) {
@@ -108,10 +120,35 @@ public class AppKeyAuthFilter extends OncePerRequestFilter {
                 throw new AuthFailure("unknown appKey");
             }
             appSecret = trimToNull(approvalProperties.getAppSecret());
+        } else if (onboarding) {
+            // 系统接入上报：独立 AppKey/AppSecret，不做 systemCode 绑定
+            RbacProperties.Onboarding onboardingProperties = properties.getOnboarding();
+            if (!onboardingProperties.isEnabled()) {
+                throw new AuthFailure("onboarding disabled");
+            }
+            if (onboardingProperties.getAppKey() == null
+                    || !onboardingProperties.getAppKey().equals(appKey)) {
+                throw new AuthFailure("unknown appKey");
+            }
+            appSecret = trimToNull(onboardingProperties.getAppSecret());
         } else {
-            RbacProperties.Client client = findClient(appKey);
-            appSecret = trimToNull(client.getAppSecret());
-            boundSystemCode = client.getSystemCode();
+            // A17：优先使用数据库 sys_system.app_key/app_secret（系统接入时分配）；
+            // YAML rbac.clients 作为历史 demo 的 fallback。
+            Optional<SystemAppKeyRegistry.AppKeyCredential> dbCredential = appKeyRegistry == null
+                    ? Optional.empty()
+                    : appKeyRegistry.resolve(appKey);
+            if (dbCredential.isPresent()) {
+                // DB 已有该 appKey：以 DB 为准；停用/未配置 secret 直接拒绝，不回退 YAML
+                if (!dbCredential.get().enabled() || trimToNull(dbCredential.get().appSecret()) == null) {
+                    throw new AuthFailure("appKey not active");
+                }
+                appSecret = trimToNull(dbCredential.get().appSecret());
+                boundSystemCode = dbCredential.get().systemCode();
+            } else {
+                RbacProperties.Client client = findClient(appKey);
+                appSecret = trimToNull(client.getAppSecret());
+                boundSystemCode = client.getSystemCode();
+            }
         }
         if (appSecret == null) {
             throw new AuthFailure("appSecret not configured");
@@ -129,13 +166,14 @@ public class AppKeyAuthFilter extends OncePerRequestFilter {
             throw new AuthFailure("nonce replayed");
         }
 
-        if (!approval) {
+        if (!approval && !onboarding) {
             String requestSystemCode = extractSystemCode(request, body);
             if (requestSystemCode != null && !requestSystemCode.equals(boundSystemCode)) {
                 throw new AuthFailure("appKey does not match systemCode");
             }
         }
-        return new OpenApiCaller(appKey, approval ? null : boundSystemCode, approval);
+        return new OpenApiCaller(appKey, (approval || onboarding) ? null : boundSystemCode,
+                approval, onboarding);
     }
 
     private RbacProperties.Client findClient(String appKey) {

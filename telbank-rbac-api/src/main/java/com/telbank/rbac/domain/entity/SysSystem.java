@@ -44,6 +44,14 @@ public class SysSystem extends BaseEntity {
     @TableField(value = "admin_name", updateStrategy = FieldStrategy.ALWAYS)
     private String adminName;
 
+    /** 开放接口 AppKey（业务系统接入时分配，全局唯一；platform 为 null）。 */
+    @TableField(value = "app_key", updateStrategy = FieldStrategy.ALWAYS)
+    private String appKey;
+
+    /** 开放接口 HMAC Secret（仅创建/审批响应返回一次；列表只返回掩码）。 */
+    @TableField(value = "app_secret", updateStrategy = FieldStrategy.ALWAYS)
+    private String appSecret;
+
     public String getCode() {
         return code;
     }
@@ -106,6 +114,22 @@ public class SysSystem extends BaseEntity {
 
     public void setAdminExternalUserId(String adminExternalUserId) {
         this.adminExternalUserId = adminExternalUserId;
+    }
+
+    public String getAppKey() {
+        return appKey;
+    }
+
+    public void setAppKey(String appKey) {
+        this.appKey = appKey;
+    }
+
+    public String getAppSecret() {
+        return appSecret;
+    }
+
+    public void setAppSecret(String appSecret) {
+        this.appSecret = appSecret;
     }
 
     public String getAdminName() {

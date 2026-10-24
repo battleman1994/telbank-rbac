@@ -48,6 +48,8 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
 
     static final String PATH_USER_SYSTEMS = "/openapi/sdk/user-systems";
 
+    static final String PATH_ONBOARDING_SYSTEMS = "/openapi/onboarding/systems";
+
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
 
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(8);
@@ -160,16 +162,44 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
         return systems == null ? Collections.<SystemInfo>emptyList() : systems;
     }
 
+    @Override
+    public OnboardingApplyResult reportOnboarding(OnboardingApplyRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("系统接入上报请求不能为空");
+        }
+        RbacSdkProperties.Onboarding onboarding = properties.getOnboarding();
+        String onboardingAppKey = onboarding == null ? null : onboarding.getAppKey();
+        String onboardingAppSecret = onboarding == null ? null : onboarding.getAppSecret();
+        if (isBlank(onboardingAppKey) || isBlank(onboardingAppSecret)) {
+            throw new IllegalArgumentException(
+                    "缺少 rbac-sdk.onboarding.app-key / rbac-sdk.onboarding.app-secret");
+        }
+        byte[] body;
+        try {
+            body = objectMapper.writeValueAsBytes(request);
+        } catch (RuntimeException e) {
+            throw new RbacRemoteException("系统接入上报请求序列化失败", e);
+        }
+        // 使用 onboarding 专用 AppKey/AppSecret 签名，与业务系统主 AppKey 隔离
+        return execute("POST", PATH_ONBOARDING_SYSTEMS, "", body, OnboardingApplyResult.class,
+                new RbacSigner(onboardingAppKey, onboardingAppSecret));
+    }
+
     private <T> T get(String path, Map<String, String> query, Type responseType) {
         return execute("GET", path, RbacSigner.buildQuery(query), null, responseType);
     }
 
-    @SuppressWarnings("unchecked")
     private <T> T execute(String httpMethod, String path, String rawQuery, byte[] body, Type responseType) {
+        return execute(httpMethod, path, rawQuery, body, responseType, signer);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T execute(String httpMethod, String path, String rawQuery, byte[] body, Type responseType,
+            RbacSigner requestSigner) {
         String method = httpMethod.toUpperCase(Locale.ROOT);
         String requestUrl = baseUrl + path + (rawQuery.isEmpty() ? "" : "?" + rawQuery);
         String signingPath = basePath + path;
-        Map<String, String> signHeaders = signer.signHeaders(method, signingPath, rawQuery, body);
+        Map<String, String> signHeaders = requestSigner.signHeaders(method, signingPath, rawQuery, body);
 
         RawResponse rawResponse;
         try {

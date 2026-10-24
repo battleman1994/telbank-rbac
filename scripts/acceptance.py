@@ -33,6 +33,8 @@ JWT_SECRET = os.environ.get("RBAC_JWT_HS256_SECRET", "telbank-rbac-demo-secret-p
 JWT_ISSUER = os.environ.get("RBAC_JWT_ISSUER", "demo-auth")
 APPROVAL_APP_KEY = os.environ.get("RBAC_APPROVAL_APP_KEY", "approval-system")
 APPROVAL_SECRET = os.environ.get("RBAC_APPROVAL_SECRET", "approval-dev-secret")
+ONBOARDING_APP_KEY = os.environ.get("RBAC_ONBOARDING_APP_KEY", "onboarding-app")
+ONBOARDING_SECRET = os.environ.get("RBAC_ONBOARDING_SECRET", "onboarding-secret")
 CLIENT_SECRETS = {
     "crm": os.environ.get("RBAC_CRM_SECRET", "crm-dev-secret"),
     "erp": os.environ.get("RBAC_ERP_SECRET", "erp-dev-secret"),
@@ -162,6 +164,17 @@ def openapi(method, path, query="", body=None, system="crm", app_key=None, secre
     url = BASE_URL.rstrip("/") + path + (("?" + query) if query else "")
     req = urllib.request.Request(url, data=raw if body is not None else None,
                                  headers=headers, method=method.upper())
+    return _send(req)
+
+
+def onboarding_report(payload, secret=None):
+    """POST /openapi/onboarding/systems：onboarding 专用 AppKey+HMAC。"""
+    raw = json.dumps(payload).encode("utf-8")
+    headers = signed_headers(ONBOARDING_APP_KEY, secret or ONBOARDING_SECRET,
+                             "POST", "/openapi/onboarding/systems", "", raw)
+    headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(BASE_URL.rstrip("/") + "/openapi/onboarding/systems",
+                                 data=raw, headers=headers, method="POST")
     return _send(req)
 
 
@@ -605,7 +618,8 @@ def _has_code(user, code):
     status, body = openapi("GET", "/openapi/sdk/user-permissions",
                            "systemCode=crm&externalUserId=" + user, system="crm")
     codes = set(p.get("code") for p in (data_of((status, body)) or {}).get("permissions", []))
-    return code in codes
+    # 系统管理员/超管只有通配 '*'，等价于拥有任意权限码
+    return code in codes or "*" in codes
 
 
 # --------------------------------------------------------------------------
@@ -667,11 +681,102 @@ def test_sdk_data_prereq():
           any(m.get("code") == "order:delete" for m in erp), erp)
 
 
+def test_sdk_onboarding():
+    section("§9.16b SDK 自动上报系统接入 + 超管审核")
+    suffix = str(int(time.time()))[-6:]
+    code = "sdk" + suffix
+    admin = "sdk-admin-" + suffix
+    payload = {
+        "systemCode": code,
+        "name": "SDK自动接入系统" + suffix,
+        "region": "region_a",
+        "sdkVersion": "1.0.0",
+        "remark": "acceptance sdk onboarding",
+    }
+
+    status, body = onboarding_report(payload, secret="wrong-secret")
+    check("SDK 上报错误签名 → 401", status == 401, status)
+    status, body = onboarding_report(payload)
+    app = data_of((status, body)) or {}
+    app_id = app.get("applicationId")
+    check("SDK 上报系统接入 → PENDING 申请", status == 200 and app.get("status") == "PENDING" and app_id,
+          (status, body))
+
+    status, body = onboarding_report(payload)
+    app2 = data_of((status, body)) or {}
+    check("同系统重复上报幂等（同 applicationId / PENDING）",
+          app2.get("applicationId") == app_id and app2.get("status") == "PENDING", app2)
+
+    status, body = http("GET", "/api/system-applications?status=PENDING&page=1&size=100",
+                        token=token_of(CRM_ADMIN), system=CRM)
+    check("非平台超管查看接入申请 → 403", status == 403, status)
+
+    status, body = http("GET", "/api/system-applications?status=PENDING&page=1&size=100",
+                        token=token_of(SUPER_ADMIN), system=CRM)
+    apps = (data_of((status, body)) or {}).get("items", [])
+    target = next((a for a in apps if a.get("id") == app_id), None)
+    check("平台超管可见待审核申请", status == 200 and target is not None,
+          [a.get("id") for a in apps])
+
+    status, body = http("POST", "/api/system-applications/%s/approve" % app_id,
+                        token=token_of(SUPER_ADMIN), system=CRM,
+                        body={"adminExternalUserId": admin, "adminName": "SDK测试管理员"})
+    approved = data_of((status, body)) or {}
+    check("审核通过自动创建系统并返回 appKey/appSecret",
+          status == 200 and approved.get("status") == "APPROVED"
+          and approved.get("systemId") and approved.get("appKey") == code
+          and len(approved.get("appSecret") or "") == 32,
+          (status, approved))
+
+    status, body = onboarding_report(payload)
+    check("已通过系统再次上报 → APPROVED（幂等）",
+          status == 200 and (data_of((status, body)) or {}).get("status") == "APPROVED", body)
+
+    status, _ = http("POST", "/api/system-applications/%s/approve" % app_id,
+                     token=token_of(SUPER_ADMIN), system=CRM,
+                     body={"adminExternalUserId": admin})
+    check("重复审核 → 409", status == 409, status)
+
+    new_admin_token = token_of(admin)
+    status, body = http("GET", "/api/me/systems", token=new_admin_token)
+    system_codes = [x.get("code") for x in (data_of((status, body)) or [])]
+    check("审核通过后的新管理员可访问新系统", status == 200 and code in system_codes, system_codes)
+    status, body = http("GET", "/api/me/bootstrap", token=new_admin_token, system=code)
+    perms = (data_of((status, body)) or {}).get("permissions") or []
+    check("新系统管理员自动获得通配 '*'", status == 200 and "*" in perms, perms)
+
+    # 驳回 → 重报恢复 PENDING
+    reject_code = "sdkreject" + suffix
+    reject_payload = {"systemCode": reject_code, "name": "SDK驳回系统" + suffix,
+                      "region": "region_a", "sdkVersion": "1.0.0", "remark": "reject flow"}
+    status, body = onboarding_report(reject_payload)
+    reject_app_id = (data_of((status, body)) or {}).get("applicationId")
+    status, body = http("POST", "/api/system-applications/%s/reject" % reject_app_id,
+                        token=token_of(SUPER_ADMIN), system=CRM,
+                        body={"reason": "验收驳回"})
+    rejected = data_of((status, body)) or {}
+    check("审核驳回记录最新状态/原因", status == 200 and rejected.get("status") == "REJECTED"
+          and rejected.get("rejectReason") == "验收驳回", (status, rejected))
+    status, body = onboarding_report(reject_payload)
+    reapplied = data_of((status, body)) or {}
+    check("驳回后 SDK 重报恢复 PENDING", status == 200 and reapplied.get("status") == "PENDING",
+          (status, reapplied))
+
+    status, body = http("GET", "/api/systems?keyword=%s&page=1&size=20" % code,
+                        token=token_of(SUPER_ADMIN), system=CRM)
+    systems = (data_of((status, body)) or {}).get("items", [])
+    created = next((x for x in systems if x.get("code") == code), None)
+    check("系统列表可见审核创建的系统及 appKey/掩码",
+          status == 200 and created is not None and created.get("appKey") == code
+          and created.get("appSecretMasked"), created)
+
+
 TESTS = [
     ("9.14", test_auth),
     ("9.15", test_system_isolation),
     ("9.1", test_multi_system),
     ("9.16", test_system_onboarding),
+    ("9.16b", test_sdk_onboarding),
     ("9.2", test_permission_model),
     ("9.7", test_public_and_platform_admin),
     ("9.5", test_page_actions),

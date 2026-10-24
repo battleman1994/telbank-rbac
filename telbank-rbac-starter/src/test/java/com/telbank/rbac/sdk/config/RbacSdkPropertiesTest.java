@@ -26,6 +26,12 @@ class RbacSdkPropertiesTest {
         source.put("rbac-sdk.app-key", "crm");
         source.put("rbac-sdk.app-secret", "crm-dev-secret");
         source.put("rbac-sdk.app-version", "1.0.0");
+        source.put("rbac-sdk.system-name", "CRM系统");
+        source.put("rbac-sdk.region", "region_a");
+        source.put("rbac-sdk.onboarding.enabled", "true");
+        source.put("rbac-sdk.onboarding.app-key", "onboarding-app");
+        source.put("rbac-sdk.onboarding.app-secret", "onboarding-secret");
+        source.put("rbac-sdk.onboarding.report-on-startup", "false");
         source.put("rbac-sdk.endpoint.base-path", "/custom-rbac/");
         source.put("rbac-sdk.scan.base-packages", "com.telbank.crm");
         source.put("rbac-sdk.scan.report-on-startup", "false");
@@ -47,6 +53,12 @@ class RbacSdkPropertiesTest {
         assertThat(properties.getAppKey()).isEqualTo("crm");
         assertThat(properties.getAppSecret()).isEqualTo("crm-dev-secret");
         assertThat(properties.getAppVersion()).isEqualTo("1.0.0");
+        assertThat(properties.getSystemName()).isEqualTo("CRM系统");
+        assertThat(properties.getRegion()).isEqualTo("region_a");
+        assertThat(properties.getOnboarding().isEnabled()).isTrue();
+        assertThat(properties.getOnboarding().getAppKey()).isEqualTo("onboarding-app");
+        assertThat(properties.getOnboarding().getAppSecret()).isEqualTo("onboarding-secret");
+        assertThat(properties.getOnboarding().isReportOnStartup()).isFalse();
         assertThat(properties.getEndpoint().getBasePath()).isEqualTo("/custom-rbac");
         assertThat(properties.getScan().getBasePackages()).containsExactly("com.telbank.crm");
         assertThat(properties.getScan().isReportOnStartup()).isFalse();
@@ -75,6 +87,24 @@ class RbacSdkPropertiesTest {
         assertThat(properties.getCache().getFallbackPollIntervalMillis()).isEqualTo(300_000L);
         assertThat(properties.getCodeGenerator().getPattern())
                 .isEqualTo("{systemCode}:{resource}:{action}");
+        // A16 系统接入自动上报默认关闭；enabled=true 时才需要 onboarding app-key/secret
+        assertThat(properties.getOnboarding().isEnabled()).isFalse();
+        assertThat(properties.getOnboarding().isReportOnStartup()).isTrue();
+        assertThat(properties.getSystemName()).isNull();
+        assertThat(properties.getRegion()).isNull();
+    }
+
+    @Test
+    void validateDefaultsSystemNameToSystemCodeAndRegionToEmpty() {
+        RbacSdkProperties properties = new RbacSdkProperties();
+        properties.setSystemCode("crm");
+        properties.setPlatformBaseUrl("https://rbac.example.com");
+        properties.setAppKey("crm");
+        properties.setAppSecret("secret");
+        properties.validate();
+
+        assertThat(properties.getSystemName()).isEqualTo("crm");
+        assertThat(properties.getRegion()).isEmpty();
     }
 
     @Test

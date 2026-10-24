@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   security.jwt: {mode, jwk-set-uri, issuer, hs256-secret}
  *   clients: [{app-key, system-code, app-secret}]
  *   approval: {app-key, app-secret}
+ *   onboarding: {enabled, app-key, app-secret}
  *   regions: {region_a: {host, port, password, channel-prefix}}
  *   redis.enabled: true|false
  *   expiry-scan-cron: "0 * * * * *"
@@ -30,6 +31,9 @@ public class RbacProperties {
 
     /** 审批系统回调使用的独立 AppKey/AppSecret。 */
     private final Approval approval = new Approval();
+
+    /** SDK 系统接入上报使用的独立 AppKey/AppSecret（不绑定 systemCode）。 */
+    private final Onboarding onboarding = new Onboarding();
 
     /** 区域 -> Redis 连接配置，用于发布变更通知与给 SDK 下发连接信息。 */
     private Map<String, Region> regions = new LinkedHashMap<>();
@@ -56,6 +60,10 @@ public class RbacProperties {
 
     public Approval getApproval() {
         return approval;
+    }
+
+    public Onboarding getOnboarding() {
+        return onboarding;
     }
 
     public Map<String, Region> getRegions() {
@@ -169,6 +177,37 @@ public class RbacProperties {
 
         private String appKey = "approval-system";
         private String appSecret = "";
+
+        public String getAppKey() {
+            return appKey;
+        }
+
+        public void setAppKey(String appKey) {
+            this.appKey = appKey;
+        }
+
+        public String getAppSecret() {
+            return appSecret;
+        }
+
+        public void setAppSecret(String appSecret) {
+            this.appSecret = appSecret;
+        }
+    }
+
+    public static class Onboarding {
+
+        private boolean enabled = true;
+        private String appKey = "onboarding-app";
+        private String appSecret = "";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
 
         public String getAppKey() {
             return appKey;

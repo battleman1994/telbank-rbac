@@ -22,6 +22,7 @@ import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysSdkEndpoint;
+import com.telbank.rbac.domain.entity.SysSystemApplication;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.entity.SysUserRole;
 import com.telbank.rbac.domain.mapper.SysPageActionMapper;
@@ -29,6 +30,7 @@ import com.telbank.rbac.domain.mapper.SysPermissionMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysSdkEndpointMapper;
+import com.telbank.rbac.domain.mapper.SysSystemApplicationMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 
@@ -48,6 +50,7 @@ class MapperContractTest {
         assertTableName(SysRolePermission.class, "sys_role_permission");
         assertTableName(SysPageAction.class, "sys_page_action");
         assertTableName(SysSdkEndpoint.class, "sys_sdk_endpoint");
+        assertTableName(SysSystemApplication.class, "sys_system_application");
     }
 
     @Test
@@ -65,6 +68,7 @@ class MapperContractTest {
         assertNoJakartaPersistence(SysRolePermission.class);
         assertNoJakartaPersistence(SysPageAction.class);
         assertNoJakartaPersistence(SysSdkEndpoint.class);
+        assertNoJakartaPersistence(SysSystemApplication.class);
     }
 
     @Test
@@ -83,7 +87,8 @@ class MapperContractTest {
     void mappersExtendBaseMapper() {
         Stream.of(SysSystemMapper.class, SysRoleMapper.class, SysPermissionMapper.class,
                         SysUserRoleMapper.class, SysRolePermissionMapper.class,
-                        SysPageActionMapper.class, SysSdkEndpointMapper.class)
+                        SysPageActionMapper.class, SysSdkEndpointMapper.class,
+                        SysSystemApplicationMapper.class)
                 .forEach(mapper -> assertThat(BaseMapper.class)
                         .as(mapper.getSimpleName() + " extends BaseMapper")
                         .isAssignableFrom(mapper));
@@ -129,6 +134,14 @@ class MapperContractTest {
                 .contains("status = 0", "valid_until <= NOW()", "auto_revoke = 1");
         assertThat(updateSql(SysRolePermissionMapper.class, "revokeExpired"))
                 .contains("status = 0", "valid_until <= NOW()", "auto_revoke = 1");
+    }
+
+    @Test
+    void systemApplicationSearchFiltersByStatus() throws NoSuchMethodException {
+        String applicationSearch = selectSql(SysSystemApplicationMapper.class, "search",
+                Page.class, Integer.class);
+        assertThat(applicationSearch)
+                .contains("sys_system_application", "status = #{status}", "ORDER BY id DESC");
     }
 
     @Test

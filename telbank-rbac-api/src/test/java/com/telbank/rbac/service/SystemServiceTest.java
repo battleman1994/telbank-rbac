@@ -29,8 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 系统接入（契约 §3.2）：创建系统时自动创建默认 admin 角色 + 6 个短权限码 + 授权 + 管理员 user_role；
- * 更新系统可更换管理员；平台系统不可通过接口修改。
+ * 系统接入（契约 §3.2/A17）：创建系统时自动创建默认 admin 角色 + 一条通配权限 {@code *} + 授权 +
+ * 管理员 user_role，并分配 appKey=code / 随机 appSecret；更新系统可更换管理员；平台系统不可通过接口修改。
  */
 class SystemServiceTest {
 
@@ -110,6 +110,14 @@ class SystemServiceTest {
         assertThat(vo.isPlatform()).isEqualTo(0);
         assertThat(vo.adminExternalUserId()).isEqualTo("acme-admin-001");
         assertThat(vo.adminName()).isEqualTo("Acme管理员");
+        // A17：接入时自动分配 appKey=code、appSecret 随机 32 位；仅创建响应返回完整 secret
+        assertThat(vo.appKey()).isEqualTo("acme");
+        assertThat(vo.appSecret()).hasSize(SystemService.APP_SECRET_LENGTH);
+        assertThat(vo.appSecretMasked()).isEqualTo(
+                vo.appSecret().substring(0, 4) + "****" + vo.appSecret().substring(28));
+        SysSystem persistedSystem = systems.get(0);
+        assertThat(persistedSystem.getAppKey()).isEqualTo("acme");
+        assertThat(persistedSystem.getAppSecret()).isEqualTo(vo.appSecret());
 
         assertThat(roles).hasSize(1);
         SysRole adminRole = roles.get(0);
@@ -168,6 +176,8 @@ class SystemServiceTest {
         assertThat(vo.sort()).isEqualTo(5);
         assertThat(vo.adminExternalUserId()).isEqualTo("new-admin");
         assertThat(vo.adminName()).isEqualTo("新管理员");
+        // 更新响应不再返回完整 secret
+        assertThat(vo.appSecret()).isNull();
         assertThat(userRoles).hasSize(2);
         assertThat(userRoles).filteredOn(relation -> "old-admin".equals(relation.getExternalUserId()))
                 .singleElement()
@@ -200,6 +210,9 @@ class SystemServiceTest {
         assertThat(vo.adminExternalUserId()).isEqualTo("acme-admin-001");
         assertThat(vo.adminName()).isEqualTo("Acme管理员");
         assertThat(vo.isPlatform()).isZero();
+        assertThat(vo.appKey()).isNull();
+        assertThat(vo.appSecretMasked()).isNull();
+        assertThat(vo.appSecret()).isNull();
     }
 
     // ------------------------------------------------------------------

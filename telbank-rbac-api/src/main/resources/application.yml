@@ -36,6 +36,10 @@ rbac:
   approval:
     app-key: approval-system
     app-secret: ${RBAC_APPROVAL_SECRET:approval-dev-secret}
+  onboarding:              # SDK 系统接入上报（独立 AppKey，不绑定 systemCode）
+    enabled: ${RBAC_ONBOARDING_ENABLED:true}
+    app-key: ${RBAC_ONBOARDING_APP_KEY:onboarding-app}
+    app-secret: ${RBAC_ONBOARDING_SECRET:onboarding-secret}
   regions:                 # 区域 Redis 连接（SDK 通过 /openapi/sdk/connection 获取）
     region_a:
       host: ${RBAC_REDIS_REGION_A_HOST:127.0.0.1}

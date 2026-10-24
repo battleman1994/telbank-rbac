@@ -34,6 +34,7 @@ import com.telbank.rbac.security.JsonAccessDeniedHandler;
 import com.telbank.rbac.security.JsonAuthenticationEntryPoint;
 import com.telbank.rbac.security.ManagementContextFilter;
 import com.telbank.rbac.security.ManagementContextService;
+import com.telbank.rbac.security.SystemAppKeyRegistry;
 import com.telbank.rbac.security.NonceStore;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -157,9 +158,10 @@ public class SecurityConfig {
      */
     @Bean
     public FilterRegistrationBean<AppKeyAuthFilter> appKeyAuthFilterRegistration(
-            JsonMapper jsonMapper, RbacProperties properties, NonceStore nonceStore) {
+            JsonMapper jsonMapper, RbacProperties properties, NonceStore nonceStore,
+            SystemAppKeyRegistry appKeyRegistry) {
         FilterRegistrationBean<AppKeyAuthFilter> registration = new FilterRegistrationBean<>(
-                new AppKeyAuthFilter(jsonMapper, properties, nonceStore));
+                new AppKeyAuthFilter(jsonMapper, properties, nonceStore, appKeyRegistry));
         registration.setName("rbacAppKeyAuthFilter");
         registration.addUrlPatterns("/*");
         registration.setOrder(APP_KEY_FILTER_ORDER);
