@@ -189,10 +189,14 @@ export default function AdminLayout() {
   function handleSystemChange(code: string) {
     if (code === currentSystemCode) return
     const system = systems.find((item) => item.code === code)
-    // 先更新 store + localStorage（request() 注入 X-System-Code），再失效重取：
-    // admin-session 会带新系统头重新 bootstrap；其余数据查询按新 systemId 重取。
+    // 先更新 store + localStorage（request() 注入 X-System-Code），只重取会话。
+    // 注意：不能调用 queryClient.invalidateQueries() 全局失效——
+    // 页面查询 key 里带的是旧 systemId，立即重取会变成「旧 systemId + 新系统头」，
+    // 被后端 SystemScopeGuard 判定为跨系统访问并返回 403。
+    // 页面数据查询的 queryKey 已包含 systemId，currentSystemCode 变更后组件会以新
+    // systemId 生成新 query key 自动重取；旧的未激活缓存不再触发请求。
     setCurrentSystemCode(code)
-    void queryClient.invalidateQueries()
+    void sessionQuery.refetch()
     void message.success(`已切换到系统：${system?.name ?? code}`)
   }
 
