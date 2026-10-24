@@ -21,6 +21,7 @@ import {
   Tabs,
   Tag,
   TreeSelect,
+  Typography,
 } from 'antd'
 import type { TableProps } from 'antd'
 import {
@@ -183,13 +184,13 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
     {
       title: '方法',
       dataIndex: 'method',
-      width: 75,
+      width: 70,
       render: (value: string) => <Tag color="purple">{value}</Tag>,
     },
     {
       title: '路径 path',
       dataIndex: 'path',
-      width: 220,
+      width: 210,
       ellipsis: true,
       render: (value: string) => (
         <span className="mono-text" title={value}>
@@ -198,16 +199,9 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
       ),
     },
     {
-      title: '候选权限码',
-      dataIndex: 'candidateCode',
-      width: 150,
-      render: (value: string | null) =>
-        value ? <Tag color="blue">{value}</Tag> : <Tag>无</Tag>,
-    },
-    {
       title: '来源',
       dataIndex: 'source',
-      width: 80,
+      width: 70,
       render: (value: string) => (
         <Tag color={value === 'ANNOTATION' ? 'gold' : 'cyan'} title={value}>
           {value === 'ANNOTATION' ? '注解' : '自动生成'}
@@ -217,7 +211,7 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
     {
       title: '生效状态',
       key: 'effective',
-      width: 90,
+      width: 80,
       render: (_, record) =>
         record.permissionId ? (
           <Tag color="green" title="已关联权限码并写入 mappings；若该权限后续停用，映射会停止下发">
@@ -230,22 +224,40 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
         ),
     },
     {
+      title: '提示',
+      key: 'hint',
+      width: 250,
+      render: (_, record) =>
+        record.permissionId ? (
+          <Typography.Text type="secondary">已确认权限码，已生效</Typography.Text>
+        ) : (
+          <span>
+            <Typography.Text type="secondary">确认权限码后生效，候选码为：</Typography.Text>
+            {record.candidateCode ? (
+              <Tag color="blue">{record.candidateCode}</Tag>
+            ) : (
+              <Typography.Text type="secondary">无</Typography.Text>
+            )}
+          </span>
+        ),
+    },
+    {
       title: '已关联权限码',
       dataIndex: 'permissionCode',
-      width: 150,
+      width: 140,
       render: (value: string | null) =>
         value ? <Tag color="green">{value}</Tag> : <Tag color="default">未关联</Tag>,
     },
     {
       title: '上报时间',
       dataIndex: 'reportedAt',
-      width: 140,
+      width: 130,
       render: (value: string | null) => formatDateTime(value),
     },
     {
       title: '操作',
       key: 'action',
-      width: 145,
+      width: 140,
       render: (_, record) => (
         <Space size={4}>
           <Button

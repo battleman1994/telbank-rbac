@@ -220,6 +220,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 22:36 | 资源管理「提示」列替代候选码列 | 候选码不再单独成列：未关联行提示「确认权限码后生效，候选码为：xxx」；已关联行提示「已确认权限码，已生效」；表格仍无横向滚动，`npm run build` 0 error |
 | 22:31 | 资源管理「生效状态」展示优化（headless Chrome） | 未关联端点显示「未生效」+「未关联」、当前页黄色提示、行轻微高亮、关联按钮为主按钮；已关联显示「已生效」；表格仍 1110px 无横向滚动；映射/接口行为未改 |
 | 22:24 | 弹窗表单 UI 优化（headless Chrome 截图复核） | 角色/权限/页面元素/用户授权/系统接入弹窗统一宽度（600–720）、控件占满列宽；双列用 Row/Col 对齐；移除 textarea showCount 避免与 footer 重叠；SVG 截图人工复核通过 |
 | 22:18 | 页面元素简化 + 07 类型归一（用户库/headless Chrome） | 表头 = 页面编码/元素标识/元素名称/元素类型/状态/操作；新建弹窗字段仅 4 个（无 action/config/sort）；类型显示“按钮/链接”；`npm run build` 0 error |
