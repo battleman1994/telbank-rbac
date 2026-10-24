@@ -214,7 +214,8 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
-| 20:17 | `./scripts/verify-all.sh`（v2.0） | **14 项检查全过**：api **88** 单测、SDK(8) 90、SDK(21) 91、前端构建、手动 SQL、系统隔离产物、平台脚本等 |
+| 20:36 | `./scripts/verify-all.sh`（v2.0 + 三脚本收敛） | **13 项检查全过**：api **88** 单测、SDK v1 **97**、SDK v2 **98**、前端构建、手动 SQL、系统隔离产物、3 个平台自包含启动脚本 |
+| 20:36 | GitHub Actions `telbank-rbac CI`（commit b7c4b79） | **6 个 job 全部 success**（含 Windows 启动脚本解析）[run 40094680196](https://github.com/battleman1994/telbank-rbac/actions/runs/40094680196) |
 | 20:16 | 全量 API 验收（`telbank_rbac_v2` + JDK21 API + JDK8/JDK21 两套示例系统） | **81/81 PASS**：v2.0 系统隔离 + 系统接入 + 原有开放接口/审批/时效 + 两个 SDK e2e 各 4/4 |
 | 20:15 | `mvn -pl telbank-rbac-api clean test`（v2.0 后端） | **88/88 PASS**，BUILD SUCCESS |
 | 20:11 | 前端 `npm run build`（v2.0 菜单/上下文重构） | tsc 0 error；3255 modules；dist 1.4 MB（JS gzip 442 kB） |
