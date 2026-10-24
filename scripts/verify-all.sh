@@ -102,6 +102,19 @@ for f in scripts/init-db.sh scripts/start-api.sh scripts/start-front.sh scripts/
 done
 ok "启动/验收/构建脚本齐备且可执行"
 
+# macOS 自带 bash 3.2 + set -u 空数组展开回归检查（start-api.sh 曾因此报 unbound variable）
+FAKE_BIN="$(mktemp -d)"
+printf '#!/bin/sh\necho fake-mvn "$@"\n' > "$FAKE_BIN/mvn"
+chmod +x "$FAKE_BIN/mvn"
+API_SMOKE_OUT="$(env -u RBAC_M2_REPO PATH="$FAKE_BIN:$PATH" JAVA_HOME="$JDK21" \
+  ./scripts/start-api.sh 2>&1 || true)"
+rm -rf "$FAKE_BIN"
+case "$API_SMOKE_OUT" in
+  *unbound*) die "start-api.sh 在 bash 3.2 下存在空数组展开问题" ;;
+  *fake-mvn*) ok "start-api.sh bash 3.2 兼容冒烟通过（未设置 RBAC_M2_REPO）" ;;
+  *) die "start-api.sh bash 3.2 冒烟失败：${API_SMOKE_OUT}" ;;
+esac
+
 printf '\n\033[1;32m全部通过（%d 项检查）。\033[0m\n' "$PASS"
 cat <<'EOF'
 

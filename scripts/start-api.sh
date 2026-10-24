@@ -38,12 +38,17 @@ export JAVA_HOME="${JAVA_HOME_21}"
 export PATH="${JAVA_HOME}/bin:${PATH}"
 
 # 可选：自定义 Maven 本地仓库（如沙箱/CI 环境无法写 ~/.m2 时）
-MVN_ARGS=()
+# 注意：macOS 自带 bash 3.2 + set -u 下展开空数组会报 "unbound variable"，
+# 因此这里不用空数组拼参，而是按 RBAC_M2_REPO 是否存在分两条 exec 分支。
 if [ -n "${RBAC_M2_REPO:-}" ]; then
-  MVN_ARGS+=("-Dmaven.repo.local=${RBAC_M2_REPO}")
+  exec mvn "-Dmaven.repo.local=${RBAC_M2_REPO}" \
+    -pl telbank-rbac-api -am spring-boot:run \
+    -Dspring-boot.run.profiles=demo \
+    -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
+    "$@"
 fi
 
-exec mvn "${MVN_ARGS[@]}" -pl telbank-rbac-api -am spring-boot:run \
+exec mvn -pl telbank-rbac-api -am spring-boot:run \
   -Dspring-boot.run.profiles=demo \
   -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
   "$@"
