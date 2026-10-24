@@ -191,3 +191,11 @@ body {
 .endpoint-row-unlinked > td {
   background: #fffbe6 !important;
 }
+
+/* Ant message 浮层不拦截页面点击：切换系统 toast 曾覆盖顶部系统下拉框 */
+.ant-message,
+.ant-message-list,
+.ant-message-list-content,
+.ant-message-notice {
+  pointer-events: none !important;
+}

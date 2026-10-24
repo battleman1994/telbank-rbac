@@ -231,6 +231,7 @@ dist/assets/index-*.js          1,399.10 kB │ gzip: 442.35 kB
 - 未做路由级 code splitting：生产包单 chunk 约 1.4 MB（gzip 约 442 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
 - 授权记录按契约仅提供查询（只读）；「到期提醒」菜单/路由已移除（后端 `/api/expiring-grants` 接口保留）。
 - 资源管理：未关联权限码的端点显示「未生效/未关联」并有当前页提示，行背景高亮；关联后才进入 SDK mappings 生效。
+- 全局 `.ant-message*` 设置 `pointer-events:none`，避免切换系统 toast 覆盖顶部系统下拉框、导致下拉框点不开。
 
 ## 本地验证记录
 
