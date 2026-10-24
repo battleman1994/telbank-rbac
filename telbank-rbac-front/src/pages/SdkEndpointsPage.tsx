@@ -199,6 +199,13 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
       ),
     },
     {
+      title: '权限码',
+      dataIndex: 'permissionCode',
+      width: 140,
+      render: (value: string | null) =>
+        value ? <Tag color="green">{value}</Tag> : <Tag color="default">未关联</Tag>,
+    },
+    {
       title: '来源',
       dataIndex: 'source',
       width: 70,
@@ -214,7 +221,7 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
       width: 80,
       render: (_, record) =>
         record.permissionId ? (
-          <Tag color="green" title="已关联权限码并写入 mappings；若该权限后续停用，映射会停止下发">
+          <Tag color="green" title="已确认权限码并写入 mappings；若该权限后续停用，映射会停止下发">
             已生效
           </Tag>
         ) : (
@@ -240,13 +247,6 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
             )}
           </span>
         ),
-    },
-    {
-      title: '已关联权限码',
-      dataIndex: 'permissionCode',
-      width: 140,
-      render: (value: string | null) =>
-        value ? <Tag color="green">{value}</Tag> : <Tag color="default">未关联</Tag>,
     },
     {
       title: '上报时间',
