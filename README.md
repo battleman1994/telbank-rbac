@@ -90,10 +90,17 @@ java -version
 
 ## 4. 快速开始（本地 demo）
 
-> **一键启动（推荐）**：
-> - `./scripts/start-all.sh --temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`（表结构与示例数据由 Flyway 自动迁移），后端就绪后再启动前端；`Ctrl+C` 会同时停止前后端并清理临时库。
-> - `./scripts/start-all.sh`：使用已有 MySQL；可加 `--init-db` 先建库（需 `MYSQL_*` 环境变量）。
-> - 端口可用 `API_PORT=18080 FRONT_PORT=5174` 覆盖；日志在 `logs/`。以下 4.1–4.4 为分步说明。
+> **一键启动（推荐，按平台）**：
+>
+> | 平台 | 命令 |
+> |---|---|
+> | macOS | `./scripts/start-all.sh --temp-db`（分发到 `start-all-macos.sh`） |
+> | Linux | `./scripts/start-all.sh --temp-db`（分发到 `start-all-linux.sh`） |
+> | Windows | `scripts\start-all.cmd --temp-db`（PowerShell 实现 `start-all-windows.ps1`，参数用 `-TempDb -InitDb -ApiPort -FrontPort`） |
+>
+> - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`（Flyway 自动迁移），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
+> - 已有 MySQL：去掉 `--temp-db`；建库用 `--init-db`（需 `MYSQL_*` 环境变量）。
+> - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.4 为分步说明。
 
 ### 4.1 初始化数据库
 

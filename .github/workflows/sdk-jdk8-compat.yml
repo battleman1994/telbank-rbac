@@ -6,6 +6,7 @@ name: telbank-rbac CI
 #   - SDK（JDK 21 版）：JDK 21 构建 + 91 单测 + 字节码 major=65 + 示例业务系统构建
 #   - 管理前端：Node 22 + `npm ci && npm run build`（tsc 类型检查）
 #   - JDK 8 运行时冒烟：在真实 JDK 8 运行时启动示例业务系统并探测 /api/health
+#   - 跨平台启动脚本：Unix shell 语法检查 + Windows PowerShell 语法解析
 #
 # 说明：runtime-jdk8 的 JDK 8 只是 CI 测试运行时，不改变交付口径（SDK 产物为 Java 8 字节码，
 #       构建工具链 JDK 17；业务系统 JDK 8 + Boot 2.7.x 可直接运行）。
@@ -42,6 +43,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Shell script syntax check
+        run: for f in scripts/*.sh; do bash -n "$f"; done
       - name: Test permission center
         run: mvn -B -pl telbank-rbac-api clean test
       - name: Assert class file major version is 65 (Java 21)
@@ -122,6 +125,27 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Type check + production build
         run: npm run build
+
+  windows-scripts:
+    name: Check Windows startup scripts
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Parse PowerShell startup script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "scripts/start-all-windows.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
+          Write-Host "PowerShell syntax OK"
+      - name: Check cmd wrapper
+        shell: cmd
+        run: if not exist scripts\start-all.cmd exit /b 1
 
   runtime-jdk8:
     name: Smoke-test sample app on JDK 8 runtime

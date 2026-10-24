@@ -102,6 +102,26 @@ for f in scripts/init-db.sh scripts/start-api.sh scripts/start-front.sh scripts/
 done
 ok "启动/验收/构建脚本齐备且可执行"
 
+# 分平台启动脚本（macOS / Linux / Windows）
+for f in scripts/start-all-macos.sh scripts/start-all-linux.sh; do
+  [ -x "$f" ] || die "分平台启动脚本缺失或不可执行：$f"
+  bash -n "$f" || die "分平台启动脚本语法错误：$f"
+done
+ok "macOS/Linux 启动脚本存在且语法正确"
+[ -f scripts/start-all-windows.ps1 ] || die "缺少 Windows 启动脚本 scripts/start-all-windows.ps1"
+[ -f scripts/start-all.cmd ] || die "缺少 Windows 包装器 scripts/start-all.cmd"
+grep -q 'TempDb' scripts/start-all-windows.ps1 || die "Windows 启动脚本未实现临时库参数"
+ok "Windows 启动脚本（ps1 + cmd）齐备"
+case "$(uname -s)" in
+  Darwin|Linux)
+    HELP_OUT="$(./scripts/start-all.sh --help 2>&1 || true)"
+    case "$HELP_OUT" in
+      *"--temp-db"*) ok "start-all.sh 平台分发正常（$(uname -s)）" ;;
+      *) die "start-all.sh 平台分发异常：${HELP_OUT}" ;;
+    esac
+    ;;
+esac
+
 # macOS 自带 bash 3.2 + set -u 空数组展开回归检查（start-api.sh 曾因此报 unbound variable）
 FAKE_BIN="$(mktemp -d)"
 printf '#!/bin/sh\necho fake-mvn "$@"\n' > "$FAKE_BIN/mvn"
