@@ -173,21 +173,64 @@ function Find-Mysqld {
     return $null
 }
 
+function Find-MysqlClient {
+    foreach ($name in @('mysql.exe', 'mysql')) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd.Source }
+    }
+    $mysqld = Find-Mysqld
+    if ($mysqld) {
+        $candidate = Join-Path (Split-Path -Parent $mysqld) 'mysql.exe'
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
+}
+
+function Invoke-InitSchema {
+    param(
+        [string]$HostName = '127.0.0.1',
+        [int]$Port = 3306,
+        [string]$User = 'root',
+        [string]$Password = '',
+        [string]$DbName = 'telbank_rbac'
+    )
+    $mysql = Find-MysqlClient
+    if (-not $mysql) { throw "未找到 mysql.exe（用于导入 SQL）。" }
+    $mysqlArgs = @('-h', $HostName, '-P', "$Port", '-u', $User)
+    if ($Password) { $mysqlArgs += "-p$Password" }
+
+    & $mysql @mysqlArgs -e "CREATE DATABASE IF NOT EXISTS $DbName DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+    if ($LASTEXITCODE -ne 0) { throw "创建数据库 $DbName 失败" }
+
+    $exists = & $mysql @mysqlArgs -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DbName' AND table_name='sys_system';"
+    if ($LASTEXITCODE -ne 0) { throw "检查表结构失败" }
+    if ([int]$exists -gt 0) {
+        Write-Host "    检测到 $DbName 已有表结构，跳过 SQL 导入"
+        return
+    }
+
+    $sqlDir = Join-Path $Root 'telbank-rbac-api\src\main\resources\db\manual'
+    $files = Get-ChildItem -Path $sqlDir -Filter '*.sql' | Sort-Object Name
+    if (-not $files) { throw "未找到 SQL 文件：$sqlDir" }
+    foreach ($file in $files) {
+        Write-Host "    导入 $($file.Name) ..."
+        # 用 cmd 重定向而不是 PowerShell 管道，避免 Windows 默认编码损坏 SQL 中的中文
+        $mysqlCmd = '"' + $mysql + '" -h ' + $HostName + ' -P ' + $Port + ' -u ' + $User
+        if ($Password) { $mysqlCmd += ' -p' + $Password }
+        $mysqlCmd += ' ' + $DbName + ' < "' + $file.FullName + '"'
+        & cmd.exe /c $mysqlCmd
+        if ($LASTEXITCODE -ne 0) { throw "SQL 导入失败：$($file.Name)" }
+    }
+    Write-Host "    数据库 $DbName 初始化完成（表结构 + 示例数据）"
+}
+
 function Start-TempMysql {
     $mysqld = Find-Mysqld
     if (-not $mysqld) {
         throw "未找到 mysqld.exe。请安装 MySQL 8（并把 bin 加入 PATH），或改为连接已有 MySQL（不加 --temp-db）。"
     }
-    $mysql = $null
-    foreach ($name in @('mysql.exe', 'mysql')) {
-        $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($cmd) { $mysql = $cmd.Source; break }
-    }
-    if (-not $mysql) {
-        $candidate = Join-Path (Split-Path -Parent $mysqld) 'mysql.exe'
-        if (Test-Path $candidate) { $mysql = $candidate }
-    }
-    if (-not $mysql) { throw "未找到 mysql.exe（用于建库）。" }
+    $mysql = Find-MysqlClient
+    if (-not $mysql) { throw "未找到 mysql.exe（用于建库/导入 SQL）。" }
 
     if (Test-PortInUse -Port $TempMysqlPort) {
         throw "临时 MySQL 端口 $TempMysqlPort 已被占用，请先停止占用进程或改用 -TempMysqlPort 其他端口。"
@@ -231,7 +274,7 @@ function Start-TempMysql {
     if ($LASTEXITCODE -ne 0) { throw "创建 telbank_rbac 库失败，日志：logs\temp-mysql.log" }
 
     $env:RBAC_DB_URL = "jdbc:mysql://127.0.0.1:${TempMysqlPort}/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false"
-    Write-Host "    临时库已就绪：telbank_rbac @ 127.0.0.1:${TempMysqlPort}（Flyway 自动迁移）"
+    Write-Host "    临时库已创建：telbank_rbac @ 127.0.0.1:${TempMysqlPort}，即将导入表结构/示例数据"
 }
 
 # ---------------- 主流程 ----------------
@@ -267,13 +310,18 @@ try {
         try { & npm install --no-audit --no-fund } finally { Pop-Location }
     }
 
-    if ($TempDb) { Start-TempMysql }
+    if ($TempDb) {
+        Start-TempMysql
+        Invoke-InitSchema -Port $TempMysqlPort
+    }
     elseif ($InitDb) {
-        Write-Host "==> 初始化数据库（scripts/init-db.sh）"
-        $bash = Get-Command bash -ErrorAction SilentlyContinue
-        if (-not $bash) { throw "未找到 bash，无法执行 init-db.sh；可先手动建库或使用 -TempDb。" }
-        & bash (Join-Path $Root 'scripts\init-db.sh')
-        if ($LASTEXITCODE -ne 0) { throw "数据库初始化失败" }
+        Write-Host "==> 初始化数据库（建库 + 导入表结构/示例数据）"
+        $dbHost = if ($env:MYSQL_HOST) { $env:MYSQL_HOST } else { '127.0.0.1' }
+        $dbPort = if ($env:MYSQL_PORT) { [int]$env:MYSQL_PORT } else { 3306 }
+        $dbUser = if ($env:MYSQL_USER) { $env:MYSQL_USER } else { 'root' }
+        $dbPass = if ($env:MYSQL_PASSWORD) { $env:MYSQL_PASSWORD } else { '' }
+        $dbName = if ($env:RBAC_DB_NAME) { $env:RBAC_DB_NAME } else { 'telbank_rbac' }
+        Invoke-InitSchema -HostName $dbHost -Port $dbPort -User $dbUser -Password $dbPass -DbName $dbName
     }
 
     # 非临时库模式：把 MYSQL_* 映射给后端（否则只设 MYSQL_PASSWORD 会导致 Access denied）

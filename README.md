@@ -16,7 +16,7 @@
 | 工程 | 目录 | 说明 | 技术栈 |
 |---|---|---|---|
 | 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
-| **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8、Flyway、Caffeine + Redis |
+| **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway）、Caffeine + Redis |
 | **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（带时效 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
 | **JDK 21 业务系统 SDK** | `telbank-rbac2-starter/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
@@ -98,7 +98,7 @@ java -version
 > | Linux | `./scripts/start-all.sh --temp-db`（分发到 `start-all-linux.sh`） |
 > | Windows | `scripts\start-all.cmd --temp-db`（PowerShell 实现 `start-all-windows.ps1`，参数用 `-TempDb -InitDb -ApiPort -FrontPort`） |
 >
-> - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`（Flyway 自动迁移），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
+> - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`、导入 `db/manual/*.sql`（表结构 + 示例数据），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
 > - 已有 MySQL：去掉 `--temp-db`；首次建库用 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db`（脚本会自动把 `MYSQL_*` 映射为后端 `RBAC_DB_*`）；之后直接 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh`。
 > - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.4 为分步说明。
 
@@ -109,8 +109,10 @@ export MYSQL_USER=root MYSQL_PASSWORD='你的密码'
 ./scripts/init-db.sh
 ```
 
-> 只需建空库 `telbank_rbac`；8 张表与 CRM/ERP 示例数据由权限中心启动时 Flyway 自动迁移（`telbank-rbac-api/src/main/resources/db/migration/`）。
-> 用 `start-all.sh` 时无需再单独导出：脚本会把 `MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/RBAC_DB_NAME` 自动映射为后端的 `RBAC_DB_*`（含 `RBAC_DB_URL`）。
+> `init-db.sh` 会创建库，并按文件名顺序导入 `telbank-rbac-api/src/main/resources/db/manual/` 下的手动 SQL：
+> `01_schema.sql`（8 张表）、`02_seed_data.sql`（CRM/ERP 示例数据）、`03_rbac_self_onboarding.sql`（权限中心自接入）。
+> **本项目不使用 Flyway**；已有表结构的库会自动跳过导入，`./scripts/init-db.sh --drop` 可删库重建。
+> 用 `start-all.sh` 时无需再单独导出：脚本会把 `MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/RBAC_DB_NAME` 自动映射为后端的 `RBAC_DB_*`（含 `RBAC_DB_URL`）；`--temp-db` 会自动执行上述导入。
 > 如果本机已有 MySQL 且 root 密码未知，可起一个一次性实例：`./scripts/start-temp-mysql.sh start`（127.0.0.1:3307，root 无密码），启动后端时用 `RBAC_DB_URL` 指向它（脚本会打印完整命令）。
 
 ### 4.2 启动权限中心后端（demo profile）
@@ -351,6 +353,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 7. **A7 · SDK「JDK 8 字节码」的构建方式**：字节码目标保持 Java 8（major=52），但构建工具链为 **JDK 17+**（`--release 8`）——Apple Silicon 无官方 JDK 8；运行时仍兼容 JDK 8+（GitHub Actions 已用真实 JDK 8 运行时验证）。
 8. **A8 · 权限中心自身接入方式**：需求未定义。实现为权限中心作为 `rbac` 系统接入自身权限模型（管理端固定管理上下文 + `/api/me/bootstrap` + 前端按权限渲染菜单）；**不引入 SDK**（避免自调用循环）。
 9. **A9 · SDK 的 JDK 版本覆盖**：需求只定义 JDK 8 版 SDK；实现新增 JDK 21 + Spring Boot 4 变体（协议/配置一致、同包名不可共存），供 JDK 21 业务系统接入。
+10. **A10 · 移除 Flyway**：按用户要求去掉 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `telbank-rbac-api/src/main/resources/db/manual/*.sql` 手动初始化（`scripts/init-db.sh` 建库并按序导入，`--temp-db` 自动执行），后端启动前库表须已存在。
 
 其他实现说明（非偏差，需求本身已明确）：
 
@@ -377,6 +380,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 ## 11. 本次交付验证记录（摘要）
 
 - 权限中心后端：`clean test` **53/53 PASS**（JDK 21.0.13，字节码 major=65）。
+- **数据库初始化（A10：已移除 Flyway）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **91/91 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
 - **GitHub Actions（5 job 全绿）**：权限中心（JDK21 单测/字节码）、SDK v1（JDK17→Java8）、SDK v2（JDK21/Boot4）、前端（Node22 构建）、JDK 8 运行时冒烟全部 success（[run 40073016336](https://github.com/battleman1994/telbank-rbac/actions/runs/40073016336)）。

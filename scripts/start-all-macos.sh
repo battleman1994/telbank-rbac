@@ -6,7 +6,7 @@
 #
 # 特性：
 #   - --temp-db：自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac 库，
-#                后端 Flyway 自动建表/灌示例数据；脚本退出时自动停止并清理临时库
+#                由 scripts/init-db.sh 导入表结构/示例数据；脚本退出时自动停止并清理临时库
 #   - --init-db：针对已有 MySQL 先执行 scripts/init-db.sh（需 MYSQL_* 环境变量）
 #   - 后端就绪后再启动前端（后端 JWT 接口返回 401/200 视为就绪）
 #   - 日志输出到 logs/api.log、logs/front.log、logs/temp-mysql.log
@@ -138,10 +138,14 @@ if [ "$TEMP_DB" = "1" ]; then
     RUNNING=1
   fi
   export RBAC_DB_URL="jdbc:mysql://127.0.0.1:${TEMP_MYSQL_PORT}/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false"
-  echo "    临时库已就绪：telbank_rbac @ 127.0.0.1:${TEMP_MYSQL_PORT}（表结构与示例数据由 Flyway 自动迁移）"
+  echo "    临时库已创建：telbank_rbac @ 127.0.0.1:${TEMP_MYSQL_PORT}，导入表结构/示例数据 ..."
+  MYSQL_HOST=127.0.0.1 MYSQL_PORT="$TEMP_MYSQL_PORT" MYSQL_USER=root MYSQL_PASSWORD= \
+    "$ROOT/scripts/init-db.sh" >"$ROOT/logs/temp-mysql-init.log" 2>&1 \
+    || { echo "❌ 临时库初始化失败，日志 logs/temp-mysql-init.log：" >&2; tail -n 20 "$ROOT/logs/temp-mysql-init.log" >&2; exit 1; }
+  echo "    表结构与示例数据已导入"
 elif [ "$INIT_DB" = "1" ]; then
-  echo "==> 初始化数据库（scripts/init-db.sh）"
-  "$ROOT/scripts/init-db.sh" || { echo "❌ 数据库初始化失败，请检查 MySQL 连接配置" >&2; exit 1; }
+  echo "==> 初始化数据库（建库 + 导入表结构/示例数据）"
+  "$ROOT/scripts/init-db.sh" || { echo "❌ 数据库初始化失败，请检查 MySQL 连接配置/SQL 文件" >&2; exit 1; }
 fi
 
 # 非临时库模式：把 MYSQL_* 映射给后端（否则只设 MYSQL_PASSWORD 会导致 Access denied）

@@ -59,6 +59,7 @@ case "${1:-start}" in
     "$MYSQL_BIN" --socket="$SOCKET" -uroot -e "
 CREATE DATABASE IF NOT EXISTS telbank_rbac DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>/dev/null
     echo "临时 MySQL 已启动：127.0.0.1:${PORT}（root 无密码），库 telbank_rbac 已创建"
+    echo "表结构/示例数据请执行：MYSQL_HOST=127.0.0.1 MYSQL_PORT=${PORT} MYSQL_USER=root ./scripts/init-db.sh"
     echo "启动权限中心时使用："
     echo "  export RBAC_DB_URL='jdbc:mysql://127.0.0.1:${PORT}/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false'"
     echo "  ./scripts/start-api.sh"

@@ -186,6 +186,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 | §9.15 权限中心自接入（rbac 系统 + bootstrap + 权限菜单） | ✅ | V3 迁移新增 `rbac` 系统与 `rbac-admin` 角色；13800138000 bootstrap 返回 5 个 `rbac:*`、operator 返回空集、平台超管返回 `["*"]`；管理上下文 `X-System-Code: rbac` 200、业务系统上下文 `crm` 403；管理前端按 bootstrap 权限过滤菜单/路由（build + mock 冒烟通过） |
 | JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac2-starter`（Boot 4.1.2/JDK21）**91 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
+| Flyway 移除（需求附录 A10） | ✅ | 删除 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `db/manual/01_schema.sql`、`02_seed_data.sql`、`03_rbac_self_onboarding.sql` 手动初始化。全新库导入后 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入 8 表并启动成功 |
 | 管理前端 ↔ 真实后端联调 | 🔶 | 前端已通过 `tsc` 类型检查、生产构建、mock 后端 + headless Chrome 10 页面冒烟；**尚未在真实 `telbank-rbac-api` 上做浏览器人工联调**（启动方式见 README §4） |
 
 ## 已完成的补验（原限制项，保留记录）
@@ -195,12 +196,13 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 3. **SDK 的 JDK 8 运行时冒烟（已完成，CI）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8；已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功。
 4. **权限中心自接入（已完成）**：新增 `rbac` 系统 + `rbac-admin` 角色（V3），管理端 `/api/**` 固定管理上下文；新增 `/api/me/bootstrap`；管理前端按权限码过滤菜单/路由（`PermissionGuard`/`NoPermission`）。
 5. **JDK 21 版 SDK（已完成）**：新增 `telbank-rbac2-starter`（JDK21 + Boot 4，协议一致），91 单测 + JDK21 示例业务系统 e2e 4/4 通过；真实 Redis Pub/Sub 亦已联调（订阅 + 变更通知驱动刷新）；CI 新增对应构建 job。
+6. **移除 Flyway（已完成）**：按用户要求删除 Flyway 依赖与配置类，数据库初始化改为 `db/manual/*.sql` 手动执行；`init-db.sh` 与 `--temp-db` 一键启动均已验证（全新库 8 表、验收 59/59）。
 
 ## 已知限制（生产前建议处理）
 
 1. **审批幂等边界**：同关系重新授权会更新原行并覆盖 `source_approval_id`（数据模型无审批历史表），因此「新审批覆盖后回放更早 approvalId」无法再幂等；同一 approvalId 重复回调幂等已实测通过。
 2. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
-3. **MySQL 版本**：本机临时 MySQL 26.7 高于 Flyway 官方已验证版本（9.4），启动有 WARN；生产用 MySQL 8.0+ 即无此告警。
+3. **MySQL 版本**：本机临时 MySQL 26.7 实测通过；生产建议 MySQL 8.0+（本项目已移除 Flyway，无迁移工具版本告警）。
 4. **前端包体**：未做路由级 code splitting（单 chunk 1.4 MB / gzip 443 kB），可后续优化。
 5. **管理前端真实后端联调（待补）**：前端已通过类型检查、构建与 mock 冒烟，尚未在真实权限中心后端上做浏览器人工联调（启动方式见 README §4，验收时可逐页操作并观察 `/api/**` 请求）。
 
@@ -210,6 +212,9 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 19:19 | `./scripts/start-all.sh --temp-db`（移除 Flyway 后） | 临时库自动导入 `db/manual` 01→03：**8 张表（无 flyway_schema_history）**；后端 401 就绪、前端 200；退出清理正常 |
+| 19:18 | 全新库手动初始化 + API 验收（`telbank_rbac_manual`，无 Flyway） | `init-db.sh` 导入 01→03 成功（8 表 / 3 系统 / 17 权限 / 5 角色）；`RBAC_BASE_URL=http://127.0.0.1:28081 python3 scripts/acceptance.py` → **59/59 PASS**（跳过示例业务系统） |
+| 19:17 | `mvn -pl telbank-rbac-api clean test`（移除 Flyway 依赖后） | **53/53 PASS**，BUILD SUCCESS |
 | 15:12 | GitHub Actions `telbank-rbac CI`（commit 6e65f4f） | **5 个 job 全部 success**：Build permission center (JDK21) / SDK v1 (JDK17) / SDK v2 (JDK21+Boot4) / Admin frontend (Node22) / JDK 8 runtime smoke（[run 40073016336](https://github.com/battleman1994/telbank-rbac/actions/runs/40073016336)） |
 | 15:11 | JDK 21 版 SDK 真实 Redis Pub/Sub（Boot 4 示例系统 + 权限中心 `redis.enabled=true`） | 订阅 `rbac:change:region_a:crm` 成功（`PUBSUB NUMSUB=1`）；CRM 页面操作变更后 SDK 收到 `PAGE_ACTION_CHANGED`，页面元数据刷新 5→6 条 |
 | 15:08 | `./scripts/verify-all.sh`（JDK21） | **全部通过（8 项检查）**：api 53 单测、SDK(JDK8) 90 单测、SDK(JDK21) 91 单测、前端 `tsc + vite build`，字节码 major=65/52/65 |
@@ -221,11 +226,11 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 14:30 | `./scripts/build-sdk.sh`（**JDK 17.0.20.1** 工具链，`--release 8`） | **90/90 PASS**，BUILD SUCCESS，产物字节码 **major=52（Java 8）** 校验通过 |
 | 14:17 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-api clean test`（**JDK 21.0.13**，release 21） | **46/46 PASS**，BUILD SUCCESS，字节码 major=65 |
 | 14:16 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-starter clean test`（**JDK 21.0.13**，release 8） | **90/90 PASS**，BUILD SUCCESS，字节码 major=52 |
-| 14:16 | `RBAC_BASE_URL=http://localhost:28080 python3 scripts/acceptance.py`（**JDK 21 运行**的权限中心 + 干净库 `telbank_rbac_verify`，Flyway V1+V2） | **50/50 PASS** |
+| 14:16 | `RBAC_BASE_URL=http://localhost:28080 python3 scripts/acceptance.py`（**JDK 21 运行**的权限中心 + 干净库 `telbank_rbac_verify`，手动导入 db/manual 01+02） | **50/50 PASS** |
 | 14:17 | `RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 python3 scripts/acceptance.py --only 9.1b`（JDK 21 权限中心 + CRM/ERP 示例系统） | **4/4 PASS** |
 | 14:11 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-api clean test`（JDK 26，release 21） | **46/46 PASS**，BUILD SUCCESS，字节码 major=65 |
 | 14:11 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-starter clean test`（JDK 17，release 8） | **90/90 PASS**，BUILD SUCCESS，字节码 major=52 |
-| 14:10 | `RBAC_BASE_URL=http://localhost:28080 python3 scripts/acceptance.py`（干净库 `telbank_rbac_verify`，Flyway V1+V2） | **50/50 PASS**（安全底线/多系统隔离/权限码模型/模式 B/开放接口鉴权/区域通道/审批时效等） |
+| 14:10 | `RBAC_BASE_URL=http://localhost:28080 python3 scripts/acceptance.py`（干净库 `telbank_rbac_verify`，手动导入 db/manual 01+02） | **50/50 PASS**（安全底线/多系统隔离/权限码模型/模式 B/开放接口鉴权/区域通道/审批时效等） |
 | 14:11 | `RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 python3 scripts/acceptance.py --only 9.1b`（示例业务系统 Boot 2.7.18/JDK 17/starter 1.0.0，连 28080） | **4/4 PASS**：CRM 有权限 200；同用户 ERP 403；ERP 有权限 200；未配置权限码接口无 token 200 |
 | 14:05 | `cd telbank-rbac-front && npm run build`（nvm Node 22.23.1） | `tsc -b` 0 error；vite 3254 modules；dist 1.4 MB（JS gzip 443 kB） |
 | 14:00–14:05 | `npm run dev` + `curl localhost:5173`；mock 后端 + headless Chrome | HTTP 200；10 页面渲染/关键交互冒烟无异常（front-dev 记录） |

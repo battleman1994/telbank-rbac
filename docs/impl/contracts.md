@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v1.2（2026-10-24）· 维护：Lead
-> 修订：v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v1.3（2026-10-24）· 维护：Lead
+> 修订：v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -50,15 +50,15 @@
 
 ---
 
-## 2. 数据库与 Flyway
+## 2. 数据库初始化（手动 SQL，无 Flyway）
 
-- 库名 `telbank_rbac`，MySQL 8.0+，utf8mb4 / utf8mb4_0900_ai_ci，时区 UTC。
-- Flyway 脚本归 Lead 维护，位于 `telbank-rbac-api/src/main/resources/db/migration/`：`V1__schema.sql`（8 张表，见 §9.2 偏差）、`V2__seed_data.sql`（CRM/ERP 示例数据）。**其他人不要改这两个文件**；需要字段/种子数据变更，向 Lead 提。
-- 权限中心**不使用** `spring-boot-starter-flyway`：由 `FlywayConfig` 手动构造 `Flyway` Bean 并 `migrate()`（`baselineOnMigrate=true`，locations=`classpath:db/migration`）。
-- 所有权限查询必须带时效过滤（需求 §5.3）：`(valid_from IS NULL OR valid_from <= NOW()) AND (valid_until IS NULL OR valid_until > NOW()) AND status = 1`。
-- Primary key 均为 `BIGINT UNSIGNED`，Java 侧用 `Long`。表字段以 `V1__schema.sql` 为准。
-
----
+- 本项目**不使用 Flyway**（用户确认移除，需求附录 A10）。数据库结构/种子数据由 `telbank-rbac-api/src/main/resources/db/manual/` 下的 SQL 维护，按文件名顺序执行：
+  - `01_schema.sql`：8 张表（`system_id` 隔离以 §9.2 偏差为准）
+  - `02_seed_data.sql`：CRM/ERP 示例系统、角色、权限码、演示用户
+  - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
+- 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。`start-all.sh --temp-db` 会在临时库启动后自动执行。
+- 启动前提：数据库与表已经存在（`spring.jpa.hibernate.ddl-auto=none`，后端不会自动建表）。
+- SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `04_xxx.sql` 递增并在 README/验收文档登记。
 
 ## 3. 权限中心管理端 API（api ↔ front）
 
@@ -441,6 +441,7 @@ rbac:
 - SDK（JDK 8）：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
 - SDK（JDK 21）：`mvn -pl telbank-rbac2-starter test`（JDK 21，字节码 major=65）
 - 权限中心自接入：`GET /api/me/bootstrap`（管理端权限渲染）；管理端 `/api/**` 固定 `X-System-Code: rbac`
+- 数据库初始化：`./scripts/init-db.sh`（手动 SQL，无 Flyway；`--temp-db` 自动执行）
 - 管理前端：`cd telbank-rbac-front && npm install && npm run dev|build`（nvm Node 22）
 - 示例业务系统：`samples/business-demo`（Boot 2.7.18，JDK 8+ 运行时）
 - 验收矩阵与执行记录：`docs/acceptance.md`

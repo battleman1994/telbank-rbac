@@ -2,7 +2,7 @@
 
 > 本文档为最终执行基线。所有技术栈和需求范围已拍板。权限中心为独立 JDK 21 进程；SDK 以 JDK 8 字节码编译，运行于业务系统后端；两者通过 HTTPS 和区域化 Redis Pub/Sub 通信，运行时完全隔离。业务系统前端只调业务系统后端或 SDK 自动注册的 `/rbac/me/*`，不直接访问权限中心。本文档不包含 OAuth2.0 服务间调用。
 >
-> **实现修订（2026-10-24）**：交付阶段确认的 9 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
+> **实现修订（2026-10-24）**：交付阶段确认的 10 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
 
 **工程名称**：`telbank-rbac` 权限管理系统（多系统 RBAC 权限管理平台）
 
@@ -1090,6 +1090,7 @@ interface AppState {
 | A7 | §3.2 SDK「JDK 8 字节码」 | 字节码目标仍为 Java 8（major=52），但**构建工具链为 JDK 17+**（`--release 8`）；运行时 JDK 8+ | 官方 OpenJDK 8 无 macOS ARM 原生版本；GitHub Actions 已用 JDK 8 运行时验证；README §5 |
 | A8 | §2 / §5 未明确权限中心自身是否接入权限体系 | 权限中心作为系统 `rbac` **接入自身权限模型**：新增 rbac 系统 + rbac-admin 角色；管理端 `/api/**` 固定管理上下文（`X-System-Code: rbac`）；新增 `GET /api/me/bootstrap` 供管理前端按权限渲染菜单/按钮；权限中心**不引入** SDK（避免自调用循环） | 方案 A（用户确认）；契约 §1.5/§3/§9，README §1.1 |
 | A9 | §3.2 SDK 仅面向 JDK 8 | 新增 **JDK 21 + Spring Boot 4.x SDK 变体** `telbank-rbac2-starter`：类名/包名/配置键/HTTP 协议与 JDK 8 版一致，同一业务系统二选一（同包名不可共存） | 供 JDK 21 + Boot 4 业务系统接入；契约 §0/§7.9 |
+| A10 | §3.1/§4.1 数据库迁移使用 Flyway | **移除 Flyway**（依赖 + 手动 `FlywayConfig`）；数据库改为手动 SQL：`telbank-rbac-api/src/main/resources/db/manual/*.sql`，由 `scripts/init-db.sh` 建库并按顺序导入；`start-all.sh --temp-db` 自动导入；后端启动前库表须已存在 | 用户确认不需要 Flyway；契约 §2、README §4/§9 |
 
 > 补充验证：真实 Redis Pub/Sub 联调、JDK 8 运行时 CI、JDK 21 SDK 单测、权限中心自接入验收、API 50/50 与 SDK 端到端 4/4 的记录见 `docs/acceptance.md`。
 

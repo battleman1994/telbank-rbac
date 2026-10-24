@@ -92,6 +92,14 @@ grep -q 'RbacSdkAutoConfiguration' \
   telbank-rbac2-starter/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports \
   || die "JDK 21 版 SDK 的 AutoConfiguration.imports 未注册 RbacSdkAutoConfiguration"
 ok "SDK（JDK 21 版）AutoConfiguration.imports 自动配置存在"
+# 数据库初始化：手动 SQL（无 Flyway）
+SQL_DIR="telbank-rbac-api/src/main/resources/db/manual"
+[ -d "$SQL_DIR" ] || die "缺少手动 SQL 目录：$SQL_DIR"
+SQL_COUNT="$(ls "$SQL_DIR"/*.sql 2>/dev/null | wc -l | tr -d ' ')"
+[ "$SQL_COUNT" -ge 3 ] || die "手动 SQL 文件不足（$SQL_COUNT 个）"
+grep -qi 'flyway' telbank-rbac-api/pom.xml && die "pom.xml 仍包含 Flyway 依赖"
+if grep -rqi 'flyway' telbank-rbac-api/src/main/java; then die "源码仍包含 Flyway 引用"; fi
+ok "数据库初始化采用手动 SQL（db/manual，无 Flyway）"
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"
 done

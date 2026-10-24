@@ -25,10 +25,10 @@
 
 ## 3. 当前文档状态（2026-10-24）
 
-- 需求基线：`docs/telbank-rbac.md`（含附录 A 实现修订记录，9 项偏差/新增口径）
-- 接口契约：`docs/impl/contracts.md` v1.2
+- 需求基线：`docs/telbank-rbac.md`（含附录 A 实现修订记录，10 项偏差/新增口径）
+- 接口契约：`docs/impl/contracts.md` v1.3
 - 验收状态：第 9 节条目均有证据（实测 / 单元测试 / 代码级说明）；SDK JDK 8 运行时兼容由 GitHub Actions 实测；真实 Redis Pub/Sub 已本机联调；权限中心已通过 `rbac` 系统自接入（管理上下文 + bootstrap + 前端权限菜单）
-- 已验证：权限中心 53 单测、SDK（JDK 8）90 单测、SDK（JDK 21）91 单测、API 验收 **65/65**（含两个 SDK 端到端 4/4+4/4）、前端构建、JDK 8 运行时 CI、权限中心自接入（rbac 系统 + bootstrap + 权限菜单）
+- 已验证：权限中心 53 单测、SDK（JDK 8）90 单测、SDK（JDK 21）91 单测、API 验收 **65/65**（含两个 SDK 端到端 4/4+4/4）、前端构建、JDK 8 运行时 CI、权限中心自接入（rbac 系统 + bootstrap + 权限菜单）、**手动 SQL 初始化（A10，已移除 Flyway；全新库 8 表 + 验收 59/59）**
 - 待补（可选）：管理前端 ↔ 真实后端浏览器人工联调（前后端均已就绪，当前前端为 build + mock 冒烟）；生产 HTTPS 链路的真机验证（本机验收为 HTTP demo）
 
 ## 4. 修订记录
