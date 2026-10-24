@@ -22,11 +22,11 @@ import com.telbank.rbac.web.dto.PageActionDtos.PageActionVO;
 import jakarta.validation.Valid;
 
 /**
- * 页面操作元数据（契约 §3.8），需要 {@code rbac:page:manage}。
+ * 页面操作元数据（契约 §3.8），需要系统内 {@code page:manage}。
  */
 @RestController
 @RequestMapping("/api/page-actions")
-@PreAuthorize("@perm.has('rbac:page:manage')")
+@PreAuthorize("@perm.has('page:manage')")
 public class PageActionController {
 
     private final PageActionService pageActionService;

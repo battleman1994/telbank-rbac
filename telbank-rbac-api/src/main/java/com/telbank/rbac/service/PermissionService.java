@@ -19,6 +19,7 @@ import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.repository.SysPermissionRepository;
 import com.telbank.rbac.domain.repository.SysSystemRepository;
 import com.telbank.rbac.service.cache.LocalCacheManager;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.PermissionDtos.PermissionCreateRequest;
 import com.telbank.rbac.web.dto.PermissionDtos.PermissionNodeVO;
 import com.telbank.rbac.web.dto.PermissionDtos.PermissionUpdateRequest;
@@ -36,17 +37,20 @@ public class PermissionService {
     private final LocalCacheManager localCacheManager;
     private final ChangeNotifyService changeNotifyService;
     private final JsonMapper jsonMapper;
+    private final SystemScopeGuard systemScopeGuard;
 
     public PermissionService(SysPermissionRepository permissionRepository,
                              SysSystemRepository systemRepository,
                              LocalCacheManager localCacheManager,
                              ChangeNotifyService changeNotifyService,
-                             JsonMapper jsonMapper) {
+                             JsonMapper jsonMapper,
+                             SystemScopeGuard systemScopeGuard) {
         this.permissionRepository = permissionRepository;
         this.systemRepository = systemRepository;
         this.localCacheManager = localCacheManager;
         this.changeNotifyService = changeNotifyService;
         this.jsonMapper = jsonMapper;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +58,7 @@ public class PermissionService {
         if (systemId == null) {
             throw ApiException.badRequest("systemId is required");
         }
+        systemScopeGuard.requireAccess(systemId);
         if (!systemRepository.existsById(systemId)) {
             throw ApiException.notFound("system not found: " + systemId);
         }
@@ -85,11 +90,14 @@ public class PermissionService {
 
     @Transactional(readOnly = true)
     public PermissionNodeVO get(Long id) {
-        return toVO(requireById(id), List.of());
+        SysPermission permission = requireById(id);
+        systemScopeGuard.requireAccess(permission.getSystemId());
+        return toVO(permission, List.of());
     }
 
     @Transactional
     public PermissionNodeVO create(PermissionCreateRequest request) {
+        systemScopeGuard.requireAccess(request.systemId());
         if (!systemRepository.existsById(request.systemId())) {
             throw ApiException.notFound("system not found: " + request.systemId());
         }
@@ -122,6 +130,7 @@ public class PermissionService {
     @Transactional
     public PermissionNodeVO update(Long id, PermissionUpdateRequest request) {
         SysPermission permission = requireById(id);
+        systemScopeGuard.requireAccess(permission.getSystemId());
         String code = request.code().trim();
         if (!code.equals(permission.getCode())
                 && permissionRepository.existsBySystemIdAndCodeAndIdNot(permission.getSystemId(), code, id)) {
@@ -162,6 +171,7 @@ public class PermissionService {
     @Transactional
     public void disable(Long id) {
         SysPermission permission = requireById(id);
+        systemScopeGuard.requireAccess(permission.getSystemId());
         if (permissionRepository.existsBySystemIdAndParentId(permission.getSystemId(), id)) {
             throw ApiException.badRequest("permission has children, cannot disable: " + id);
         }

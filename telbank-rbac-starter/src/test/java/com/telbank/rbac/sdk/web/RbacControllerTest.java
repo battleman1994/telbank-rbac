@@ -20,7 +20,7 @@ import com.telbank.rbac.sdk.config.RbacSdkProperties;
 import com.telbank.rbac.sdk.support.StubRbacOpenApiClient;
 
 /**
- * /rbac/me/systems 与 /rbac/me/bootstrap：身份获取、预热、平台超管、降级。
+ * /rbac/me/systems 与 /rbac/me/bootstrap：身份获取、角色推导系统透传、预热、平台超管、降级。
  */
 class RbacControllerTest {
 
@@ -29,16 +29,33 @@ class RbacControllerTest {
     private static final String USER = "13600136000";
 
     @Test
-    void systemsUsesOpenApiUserSystems() {
+    void systemsPassesThroughRoleDerivedSystems() {
         StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        // v2.0：权限中心按有效角色推导业务系统（排除 platform），SDK 原样透传
         remote.systems.add(StubRbacOpenApiClient.system("crm", "CRM系统", true));
+        remote.systems.add(StubRbacOpenApiClient.system("erp", "ERP系统", false));
         RbacController controller = controller(remote, new RbacPageActionCache());
 
         List<SystemInfo> systems = controller.getSystems(requestWithJwt());
 
-        assertThat(systems).hasSize(1);
+        assertThat(systems).hasSize(2);
         assertThat(systems.get(0).getCode()).isEqualTo("crm");
+        assertThat(systems.get(0).getIsDefault()).isTrue();
+        assertThat(systems.get(1).getCode()).isEqualTo("erp");
+        assertThat(systems.get(1).getIsDefault()).isFalse();
         assertThat(remote.lastExternalUserId).isEqualTo(USER);
+    }
+
+    @Test
+    void systemsReturnsEmptyListWhenUserHasNoValidRole() {
+        StubRbacOpenApiClient remote = new StubRbacOpenApiClient();
+        // 权限中心正常响应空列表 = 用户没有有效角色：不得降级为配置系统单例
+        RbacController controller = controller(remote, new RbacPageActionCache());
+
+        List<SystemInfo> systems = controller.getSystems(requestWithJwt());
+
+        assertThat(systems).isEmpty();
+        assertThat(remote.systemCalls.get()).isEqualTo(1);
     }
 
     @Test

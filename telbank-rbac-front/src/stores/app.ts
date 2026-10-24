@@ -1,22 +1,18 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
-import {
-  DEFAULT_MANAGEMENT_SYSTEM_CODE,
-  MANAGEMENT_SYSTEM_CODE_KEY,
-  SYSTEM_CODE_KEY,
-  TOKEN_KEY,
-} from '../api/request'
+import { CURRENT_SYSTEM_CODE_KEY, TOKEN_KEY, persistCurrentSystemCode } from '../api/request'
 import type { AdminBootstrapVO, MeVO, MySystemVO } from '../api/types'
 
 /**
- * 客户端全局状态（契约 §10 + 权限中心自接入口径）：
+ * 客户端全局状态（系统隔离模型）：
  * - token：管理端 JWT，持久化到 localStorage["rbac.token"]
  * - currentUser：GET /api/me 返回的当前用户
- * - systems：GET /api/me/systems 返回的可访问系统（含管理上下文系统 rbac）
- * - currentSystemCode：业务系统选择，仅用于数据筛选（localStorage["rbac.systemCode"]）
- * - permissions：GET /api/me/bootstrap 返回的管理权限码集合（平台超管为 ["*"]）
- * - managementSystemCode：管理上下文系统编码，作为请求头 X-System-Code（默认 rbac）
- * - hasPerm(code)：平台超管恒 true；否则判断权限码集合
+ * - systems：GET /api/me/systems 返回的「由有效角色推导」的可访问系统；平台超管为全部启用系统
+ * - currentSystemCode：当前系统上下文，持久化到 localStorage["rbac.currentSystemCode"]，
+ *   作为所有 /api/** 请求的 X-System-Code
+ * - permissions：GET /api/me/bootstrap 返回的「当前系统内」权限码集合（短码，
+ *   如 role:manage；平台超管为 ["*"]）
+ * - hasPerm(code)：平台超管恒 true；否则判断当前系统权限码集合
  */
 export interface AppState {
   token: string | null
@@ -25,12 +21,11 @@ export interface AppState {
   currentSystemCode: string | null
   platformAdmin: boolean
   permissions: Set<string>
-  managementSystemCode: string
   setSession: (token: string) => void
   setCurrentUser: (user: MeVO | null) => void
   setSystems: (systems: MySystemVO[]) => void
   setCurrentSystemCode: (code: string | null) => void
-  /** 应用 /api/me/bootstrap 返回的管理上下文（权限码 + 管理系统编码） */
+  /** 应用 /api/me/bootstrap（currentSystemCode / permissions / platformAdmin） */
   setBootstrap: (bootstrap: AdminBootstrapVO) => void
   hasPerm: (code: string) => boolean
   logout: () => void
@@ -60,10 +55,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   token: readStorage(TOKEN_KEY),
   currentUser: null,
   systems: [],
-  currentSystemCode: readStorage(SYSTEM_CODE_KEY),
+  currentSystemCode: readStorage(CURRENT_SYSTEM_CODE_KEY),
   platformAdmin: false,
   permissions: new Set<string>(),
-  managementSystemCode: readStorage(MANAGEMENT_SYSTEM_CODE_KEY)?.trim() || DEFAULT_MANAGEMENT_SYSTEM_CODE,
   setSession: (token) => {
     writeStorage(TOKEN_KEY, token)
     set({ token })
@@ -75,16 +69,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ systems })
   },
   setCurrentSystemCode: (code) => {
-    writeStorage(SYSTEM_CODE_KEY, code)
+    persistCurrentSystemCode(code)
     set({ currentSystemCode: code })
   },
   setBootstrap: (bootstrap) => {
-    const managementSystemCode =
-      bootstrap.managementSystemCode?.trim() || DEFAULT_MANAGEMENT_SYSTEM_CODE
-    writeStorage(MANAGEMENT_SYSTEM_CODE_KEY, managementSystemCode)
+    const currentSystemCode = bootstrap.currentSystemCode?.trim() || null
+    persistCurrentSystemCode(currentSystemCode)
     set({
+      currentSystemCode,
       permissions: new Set(bootstrap.permissions ?? []),
-      managementSystemCode,
       platformAdmin: bootstrap.platformAdmin,
     })
   },
@@ -95,8 +88,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
   logout: () => {
     writeStorage(TOKEN_KEY, null)
-    writeStorage(SYSTEM_CODE_KEY, null)
-    writeStorage(MANAGEMENT_SYSTEM_CODE_KEY, null)
+    writeStorage(CURRENT_SYSTEM_CODE_KEY, null)
     set({
       token: null,
       currentUser: null,
@@ -104,7 +96,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
       currentSystemCode: null,
       platformAdmin: false,
       permissions: new Set<string>(),
-      managementSystemCode: DEFAULT_MANAGEMENT_SYSTEM_CODE,
     })
   },
 }))
@@ -122,22 +113,12 @@ export function useHasPerm(): (code: string) => boolean {
   )
 }
 
-/** 当前选中业务系统对象；未选择或不存在时返回 undefined */
+/** 当前系统上下文对象；未选择或不在列表时返回 undefined */
 export function useCurrentSystem(): MySystemVO | undefined {
   return useAppStore((state) => state.systems.find((item) => item.code === state.currentSystemCode))
 }
 
-/** 当前选中业务系统 id（各类按 systemId 隔离的数据查询使用） */
+/** 当前系统 id（各类按 systemId 隔离的数据查询使用） */
 export function useCurrentSystemId(): number | undefined {
   return useCurrentSystem()?.id
-}
-
-/** 业务系统列表：排除管理上下文系统（默认 rbac），供系统切换器/数据筛选使用 */
-export function useBusinessSystems(): MySystemVO[] {
-  const systems = useAppStore((state) => state.systems)
-  const managementSystemCode = useAppStore((state) => state.managementSystemCode)
-  return useMemo(
-    () => systems.filter((system) => system.code !== managementSystemCode),
-    [systems, managementSystemCode],
-  )
 }

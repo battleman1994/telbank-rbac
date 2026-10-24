@@ -43,18 +43,19 @@ export interface MySystemVO {
 }
 
 /**
- * GET /api/me/bootstrap —— 权限中心自身接入 RBAC 的管理上下文（仅要求已认证）。
- * 管理权限码在 managementSystemCode（默认 rbac）系统内查询；
- * 平台超管 permissions 返回 ["*"]，hasPerm 恒为 true。
+ * GET /api/me/bootstrap —— 当前系统上下文（需带 X-System-Code: 当前系统）。
+ * 新系统隔离模型：currentSystemCode 为当前系统；permissions 为「当前系统内」的
+ * 短码权限集合（role:manage / permission:manage / resource:manage / page:manage /
+ * user:manage / audit:view）；平台超管 permissions 返回 ["*"]，hasPerm 恒为 true。
  */
 export interface AdminBootstrapVO {
   externalUserId: string
   platformAdmin: boolean
-  /** 管理上下文系统编码（所有 /api/** 请求的 X-System-Code 取值） */
-  managementSystemCode: string
-  /** 当前账号拥有的管理权限码集合，如 ["rbac:system:manage", ...]；平台超管为 ["*"] */
+  /** 当前系统上下文编码（与请求头 X-System-Code 一致；无可访问系统时为 null） */
+  currentSystemCode: string | null
+  /** 当前系统内有效权限码集合；平台超管为 ["*"] */
   permissions: string[]
-  /** 当前账号可访问系统（含管理上下文系统 rbac） */
+  /** 当前账号可访问系统（由有效角色推导；平台超管为全部启用系统） */
   systems: MySystemVO[]
 }
 
@@ -63,10 +64,12 @@ export interface AdminSessionVO {
   me: MeVO
   systems: MySystemVO[]
   bootstrap: AdminBootstrapVO
+  /** 选定的当前系统编码（与 bootstrap.currentSystemCode 一致，可能为 null） */
+  currentSystemCode: string | null
 }
 
 /* ------------------------------------------------------------------ */
-/* §3.2 系统管理                                                        */
+/* §3.2 系统接入（平台超管专属）                                          */
 /* ------------------------------------------------------------------ */
 
 export interface SysSystemVO {
@@ -75,7 +78,11 @@ export interface SysSystemVO {
   name: string
   region: string
   status: number
-  sort: number
+  /** 系统管理员账号（接入时自动创建默认 admin 角色并授权） */
+  adminExternalUserId?: string | null
+  /** 系统管理员姓名（可选） */
+  adminName?: string | null
+  sort?: number
   remark?: string | null
   createdAt?: string | null
   updatedAt?: string | null
@@ -85,17 +92,19 @@ export interface SystemCreatePayload {
   code: string
   name: string
   region: string
+  /** 系统管理员账号（必填） */
+  adminExternalUserId: string
+  /** 管理员姓名（可选） */
+  adminName?: string
   status?: number
-  sort?: number
-  remark?: string
 }
 
 export interface SystemUpdatePayload {
   name: string
   region: string
+  adminExternalUserId?: string
+  adminName?: string
   status?: number
-  sort?: number
-  remark?: string
 }
 
 /* ------------------------------------------------------------------ */
@@ -221,25 +230,6 @@ export interface UserRoleCreatePayload {
 }
 
 /* ------------------------------------------------------------------ */
-/* §3.7 用户-系统开通                                                   */
-/* ------------------------------------------------------------------ */
-
-export interface UserSystemVO {
-  id: number
-  systemId: number
-  systemCode: string
-  externalUserId: string
-  isDefault: number
-  status: number
-}
-
-export interface UserSystemCreatePayload {
-  systemId: number
-  externalUserId: string
-  isDefault?: boolean
-}
-
-/* ------------------------------------------------------------------ */
 /* §3.8 页面操作元数据（模式 B）                                        */
 /* ------------------------------------------------------------------ */
 
@@ -336,10 +326,6 @@ export interface SdkEndpointListQuery extends KeywordPageQuery {
 
 export interface UserRoleListQuery {
   systemId: number
-  externalUserId: string
-}
-
-export interface UserSystemListQuery {
   externalUserId: string
 }
 

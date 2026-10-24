@@ -1,7 +1,7 @@
 import { Button, Result, Space } from 'antd'
 import { useNavigate } from 'react-router'
 import { getFirstPermittedPath } from '../config/menu'
-import { useHasPerm } from '../stores/app'
+import { useAppStore, useHasPerm } from '../stores/app'
 import { PageShell } from './PageShell'
 
 interface NoPermissionProps {
@@ -14,8 +14,8 @@ interface NoPermissionProps {
 }
 
 /**
- * 无权限提示（403）：不白屏，并提供「前往第一个有权限的菜单」与刷新入口。
- * 路由守卫与「无任何管理权限」布局空态共用。
+ * 无权限提示（403）：不白屏，并提供「前往第一个可见菜单」与刷新入口。
+ * 路由守卫、平台超管专属守卫与「无任何管理权限」布局空态共用。
  */
 export function NoPermission({
   permission,
@@ -25,13 +25,14 @@ export function NoPermission({
 }: NoPermissionProps) {
   const navigate = useNavigate()
   const hasPerm = useHasPerm()
-  const firstPermittedPath = getFirstPermittedPath(hasPerm)
+  const platformAdmin = useAppStore((state) => state.platformAdmin)
+  const firstPermittedPath = getFirstPermittedPath({ hasPerm, platformAdmin })
 
   const subTitle =
     description ??
     (permission
-      ? `当前账号缺少管理权限「${permission}」，请联系平台超管授权后重试。`
-      : '当前账号没有任何权限中心管理权限（rbac:*），请联系平台超管授权后重试。')
+      ? `当前系统内缺少管理权限「${permission}」，请联系平台超管授权后重试。`
+      : '当前账号在当前系统内没有任何管理权限，请联系平台超管授权后重试。')
 
   const result = (
     <Result

@@ -9,29 +9,35 @@ import org.springframework.web.bind.annotation.RestController;
 import com.telbank.rbac.common.ApiResponse;
 import com.telbank.rbac.security.CurrentUser;
 import com.telbank.rbac.security.CurrentUserProvider;
+import com.telbank.rbac.security.ManagementContextService;
+import com.telbank.rbac.service.UserAccessService;
 import com.telbank.rbac.service.UserBootstrapService;
-import com.telbank.rbac.service.UserSystemService;
 import com.telbank.rbac.web.dto.MeDtos.AccessedSystemVO;
 import com.telbank.rbac.web.dto.MeDtos.BootstrapVO;
 import com.telbank.rbac.web.dto.MeDtos.MeVO;
 
 /**
- * 当前用户与可访问系统（契约 §3.1）。仅要求合法 JWT，不校验权限码。
+ * 当前用户、可访问系统与 bootstrap（契约 §3.1）。
+ *
+ * <p>本 Controller 的接口仅要求合法 JWT（在管理上下文过滤器白名单内），不要求 X-System-Code。</p>
  */
 @RestController
 @RequestMapping("/api/me")
 public class MeController {
 
     private final CurrentUserProvider currentUserProvider;
-    private final UserSystemService userSystemService;
+    private final UserAccessService userAccessService;
     private final UserBootstrapService userBootstrapService;
+    private final ManagementContextService managementContextService;
 
     public MeController(CurrentUserProvider currentUserProvider,
-                        UserSystemService userSystemService,
-                        UserBootstrapService userBootstrapService) {
+                        UserAccessService userAccessService,
+                        UserBootstrapService userBootstrapService,
+                        ManagementContextService managementContextService) {
         this.currentUserProvider = currentUserProvider;
-        this.userSystemService = userSystemService;
+        this.userAccessService = userAccessService;
         this.userBootstrapService = userBootstrapService;
+        this.managementContextService = managementContextService;
     }
 
     @GetMapping
@@ -43,7 +49,7 @@ public class MeController {
     @GetMapping("/systems")
     public ApiResponse<List<AccessedSystemVO>> systems() {
         CurrentUser currentUser = currentUserProvider.require();
-        return ApiResponse.ok(userSystemService.meSystems(currentUser.externalUserId()));
+        return ApiResponse.ok(userAccessService.accessedSystems(currentUser.externalUserId()));
     }
 
     /**
@@ -52,7 +58,7 @@ public class MeController {
     @GetMapping("/bootstrap")
     public ApiResponse<BootstrapVO> bootstrap() {
         CurrentUser currentUser = currentUserProvider.require();
-        return ApiResponse.ok(userBootstrapService.bootstrap(
-                currentUser.externalUserId(), currentUser.platformAdmin()));
+        return ApiResponse.ok(userBootstrapService.bootstrap(currentUser.externalUserId(),
+                currentUser.platformAdmin(), managementContextService.requestedSystemCode()));
     }
 }

@@ -39,7 +39,7 @@ interface RoleFormValues {
 export default function RolesPage() {
   const systemId = useCurrentSystemId()
   if (!systemId) {
-    return <SystemRequired title="角色管理" description="角色按业务系统隔离，需先选择系统。" />
+    return <SystemRequired title="角色管理" description="当前系统上下文未就绪，无法加载角色列表。" />
   }
   return <RolesContent systemId={systemId} />
 }

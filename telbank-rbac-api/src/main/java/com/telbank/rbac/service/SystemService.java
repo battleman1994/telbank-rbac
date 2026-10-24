@@ -1,5 +1,8 @@
 package com.telbank.rbac.service;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -10,22 +13,60 @@ import com.telbank.rbac.common.PageQuery;
 import com.telbank.rbac.common.PageResult;
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.common.TimeUtils;
+import com.telbank.rbac.domain.entity.SysPermission;
+import com.telbank.rbac.domain.entity.SysRole;
+import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysUserRole;
+import com.telbank.rbac.domain.repository.SysPermissionRepository;
+import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
+import com.telbank.rbac.domain.repository.SysRoleRepository;
 import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.repository.SysUserRoleRepository;
 import com.telbank.rbac.web.dto.SystemDtos.SystemCreateRequest;
 import com.telbank.rbac.web.dto.SystemDtos.SystemUpdateRequest;
 import com.telbank.rbac.web.dto.SystemDtos.SystemVO;
 
 /**
- * 系统管理（契约 §3.2）。
+ * 系统接入管理（契约 §3.2，仅平台超管）。
+ *
+ * <p>POST 在事务内完成：创建业务系统 → 默认 {@code admin} 角色 → 6 个系统内短权限码 →
+ * 角色权限授权 → 给 {@code adminExternalUserId} 建 user_role → 写入 admin_* 信息。
+ * GET 仅返回业务系统（排除 is_platform=1 的平台系统）。PUT 可更新系统与管理员
+ * （更换管理员时撤销旧管理员角色并授权新管理员）。</p>
  */
 @Service
 public class SystemService {
 
-    private final SysSystemRepository systemRepository;
+    /** 系统接入时自动创建的管理角色编码。 */
+    public static final String DEFAULT_ADMIN_ROLE_CODE = "admin";
+    public static final String DEFAULT_ADMIN_ROLE_NAME = "系统管理员";
 
-    public SystemService(SysSystemRepository systemRepository) {
+    /** 系统接入时自动创建并授予默认 admin 角色的 6 个短权限码。 */
+    private static final List<PermissionSeed> DEFAULT_ADMIN_PERMISSIONS = List.of(
+            new PermissionSeed(RbacConstants.PERM_ROLE_MANAGE, "角色管理", 80),
+            new PermissionSeed(RbacConstants.PERM_PERMISSION_MANAGE, "权限管理", 81),
+            new PermissionSeed(RbacConstants.PERM_RESOURCE_MANAGE, "资源管理", 82),
+            new PermissionSeed(RbacConstants.PERM_PAGE_MANAGE, "页面元素管理", 83),
+            new PermissionSeed(RbacConstants.PERM_USER_MANAGE, "用户授权管理", 84),
+            new PermissionSeed(RbacConstants.PERM_AUDIT_VIEW, "授权记录查看", 85));
+
+    private final SysSystemRepository systemRepository;
+    private final SysRoleRepository roleRepository;
+    private final SysPermissionRepository permissionRepository;
+    private final SysRolePermissionRepository rolePermissionRepository;
+    private final SysUserRoleRepository userRoleRepository;
+
+    public SystemService(SysSystemRepository systemRepository,
+                         SysRoleRepository roleRepository,
+                         SysPermissionRepository permissionRepository,
+                         SysRolePermissionRepository rolePermissionRepository,
+                         SysUserRoleRepository userRoleRepository) {
         this.systemRepository = systemRepository;
+        this.roleRepository = roleRepository;
+        this.permissionRepository = permissionRepository;
+        this.rolePermissionRepository = rolePermissionRepository;
+        this.userRoleRepository = userRoleRepository;
     }
 
     @Transactional(readOnly = true)
@@ -37,6 +78,9 @@ public class SystemService {
                 page.getTotalElements(), pageQuery);
     }
 
+    /**
+     * 系统接入：创建系统 + 默认 admin 角色 + 6 个短权限码 + 授权 + 管理员 user_role。
+     */
     @Transactional
     public SystemVO create(SystemCreateRequest request) {
         String code = request.code().trim();
@@ -50,12 +94,64 @@ public class SystemService {
         system.setStatus(request.status() == null ? RbacConstants.STATUS_ENABLED : request.status());
         system.setSort(request.sort() == null ? 0 : request.sort());
         system.setRemark(request.remark());
-        return toVO(systemRepository.save(system));
+        system.setIsPlatform(0);
+        String adminExternalUserId = request.adminExternalUserId().trim();
+        system.setAdminExternalUserId(adminExternalUserId);
+        system.setAdminName(blankToNull(request.adminName()));
+        SysSystem savedSystem = systemRepository.save(system);
+
+        SysRole adminRole = new SysRole();
+        adminRole.setSystemId(savedSystem.getId());
+        adminRole.setCode(DEFAULT_ADMIN_ROLE_CODE);
+        adminRole.setName(DEFAULT_ADMIN_ROLE_NAME);
+        adminRole.setStatus(RbacConstants.STATUS_ENABLED);
+        adminRole.setSort(0);
+        adminRole.setRemark("系统接入自动创建");
+        SysRole savedRole = roleRepository.save(adminRole);
+
+        List<SysPermission> permissions = new ArrayList<>(DEFAULT_ADMIN_PERMISSIONS.size());
+        List<SysRolePermission> grants = new ArrayList<>(DEFAULT_ADMIN_PERMISSIONS.size());
+        for (PermissionSeed seed : DEFAULT_ADMIN_PERMISSIONS) {
+            SysPermission permission = new SysPermission();
+            permission.setSystemId(savedSystem.getId());
+            permission.setParentId(0L);
+            permission.setType(2);
+            permission.setCode(seed.code());
+            permission.setName(seed.name());
+            permission.setSort(seed.sort());
+            permission.setStatus(RbacConstants.STATUS_ENABLED);
+            permission.setIsPublic(0);
+            permissions.add(permission);
+        }
+        for (SysPermission permission : permissionRepository.saveAll(permissions)) {
+            SysRolePermission grant = new SysRolePermission();
+            grant.setSystemId(savedSystem.getId());
+            grant.setRoleId(savedRole.getId());
+            grant.setPermissionId(permission.getId());
+            grant.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
+            grant.setGrantReason("系统管理员权限");
+            grant.setStatus(RbacConstants.STATUS_ENABLED);
+            grants.add(grant);
+        }
+        rolePermissionRepository.saveAll(grants);
+
+        SysUserRole userRole = new SysUserRole();
+        userRole.setSystemId(savedSystem.getId());
+        userRole.setExternalUserId(adminExternalUserId);
+        userRole.setRoleId(savedRole.getId());
+        userRole.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
+        userRole.setGrantReason("系统管理员");
+        userRole.setStatus(RbacConstants.STATUS_ENABLED);
+        userRoleRepository.save(userRole);
+        return toVO(savedSystem);
     }
 
+    /**
+     * 更新系统信息与管理员；更换管理员时撤销旧管理员授权并授权新管理员。
+     */
     @Transactional
     public SystemVO update(Long id, SystemUpdateRequest request) {
-        SysSystem system = requireById(id);
+        SysSystem system = requireBusinessSystem(id);
         system.setName(request.name().trim());
         system.setRegion(request.region().trim());
         if (request.status() != null) {
@@ -67,23 +163,57 @@ public class SystemService {
         if (request.remark() != null) {
             system.setRemark(request.remark());
         }
+        if (request.adminExternalUserId() != null && !request.adminExternalUserId().isBlank()) {
+            changeAdministrator(system, request.adminExternalUserId().trim());
+        }
+        if (request.adminName() != null) {
+            system.setAdminName(blankToNull(request.adminName()));
+        }
         return toVO(systemRepository.save(system));
     }
 
-    /**
-     * DELETE 为停用，不做物理删除（契约 §3.2）。
-     */
-    @Transactional
-    public void disable(Long id) {
-        SysSystem system = requireById(id);
-        system.setStatus(RbacConstants.STATUS_DISABLED);
-        systemRepository.save(system);
+    private void changeAdministrator(SysSystem system, String newAdminExternalUserId) {
+        String oldAdmin = system.getAdminExternalUserId();
+        if (newAdminExternalUserId.equals(oldAdmin)) {
+            return;
+        }
+        SysRole adminRole = roleRepository
+                .findBySystemIdAndCode(system.getId(), DEFAULT_ADMIN_ROLE_CODE)
+                .orElseThrow(() -> ApiException.badRequest(
+                        "default admin role not found for system: " + system.getId()));
+        if (oldAdmin != null && !oldAdmin.isBlank()) {
+            userRoleRepository.findBySystemIdAndExternalUserIdAndRoleId(
+                            system.getId(), oldAdmin, adminRole.getId())
+                    .ifPresent(oldRelation -> {
+                        oldRelation.setStatus(RbacConstants.STATUS_DISABLED);
+                        userRoleRepository.save(oldRelation);
+                    });
+        }
+        SysUserRole relation = userRoleRepository
+                .findBySystemIdAndExternalUserIdAndRoleId(
+                        system.getId(), newAdminExternalUserId, adminRole.getId())
+                .orElseGet(SysUserRole::new);
+        relation.setSystemId(system.getId());
+        relation.setExternalUserId(newAdminExternalUserId);
+        relation.setRoleId(adminRole.getId());
+        relation.setValidFrom(null);
+        relation.setValidUntil(null);
+        relation.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
+        relation.setGrantReason("系统管理员");
+        relation.setSourceApprovalId(null);
+        relation.setStatus(RbacConstants.STATUS_ENABLED);
+        userRoleRepository.save(relation);
+        system.setAdminExternalUserId(newAdminExternalUserId);
     }
 
     @Transactional(readOnly = true)
-    public SysSystem requireById(Long id) {
-        return systemRepository.findById(id)
+    public SysSystem requireBusinessSystem(Long id) {
+        SysSystem system = systemRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("system not found: " + id));
+        if (system.getIsPlatform() != null && system.getIsPlatform() == 1) {
+            throw ApiException.notFound("system not found: " + id);
+        }
+        return system;
     }
 
     @Transactional(readOnly = true)
@@ -94,7 +224,19 @@ public class SystemService {
 
     public static SystemVO toVO(SysSystem system) {
         return new SystemVO(system.getId(), system.getCode(), system.getName(), system.getRegion(),
-                system.getStatus(), system.getSort(), system.getRemark(),
+                system.getStatus(), system.getSort(), system.getRemark(), system.getIsPlatform(),
+                system.getAdminExternalUserId(), system.getAdminName(),
                 TimeUtils.toInstant(system.getCreatedAt()), TimeUtils.toInstant(system.getUpdatedAt()));
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private record PermissionSeed(String code, String name, int sort) {
     }
 }

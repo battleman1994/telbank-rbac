@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.common.TimeUtils;
-import com.telbank.rbac.config.RbacProperties;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.repository.SysUserRoleRepository;
 import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
@@ -22,7 +21,7 @@ import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
  * 权限查询服务（需求 §5.2 / §5.3）：
  *
  * <ul>
- *   <li>JWT sub → external_user_id；平台超管短路；</li>
+ *   <li>JWT sub → external_user_id；平台超管（platform:admin，数据驱动）会得到 {@code *}；</li>
  *   <li>权限查询 SQL 自带时效过滤：{@code (valid_from IS NULL OR valid_from <= NOW()) AND
  *       (valid_until IS NULL OR valid_until > NOW()) AND status = 1}；</li>
  *   <li>{@code is_public=1} 的权限码所有登录用户默认拥有。</li>
@@ -32,11 +31,12 @@ import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
 public class PermissionQueryService {
 
     private final SysUserRoleRepository userRoleRepository;
-    private final RbacProperties properties;
+    private final PlatformAdminService platformAdminService;
 
-    public PermissionQueryService(SysUserRoleRepository userRoleRepository, RbacProperties properties) {
+    public PermissionQueryService(SysUserRoleRepository userRoleRepository,
+                                  PlatformAdminService platformAdminService) {
         this.userRoleRepository = userRoleRepository;
-        this.properties = properties;
+        this.platformAdminService = platformAdminService;
     }
 
     /**
@@ -84,18 +84,10 @@ public class PermissionQueryService {
      */
     @Transactional(readOnly = true)
     public List<PermissionItem> userPermissions(SysSystem system, String externalUserId) {
-        if (isPlatformAdmin(externalUserId)) {
+        if (platformAdminService.isPlatformAdmin(externalUserId)) {
             return List.of(new PermissionItem(RbacConstants.PLATFORM_ADMIN_PERMISSION_CODE, null, null));
         }
         return effectivePermissions(system.getId(), externalUserId);
-    }
-
-    public boolean isPlatformAdmin(String externalUserId) {
-        if (externalUserId == null || externalUserId.isBlank() || properties.getPlatformAdminIds() == null) {
-            return false;
-        }
-        return properties.getPlatformAdminIds().stream()
-                .anyMatch(id -> id != null && id.equals(externalUserId));
     }
 
     private static String asString(Object value) {

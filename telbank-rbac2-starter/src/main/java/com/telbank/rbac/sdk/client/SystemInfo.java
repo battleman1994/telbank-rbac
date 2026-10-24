@@ -5,6 +5,9 @@ package com.telbank.rbac.sdk.client;
  *
  * <p>对应开放接口 {@code GET /openapi/sdk/user-systems} 的 data 元素：
  * {@code {"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}}</p>
+ *
+ * <p>v2.0 起系统列表由权限中心按用户「有效 user_role」推导（排除 platform 平台系统），
+ * {@code isDefault} 表示列表中的默认业务系统；响应结构保持不变。</p>
  */
 public class SystemInfo {
 

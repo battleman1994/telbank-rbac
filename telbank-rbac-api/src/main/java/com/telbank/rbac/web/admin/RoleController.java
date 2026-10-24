@@ -22,11 +22,11 @@ import com.telbank.rbac.web.dto.RoleDtos.RoleVO;
 import jakarta.validation.Valid;
 
 /**
- * 角色管理（契约 §3.3），需要 {@code rbac:role:manage}。
+ * 角色管理（契约 §3.3），需要系统内 {@code role:manage}。
  */
 @RestController
 @RequestMapping("/api/roles")
-@PreAuthorize("@perm.has('rbac:role:manage')")
+@PreAuthorize("@perm.has('role:manage')")
 public class RoleController {
 
     private final RoleService roleService;

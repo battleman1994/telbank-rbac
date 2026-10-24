@@ -30,6 +30,18 @@ public class SysSystem extends BaseEntity {
     @Column(name = "remark", length = 255)
     private String remark;
 
+    /** 1=权限中心平台系统（不参与业务系统选择），0/null=业务系统。 */
+    @Column(name = "is_platform", nullable = false)
+    private Integer isPlatform = 0;
+
+    /** 系统管理员外部账号（系统接入时登记）。 */
+    @Column(name = "admin_external_user_id", length = 255)
+    private String adminExternalUserId;
+
+    /** 系统管理员姓名。 */
+    @Column(name = "admin_name", length = 100)
+    private String adminName;
+
     public String getCode() {
         return code;
     }
@@ -76,5 +88,29 @@ public class SysSystem extends BaseEntity {
 
     public void setRemark(String remark) {
         this.remark = remark;
+    }
+
+    public Integer getIsPlatform() {
+        return isPlatform;
+    }
+
+    public void setIsPlatform(Integer isPlatform) {
+        this.isPlatform = isPlatform;
+    }
+
+    public String getAdminExternalUserId() {
+        return adminExternalUserId;
+    }
+
+    public void setAdminExternalUserId(String adminExternalUserId) {
+        this.adminExternalUserId = adminExternalUserId;
+    }
+
+    public String getAdminName() {
+        return adminName;
+    }
+
+    public void setAdminName(String adminName) {
+        this.adminName = adminName;
     }
 }

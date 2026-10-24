@@ -12,6 +12,7 @@ import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.repository.SysRoleRepository;
 import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.RoleDtos.RoleCreateRequest;
 import com.telbank.rbac.web.dto.RoleDtos.RoleUpdateRequest;
 import com.telbank.rbac.web.dto.RoleDtos.RoleVO;
@@ -24,10 +25,13 @@ public class RoleService {
 
     private final SysRoleRepository roleRepository;
     private final SysSystemRepository systemRepository;
+    private final SystemScopeGuard systemScopeGuard;
 
-    public RoleService(SysRoleRepository roleRepository, SysSystemRepository systemRepository) {
+    public RoleService(SysRoleRepository roleRepository, SysSystemRepository systemRepository,
+                       SystemScopeGuard systemScopeGuard) {
         this.roleRepository = roleRepository;
         this.systemRepository = systemRepository;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
@@ -35,6 +39,7 @@ public class RoleService {
         if (systemId == null) {
             throw ApiException.badRequest("systemId is required");
         }
+        systemScopeGuard.requireAccess(systemId);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         Page<SysRole> page = roleRepository.search(systemId, normalizedKeyword,
                 pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));
@@ -44,6 +49,7 @@ public class RoleService {
 
     @Transactional
     public RoleVO create(RoleCreateRequest request) {
+        systemScopeGuard.requireAccess(request.systemId());
         if (!systemRepository.existsById(request.systemId())) {
             throw ApiException.notFound("system not found: " + request.systemId());
         }
@@ -64,6 +70,7 @@ public class RoleService {
     @Transactional
     public RoleVO update(Long id, RoleUpdateRequest request) {
         SysRole role = requireById(id);
+        systemScopeGuard.requireAccess(role.getSystemId());
         role.setName(request.name().trim());
         if (request.status() != null) {
             role.setStatus(request.status());
@@ -80,6 +87,7 @@ public class RoleService {
     @Transactional
     public void disable(Long id) {
         SysRole role = requireById(id);
+        systemScopeGuard.requireAccess(role.getSystemId());
         role.setStatus(RbacConstants.STATUS_DISABLED);
         roleRepository.save(role);
     }

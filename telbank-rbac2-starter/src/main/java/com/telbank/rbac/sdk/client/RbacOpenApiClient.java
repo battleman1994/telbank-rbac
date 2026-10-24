@@ -38,7 +38,10 @@ public interface RbacOpenApiClient {
     void syncEndpoints(List<EndpointInfo> endpoints);
 
     /**
-     * 查询用户可访问系统：{@code GET /openapi/sdk/user-systems?externalUserId=}。
+     * 查询用户有有效角色的业务系统：{@code GET /openapi/sdk/user-systems?externalUserId=}。
+     *
+     * <p>响应字段 code/name/region/isDefault 结构不变；系统由权限中心按有效角色推导
+     * （排除 platform 平台系统），用户无有效角色时返回空列表。</p>
      */
     List<SystemInfo> fetchUserSystems(String externalUserId);
 }

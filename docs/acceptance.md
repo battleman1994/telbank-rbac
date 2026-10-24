@@ -93,8 +93,8 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | # | 场景 | 验证方式 | 预期 | 状态 |
 |---|---|---|---|---|
 | 1 | `is_public=1` 所有登录用户 hasPerm=true | API 脚本（同 9.2.3） | 成立 | ✅ |
-| 2 | 平台超管任意系统可访问全部菜单/接口 | API 脚本：`platformAdmin=true`、`/api/me/systems` 全部、user-permissions=`["*"]` | 成立 | ✅ |
-| 3 | 平台超管不受 `sys_user_role` 限制 | 同上（超管无任何授权记录仍放行） | 成立 | ✅ |
+| 2 | 平台超管任意系统可访问全部菜单/接口 | API 脚本：`superadmin` 的 `platformAdmin=true`、`/api/me/systems` 返回全部业务系统、user-permissions=`["*"]` | 成立 | ✅ |
+| 3 | 平台超管由数据驱动（platform 系统 + platform:admin），非配置文件 | API 脚本 + 种子数据核对；`crm-admin-001`/`erp-admin-001` 非超管 | 成立 | ✅ |
 
 ## 9.8 SDK 扫描与上报
 
@@ -184,8 +184,9 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.12.7 时钟偏移 | 🧪 | `RbacUserPermissionCacheTest`（offset 计算与时效判定） |
 | §9.13.3 全链路 HTTPS | 🔶 | 配置/README 生产说明 + 代码强制不走 HTTP 生产；本机验收为 HTTP（demo） |
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
-| §9.15 权限中心自接入（rbac 系统 + bootstrap + 权限菜单） | ✅ | V3 迁移新增 `rbac` 系统与 `rbac-admin` 角色；13800138000 bootstrap 返回 5 个 `rbac:*`、operator 返回空集、平台超管返回 `["*"]`；管理上下文 `X-System-Code: rbac` 200、业务系统上下文 `crm` 403；管理前端按 bootstrap 权限过滤菜单/路由（build + mock 冒烟通过） |
-| JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac2-starter`（Boot 4.1.2/JDK21）**91 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
+| §9.15 系统隔离 / 数据驱动超管 / bootstrap（v2.0） | ✅ | 全量 API 脚本：`superadmin` DB 判定为超管、可跨系统；`crm-admin-001` 只看到 CRM、bootstrap 含 6 个短管理码，跨系统/系统接入 403；139 仅 CRM 无管理码；137 角色过期无可访问系统；`/api/user-systems` 404 |
+| §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + 6 短权限码 + 授权；新管理员可访问并管理新系统；非超管 403；PUT status=0 停用后从可访问系统移除 |
+| JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac2-starter`（Boot 4.1.2/JDK21）**98 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
 | Flyway 移除（需求附录 A10） | ✅ | 删除 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `db/manual/01_schema.sql`、`02_seed_data.sql`、`03_rbac_self_onboarding.sql` 手动初始化。全新库导入后 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入 8 表并启动成功 |
 | 管理前端 ↔ 真实后端联调 | 🔶 | 前端已通过 `tsc` 类型检查、生产构建、mock 后端 + headless Chrome 10 页面冒烟；**尚未在真实 `telbank-rbac-api` 上做浏览器人工联调**（启动方式见 README §4） |
 
@@ -194,9 +195,10 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 1. **JDK 21 实机复核（已完成）**：2026-10-24 14:16–14:17 在 **JDK 21.0.13（Homebrew）** 下全量复跑：权限中心 `clean test` 46/46、SDK `clean test` 90/90、API 验收 50/50、SDK 端到端 4/4，字节码 major 分别为 65/52。
 2. **Redis Pub/Sub（已完成）**：已安装 Redis 8.10.2，并以 `rbac.redis.enabled=true` 启动权限中心做真实联调：两个 SDK 按区域订阅频道成功、变更通知 `receivers=1`、SDK 收到通知后刷新映射/页面元数据/权限缓存、过期收回任务经 Redis 发布，且 nonce 防重放改用 Redis 存储（`rbac:nonce:*`）。
 3. **SDK 的 JDK 8 运行时冒烟（已完成，CI）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8；已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功。
-4. **权限中心自接入（已完成）**：新增 `rbac` 系统 + `rbac-admin` 角色（V3），管理端 `/api/**` 固定管理上下文；新增 `/api/me/bootstrap`；管理前端按权限码过滤菜单/路由（`PermissionGuard`/`NoPermission`）。
+4. **权限中心自接入（v1，已被 v2.0 A11 取代）**：旧 `rbac` 系统/固定管理上下文已删除；v2.0 改为平台系统 + 数据驱动超管 + 系统内短码。
 5. **JDK 21 版 SDK（已完成）**：新增 `telbank-rbac2-starter`（JDK21 + Boot 4，协议一致），91 单测 + JDK21 示例业务系统 e2e 4/4 通过；真实 Redis Pub/Sub 亦已联调（订阅 + 变更通知驱动刷新）；CI 新增对应构建 job。
 6. **移除 Flyway（已完成）**：按用户要求删除 Flyway 依赖与配置类，数据库初始化改为 `db/manual/*.sql` 手动执行；`init-db.sh` 与 `--temp-db` 一键启动均已验证（全新库 8 表、验收 59/59）。
+7. **系统隔离重构（v2.0，A11，已完成）**：删除用户-系统开通；数据驱动超管；管理上下文=当前业务系统；管理权限短码；系统接入仅超管并录入管理员自动建角色授权；全新库 01→04 迁移 + 88 后端单测 + 全量验收 81/81（含两个 SDK e2e 各 4/4）。
 
 ## 已知限制（生产前建议处理）
 
@@ -204,14 +206,22 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 2. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
 3. **MySQL 版本**：本机临时 MySQL 26.7 实测通过；生产建议 MySQL 8.0+（本项目已移除 Flyway，无迁移工具版本告警）。
 4. **前端包体**：未做路由级 code splitting（单 chunk 1.4 MB / gzip 443 kB），可后续优化。
-5. **管理前端真实后端联调（待补）**：前端已通过类型检查、构建与 mock 冒烟，尚未在真实权限中心后端上做浏览器人工联调（启动方式见 README §4，验收时可逐页操作并观察 `/api/**` 请求）。
+5. **管理前端真实后端联调（待补）**：前端已通过类型检查、构建与 mock 冒烟（v2.0 菜单/上下文/系统接入表单），尚未在真实权限中心后端上做浏览器人工联调（启动方式见 README §4，验收时可逐页操作并观察 `/api/**` 请求）。
+6. **系统接入无删除**：v2.0 仅支持 PUT `status=0` 停用（需求未定义删除）；测试脚本会留下唯一编码的停用系统。
 
 ## 执行记录
 
-> 验证机：macOS arm64（`hellokitty`）· 临时 MySQL 26.7（`127.0.0.1:3307`，独立临时实例；本次 V1+V2+V3 迁移）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；JDK 8 运行时由 GitHub Actions 验证；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
+> 验证机：macOS arm64（`hellokitty`）· MySQL 26.7（127.0.0.1:3306；v2.0 使用独立库 `telbank_rbac_v2` 按 01→04 初始化）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；JDK 8 运行时由 GitHub Actions 验证；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
+| 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 20:17 | `./scripts/verify-all.sh`（v2.0） | **14 项检查全过**：api **88** 单测、SDK(8) 90、SDK(21) 91、前端构建、手动 SQL、系统隔离产物、平台脚本等 |
+| 20:16 | 全量 API 验收（`telbank_rbac_v2` + JDK21 API + JDK8/JDK21 两套示例系统） | **81/81 PASS**：v2.0 系统隔离 + 系统接入 + 原有开放接口/审批/时效 + 两个 SDK e2e 各 4/4 |
+| 20:15 | `mvn -pl telbank-rbac-api clean test`（v2.0 后端） | **88/88 PASS**，BUILD SUCCESS |
+| 20:11 | 前端 `npm run build`（v2.0 菜单/上下文重构） | tsc 0 error；3255 modules；dist 1.4 MB（JS gzip 442 kB） |
+| 20:05 | 04 系统隔离迁移（全新库 `telbank_rbac_v2`） | 无 `sys_user_system`；系统 crm/erp/platform；各业务系统 6 短码；`superadmin`/`crm-admin-001`/`erp-admin-001` 就绪 |
 | 19:19 | `./scripts/start-all.sh --temp-db`（移除 Flyway 后） | 临时库自动导入 `db/manual` 01→03：**8 张表（无 flyway_schema_history）**；后端 401 就绪、前端 200；退出清理正常 |
 | 19:18 | 全新库手动初始化 + API 验收（`telbank_rbac_manual`，无 Flyway） | `init-db.sh` 导入 01→03 成功（8 表 / 3 系统 / 17 权限 / 5 角色）；`RBAC_BASE_URL=http://127.0.0.1:28081 python3 scripts/acceptance.py` → **59/59 PASS**（跳过示例业务系统） |
 | 19:17 | `mvn -pl telbank-rbac-api clean test`（移除 Flyway 依赖后） | **53/53 PASS**，BUILD SUCCESS |

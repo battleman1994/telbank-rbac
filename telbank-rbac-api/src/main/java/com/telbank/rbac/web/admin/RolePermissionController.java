@@ -17,11 +17,11 @@ import com.telbank.rbac.web.dto.GrantDtos.RolePermissionsVO;
 import jakarta.validation.Valid;
 
 /**
- * 角色-权限授权（契约 §3.5），需要 {@code rbac:role:manage}。
+ * 角色-权限授权（契约 §3.5），需要系统内 {@code role:manage}。
  */
 @RestController
 @RequestMapping("/api/roles/{roleId}/permissions")
-@PreAuthorize("@perm.has('rbac:role:manage')")
+@PreAuthorize("@perm.has('role:manage')")
 public class RolePermissionController {
 
     private final RolePermissionService rolePermissionService;

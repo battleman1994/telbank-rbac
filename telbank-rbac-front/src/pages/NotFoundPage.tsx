@@ -12,8 +12,8 @@ export default function NotFoundPage() {
         title="404"
         subTitle="您访问的管理端页面不存在，请从左侧菜单重新进入。"
         extra={
-          <Button type="primary" onClick={() => navigate('/systems', { replace: true })}>
-            返回系统管理
+          <Button type="primary" onClick={() => navigate('/', { replace: true })}>
+            返回首页
           </Button>
         }
       />

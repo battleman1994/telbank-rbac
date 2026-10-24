@@ -32,8 +32,8 @@ export default function ApprovalGrantsPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="审批授权记录"
-        description="审批授权记录按系统查询，需先在顶部选择业务系统。"
+        title="授权记录"
+        description="当前系统上下文未就绪，无法加载授权记录。"
       />
     )
   }
@@ -122,8 +122,8 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="审批授权记录"
-      description="展示由审批系统回调（POST /openapi/approval/grant）产生的授权记录，数据来源于 sys_user_role 与 sys_role_permission 中 source_approval_id 非空的记录。"
+      title="授权记录"
+      description="展示当前系统内由审批系统回调（POST /openapi/approval/grant）产生的授权记录，数据来源于 sys_user_role 与 sys_role_permission 中 source_approval_id 非空的记录。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void grantsQuery.refetch()}>
@@ -170,7 +170,7 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="审批授权记录加载失败"
+              title="授权记录加载失败"
               description={grantsQuery.error.message}
               action={
                 <Button size="small" onClick={() => void grantsQuery.refetch()}>

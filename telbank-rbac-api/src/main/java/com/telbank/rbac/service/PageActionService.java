@@ -14,6 +14,7 @@ import com.telbank.rbac.domain.entity.SysPageAction;
 import com.telbank.rbac.domain.repository.SysPageActionRepository;
 import com.telbank.rbac.domain.repository.SysSystemRepository;
 import com.telbank.rbac.service.cache.LocalCacheManager;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.PageActionDtos.PageActionCreateRequest;
 import com.telbank.rbac.web.dto.PageActionDtos.PageActionUpdateRequest;
 import com.telbank.rbac.web.dto.PageActionDtos.PageActionVO;
@@ -31,17 +32,20 @@ public class PageActionService {
     private final LocalCacheManager localCacheManager;
     private final ChangeNotifyService changeNotifyService;
     private final JsonMapper jsonMapper;
+    private final SystemScopeGuard systemScopeGuard;
 
     public PageActionService(SysPageActionRepository pageActionRepository,
                              SysSystemRepository systemRepository,
                              LocalCacheManager localCacheManager,
                              ChangeNotifyService changeNotifyService,
-                             JsonMapper jsonMapper) {
+                             JsonMapper jsonMapper,
+                             SystemScopeGuard systemScopeGuard) {
         this.pageActionRepository = pageActionRepository;
         this.systemRepository = systemRepository;
         this.localCacheManager = localCacheManager;
         this.changeNotifyService = changeNotifyService;
         this.jsonMapper = jsonMapper;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
@@ -49,6 +53,7 @@ public class PageActionService {
         if (systemId == null) {
             throw ApiException.badRequest("systemId is required");
         }
+        systemScopeGuard.requireAccess(systemId);
         String normalizedPageCode = pageCode == null ? "" : pageCode.trim();
         Page<SysPageAction> page = pageActionRepository.search(systemId, normalizedPageCode,
                 pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));
@@ -58,6 +63,7 @@ public class PageActionService {
 
     @Transactional
     public PageActionVO create(PageActionCreateRequest request) {
+        systemScopeGuard.requireAccess(request.systemId());
         if (!systemRepository.existsById(request.systemId())) {
             throw ApiException.notFound("system not found: " + request.systemId());
         }
@@ -81,6 +87,7 @@ public class PageActionService {
     public PageActionVO update(Long id, PageActionUpdateRequest request) {
         SysPageAction action = pageActionRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("page action not found: " + id));
+        systemScopeGuard.requireAccess(action.getSystemId());
         String pageCode = request.pageCode().trim();
         String code = request.code().trim();
         if ((!pageCode.equals(action.getPageCode()) || !code.equals(action.getCode()))
@@ -104,6 +111,7 @@ public class PageActionService {
     public void disable(Long id) {
         SysPageAction action = pageActionRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("page action not found: " + id));
+        systemScopeGuard.requireAccess(action.getSystemId());
         action.setStatus(RbacConstants.STATUS_DISABLED);
         pageActionRepository.save(action);
         invalidateAndPublish(action.getSystemId());

@@ -100,6 +100,17 @@ SQL_COUNT="$(ls "$SQL_DIR"/*.sql 2>/dev/null | wc -l | tr -d ' ')"
 grep -qi 'flyway' telbank-rbac-api/pom.xml && die "pom.xml 仍包含 Flyway 依赖"
 if grep -rqi 'flyway' telbank-rbac-api/src/main/java; then die "源码仍包含 Flyway 引用"; fi
 ok "数据库初始化采用手动 SQL（db/manual，无 Flyway）"
+# v2.0 系统隔离重构产物核对
+[ -f telbank-rbac-api/src/main/resources/db/manual/04_system_isolation.sql ] \
+  || die "缺少 04_system_isolation.sql"
+grep -rq 'class UserSystemController' telbank-rbac-api/src/main/java && die "仍存在 UserSystemController"
+[ -d telbank-rbac-api/src/main/java/com/telbank/rbac/security ] \
+  && [ -f telbank-rbac-api/src/main/java/com/telbank/rbac/security/ManagementContextService.java ] \
+  || die "缺少 ManagementContextService（系统隔离上下文）"
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/service/PlatformAdminService.java ] \
+  || die "缺少 PlatformAdminService（数据驱动超管）"
+grep -q 'platform-admin-ids' telbank-rbac-api/src/main/resources/application.yml && die "仍存在配置驱动超管 platform-admin-ids"
+ok "系统隔离重构产物核对（04 迁移 / 上下文 / 数据驱动超管 / 无 user-system）"
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"
 done

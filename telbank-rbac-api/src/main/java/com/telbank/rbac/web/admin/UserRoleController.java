@@ -20,11 +20,11 @@ import com.telbank.rbac.web.dto.GrantDtos.UserRoleVO;
 import jakarta.validation.Valid;
 
 /**
- * 用户-角色分配（契约 §3.6），需要 {@code rbac:role:manage}。
+ * 用户-角色分配（契约 §3.6），需要系统内 {@code role:manage}。
  */
 @RestController
 @RequestMapping("/api/user-roles")
-@PreAuthorize("@perm.has('rbac:role:manage')")
+@PreAuthorize("@perm.has('user:manage')")
 public class UserRoleController {
 
     private final UserRoleService userRoleService;

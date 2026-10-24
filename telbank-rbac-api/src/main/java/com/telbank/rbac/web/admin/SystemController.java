@@ -1,7 +1,6 @@
 package com.telbank.rbac.web.admin;
 
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,11 +21,11 @@ import com.telbank.rbac.web.dto.SystemDtos.SystemVO;
 import jakarta.validation.Valid;
 
 /**
- * 系统管理（契约 §3.2），需要 {@code rbac:system:manage}。
+ * 系统接入管理（契约 §3.2）：仅平台超管可调用，系统管理员不可见；无删除（PUT 更新 status 启停）。
  */
 @RestController
 @RequestMapping("/api/systems")
-@PreAuthorize("@perm.has('rbac:system:manage')")
+@PreAuthorize("@perm.isPlatformAdmin()")
 public class SystemController {
 
     private final SystemService systemService;
@@ -51,11 +50,5 @@ public class SystemController {
     public ApiResponse<SystemVO> update(@PathVariable Long id,
                                         @Valid @RequestBody SystemUpdateRequest request) {
         return ApiResponse.ok(systemService.update(id, request));
-    }
-
-    @DeleteMapping("/{id}")
-    public ApiResponse<Void> disable(@PathVariable Long id) {
-        systemService.disable(id);
-        return ApiResponse.ok();
     }
 }

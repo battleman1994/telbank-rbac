@@ -122,20 +122,32 @@ class HttpRbacOpenApiClientTest {
     }
 
     @Test
-    void fetchUserSystemsParsesArrayDataAndIsDefaultField() {
+    void fetchUserSystemsParsesRoleDerivedSystemList() {
         CapturingClient client = new CapturingClient(200,
-                "{\"code\":0,\"message\":\"ok\",\"data\":[{\"code\":\"crm\",\"name\":\"CRM系统\","
-                        + "\"region\":\"region_a\",\"isDefault\":true}]}");
+                "{\"code\":0,\"message\":\"ok\",\"data\":["
+                        + "{\"code\":\"crm\",\"name\":\"CRM系统\",\"region\":\"region_a\",\"isDefault\":true},"
+                        + "{\"code\":\"erp\",\"name\":\"ERP系统\",\"region\":\"region_b\",\"isDefault\":false}]}");
         HttpRbacOpenApiClient api = api(properties("https://rbac.example.com"), client);
 
-        List<SystemInfo> systems = api.fetchUserSystems("13800138000");
+        List<SystemInfo> systems = api.fetchUserSystems("13600136000");
 
-        assertThat(systems).hasSize(1);
+        assertThat(systems).hasSize(2);
         assertThat(systems.get(0).getCode()).isEqualTo("crm");
         assertThat(systems.get(0).getName()).isEqualTo("CRM系统");
         assertThat(systems.get(0).getIsDefault()).isTrue();
+        assertThat(systems.get(1).getCode()).isEqualTo("erp");
+        assertThat(systems.get(1).getIsDefault()).isFalse();
         assertThat(URI.create(client.lastRequest.url()).getRawQuery())
-                .isEqualTo("externalUserId=13800138000");
+                .isEqualTo("externalUserId=13600136000");
+    }
+
+    @Test
+    void fetchUserSystemsParsesEmptyArrayAsNoValidRole() {
+        CapturingClient client = new CapturingClient(200,
+                "{\"code\":0,\"message\":\"ok\",\"data\":[]}");
+        HttpRbacOpenApiClient api = api(properties("https://rbac.example.com"), client);
+
+        assertThat(api.fetchUserSystems("13700137000")).isEmpty();
     }
 
     @Test

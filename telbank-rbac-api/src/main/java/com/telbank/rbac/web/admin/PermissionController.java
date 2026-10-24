@@ -22,11 +22,11 @@ import com.telbank.rbac.web.dto.PermissionDtos.PermissionUpdateRequest;
 import jakarta.validation.Valid;
 
 /**
- * 权限资源管理（契约 §3.4），需要 {@code rbac:permission:manage}。
+ * 权限资源管理（契约 §3.4），需要系统内 {@code permission:manage}。
  */
 @RestController
 @RequestMapping("/api/permissions")
-@PreAuthorize("@perm.has('rbac:permission:manage')")
+@PreAuthorize("@perm.has('permission:manage')")
 public class PermissionController {
 
     private final PermissionService permissionService;

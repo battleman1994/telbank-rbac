@@ -26,6 +26,7 @@ import com.telbank.rbac.domain.repository.SysPermissionRepository;
 import com.telbank.rbac.domain.repository.SysSdkEndpointRepository;
 import com.telbank.rbac.domain.repository.SysSystemRepository;
 import com.telbank.rbac.service.cache.LocalCacheManager;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.OpenApiDtos.EndpointReport;
 import com.telbank.rbac.web.dto.OpenApiDtos.EndpointsSyncRequest;
 import com.telbank.rbac.web.dto.OpenApiDtos.EndpointsSyncResponse;
@@ -47,17 +48,20 @@ public class SdkEndpointService {
     private final SysSystemRepository systemRepository;
     private final LocalCacheManager localCacheManager;
     private final ChangeNotifyService changeNotifyService;
+    private final SystemScopeGuard systemScopeGuard;
 
     public SdkEndpointService(SysSdkEndpointRepository endpointRepository,
                               SysPermissionRepository permissionRepository,
                               SysSystemRepository systemRepository,
                               LocalCacheManager localCacheManager,
-                              ChangeNotifyService changeNotifyService) {
+                              ChangeNotifyService changeNotifyService,
+                              SystemScopeGuard systemScopeGuard) {
         this.endpointRepository = endpointRepository;
         this.permissionRepository = permissionRepository;
         this.systemRepository = systemRepository;
         this.localCacheManager = localCacheManager;
         this.changeNotifyService = changeNotifyService;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
@@ -65,6 +69,7 @@ public class SdkEndpointService {
         if (systemId == null) {
             throw ApiException.badRequest("systemId is required");
         }
+        systemScopeGuard.requireAccess(systemId);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         Page<SysSdkEndpoint> page = endpointRepository.search(systemId, normalizedKeyword,
                 pageQuery.toPageable());
@@ -82,6 +87,7 @@ public class SdkEndpointService {
     @Transactional
     public SdkEndpointVO link(Long id, Long permissionId) {
         SysSdkEndpoint endpoint = requireEndpoint(id);
+        systemScopeGuard.requireAccess(endpoint.getSystemId());
         SysPermission permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> ApiException.notFound("permission not found: " + permissionId));
         if (!permission.getSystemId().equals(endpoint.getSystemId())) {
@@ -108,6 +114,7 @@ public class SdkEndpointService {
     @Transactional
     public SdkEndpointVO unlink(Long id) {
         SysSdkEndpoint endpoint = requireEndpoint(id);
+        systemScopeGuard.requireAccess(endpoint.getSystemId());
         endpoint.setPermissionId(null);
         SysSdkEndpoint saved = endpointRepository.save(endpoint);
         changeNotifyService.publishAfterCommit(endpoint.getSystemId(), RbacConstants.CHANGE_TYPE_ENDPOINT);

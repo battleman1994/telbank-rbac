@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v1.3（2026-10-24）· 维护：Lead
-> 修订：v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v2.0（2026-10-24）· 维护：Lead
+> 修订：v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -40,8 +40,8 @@
 3. **分页**：请求 `?page=1&size=20`；`data = {"items":[..],"total":123,"page":1,"size":20}`。
 4. **时间**：JSON 一律 ISO-8601 UTC 字符串（如 `2026-10-31T23:59:59Z`）；DB 用 `DATETIME`（UTC 存储，`serverTimezone=UTC`）。
 5. **认证（管理端）**：`Authorization: Bearer <JWT>`；外部认证系统签发，`sub` = `external_user_id`。权限中心只校验不签发。
-   - **管理端 `/api/**` 必须带 `X-System-Code: <management-system-code>`**（默认 `rbac`，即权限中心自身系统）；服务端把它解析成 `system_id` 并用于管理权限码校验。业务系统筛选通过 `systemId` 查询参数表达，不再由该请求头承载。
-   - 平台超管（`rbac.platform-admin-ids` 命中 `sub`）跳过权限码校验，但仍要求合法 JWT；普通管理员需在管理系统中拥有对应 `rbac:*` 权限码。
+   - **管理端 `/api/**` 必须带 `X-System-Code: <业务系统 code>`**（`/api/me`、`/api/me/systems`、`/api/me/bootstrap` 除外）；服务端把它解析为当前管理上下文系统，并在该系统内校验管理权限码。请求中的 `systemId` 必须与上下文一致（平台超管可跨系统）。
+   - **平台超管由数据驱动**：用户在平台系统（`sys_system.is_platform=1`）内拥有有效角色且该角色授予 `platform:admin` 权限（种子账号 `superadmin`）；不再读取配置文件。超管跳过权限码校验、可切换任意业务系统，但仍要求合法 JWT。
 6. **权限断言**：Controller 用 `@PreAuthorize("@perm.has('system:manage')")` 一类写法；`@perm` Bean 名固定 `perm`，方法签名 `boolean has(String... codes)`（单码时返回是否拥有；多码按 AND 语义，实现可扩展 OR 变体 `hasAny`）。
 7. **权限码**：系统内唯一；菜单/按钮/接口共用一个码。`is_public=1` 默认所有登录用户拥有。
 8. **CORS**：开发环境允许 `http://localhost:5173`（前端 dev server）与 `http://127.0.0.1:5173`；生产按配置。
@@ -57,44 +57,53 @@
   - `02_seed_data.sql`：CRM/ERP 示例系统、角色、权限码、演示用户
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
 - 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。`start-all.sh --temp-db` 会在临时库启动后自动执行。
+- `04_system_isolation.sql`（v2.0）：删除 `sys_user_system`；`sys_system` 增加 `is_platform/admin_external_user_id/admin_name`；新增平台系统、`super-admin` 角色、`platform:admin` 权限、种子超管 `superadmin`；新增各业务系统短管理权限码与两个系统管理员演示账号。
 - 启动前提：数据库与表已经存在（`spring.jpa.hibernate.ddl-auto=none`，后端不会自动建表）。
-- SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `04_xxx.sql` 递增并在 README/验收文档登记。
+- SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `05_xxx.sql` 递增并在 README/验收文档登记。
 
 ## 3. 权限中心管理端 API（api ↔ front）
 
 > `systemId`/`systemCode` 二选一：本文统一用 `systemId`（雪花/自增 id）；前端在系统选择器里持有 id。
 > 所有写接口成功后由服务端自动发布 Redis 变更通知（§6），无需前端调用通知接口。
 
-**管理端权限码（`@perm.has(...)` 使用，种子数据已授权给各系统 admin 角色）：**
+**系统隔离模型（v2.0）**
+- 业务系统是隔离边界：系统管理员只能看到/管理自己系统内的角色、权限、资源、页面元素、用户授权；跨系统上下文或 `systemId` → 403。
+- 平台超管（数据驱动 `platform:admin`）可切换任意业务系统、跨系统查询，并独占「系统接入」能力。
+- 用户可访问哪些系统由**有效角色**（`sys_user_role` status=1 且时效内、角色/系统启用）推导，不再有用户-系统开通表；平台系统 `platform` 不参与业务系统列表。
+
+**管理端权限码（当前上下文系统内校验，种子授予各系统 admin 角色）：**
 
 | 权限码 | 覆盖接口 |
 |---|---|
-| `rbac:system:manage` | `/api/systems/**`、`/api/user-systems/**` |
-| `rbac:role:manage` | `/api/roles/**`、`/api/user-roles/**`、`/api/roles/{id}/permissions/**` |
-| `rbac:permission:manage` | `/api/permissions/**`、`/api/sdk-endpoints/**` |
-| `rbac:page:manage` | `/api/page-actions/**` |
-| `rbac:audit:view` | `/api/approval-grants`、`/api/expiring-grants` |
+| `role:manage` | `/api/roles/**`、`/api/roles/{id}/permissions/**` |
+| `permission:manage` | `/api/permissions/**` |
+| `resource:manage` | `/api/sdk-endpoints/**` |
+| `page:manage` | `/api/page-actions/**` |
+| `user:manage` | `/api/user-roles/**` |
+| `audit:view` | `/api/approval-grants`、`/api/expiring-grants` |
+| （超管专属） | `/api/systems/**`：`@perm.isPlatformAdmin()`，无业务权限码 |
 
-- 除 `/api/me`、`/api/me/systems`、`/api/me/bootstrap` 仅要求已认证外，其余管理端接口都要求对应权限码（平台超管命中即放行）。
-- **管理上下文**：`/api/**` 的 `X-System-Code` 固定为管理系统 code（默认 `rbac`，配置 `rbac.management-system-code`）；上述 `rbac:*` 权限码在管理系统内查询。业务系统数据通过 `systemId` 查询参数筛选。
-- 管理系统缺失 → 管理接口 403（非平台超管）；种子里 13800138000 通过 `rbac-admin` 角色持有全部 5 个管理权限码；operator/purchaser 没有，用于验收 403。
+- 除 `/api/me`、`/api/me/systems`、`/api/me/bootstrap` 仅要求已认证外，其余管理端接口都要求 `X-System-Code` + 对应权限码（平台超管免权限码但仍需合法业务系统上下文）。
+- 种子里 `crm-admin-001`（CRM admin）、`erp-admin-001`（ERP admin）各有 6 个短权限码；`superadmin` 是平台超管（platform 系统 + `platform:admin`）。
 
 ### 3.1 当前用户与系统
 
 | 方法 | 路径 | 请求 | 响应 data |
 |---|---|---|---|
 | GET | `/api/me` | — | `{"externalUserId":"...","platformAdmin":false}` |
-| GET | `/api/me/systems` | — | `[{"id":1,"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`（平台超管返回全部启用系统；含管理系统本身） |
-| GET | `/api/me/bootstrap` | — | 管理端权限渲染用：`{"externalUserId":"...","platformAdmin":false,"managementSystemCode":"rbac","permissions":["rbac:system:manage",...],"systems":[...同上...]}`；`permissions` 为当前用户在管理系统中经时效过滤后的权限码（平台超管 `["*"]`；管理系统缺失时为空数组） |
+| GET | `/api/me/systems` | — | `[{"id":1,"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`；普通用户=有有效角色的启用业务系统，超管=全部启用业务系统；**不含 platform 平台系统**；第一条 `isDefault=true` |
+| GET | `/api/me/bootstrap` | 可选 `X-System-Code` | 管理端渲染：`{"externalUserId":"...","platformAdmin":false,"currentSystemCode":"crm","permissions":["role:manage",...],"systems":[...同上...]}`；`currentSystemCode`=合法请求头否则第一个可访问系统（无系统为 null）；`permissions`=当前系统内有效权限码（超管 `["*"]`、无系统 `[]`） |
 
-### 3.2 系统管理
+### 3.2 系统接入（仅平台超管）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/systems?keyword=&page=&size=` | 分页列表，`data.items[]` = SysSystemVO `{id,code,name,region,status,sort,remark,createdAt,updatedAt}` |
-| POST | `/api/systems` | body `{code,name,region,status?=1,sort?=0,remark?}`，`code` 全局唯一 |
-| PUT | `/api/systems/{id}` | body `{name,region,status?,sort?,remark?}`（code 不可改） |
-| DELETE | `/api/systems/{id}` | 停用（status=0），不物理删除 |
+| GET | `/api/systems?keyword=&page=&size=` | 分页列表（仅业务系统，排除 platform），items = `{id,code,name,region,status,sort,remark,isPlatform,adminExternalUserId,adminName,createdAt,updatedAt}` |
+| POST | `/api/systems` | 必填 `{code,name,region,adminExternalUserId}`，可选 `adminName,status,sort,remark`；事务内自动创建默认 `admin` 角色 + 6 个短权限码 + 角色授权 + 管理员 `user_role` + 写入 `admin_*`；code 全局唯一（重复 409） |
+| PUT | `/api/systems/{id}` | 必填 `{name,region}`，可选 `adminExternalUserId,adminName,status,sort,remark`；变更管理员时撤销旧管理员该 admin 角色授权并授权新管理员；code 不可改 |
+| DELETE | — | **v2.0 移除**：用 PUT `status=0` 停用 |
+
+> 非平台超管调用 → 403。系统接入必须录入系统管理员账号；新管理员登录后即可管理该系统的角色/权限。
 
 ### 3.3 角色管理（按系统隔离）
 
@@ -137,13 +146,9 @@
 | POST | `/api/user-roles` | `{systemId,externalUserId,roleId,validFrom?,validUntil?,grantReason?}` |
 | DELETE | `/api/user-roles/{id}` | 撤销（status=0） |
 
-### 3.7 用户-系统开通
+### 3.7 用户-系统开通（v2.0 已移除）
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/user-systems?externalUserId=` | `[{"id":1,"systemId":1,"systemCode":"crm","externalUserId":"13800138000","isDefault":true,"status":1}]` |
-| POST | `/api/user-systems` | `{systemId,externalUserId,isDefault?=false}` |
-| DELETE | `/api/user-systems/{id}` | 停用 |
+用户可访问系统由有效角色推导（见 §3.1）；系统接入见 §3.2。`sys_user_system` 表与 `/api/user-systems/**` 接口已删除，调用返回 404。
 
 ### 3.8 页面操作元数据（模式 B）
 
@@ -203,7 +208,7 @@ appKey + "\n" + timestamp + "\n" + nonce + "\n" + HTTP_METHOD + "\n" + path + "\
 |---|---|---|---|
 | GET | `/openapi/sdk/mappings?systemCode=crm` | — | `{"systemCode":"crm","mappings":[{"method":"DELETE","pattern":"/api/order/{id}","code":"order:delete"},{"method":"GET","pattern":"/api/order/**","code":"order:list"}]}` |
 | GET | `/openapi/sdk/user-permissions?systemCode=&externalUserId=` | — | `{"permissions":[{"code":"order:delete","validFrom":null,"validUntil":"2026-10-31T23:59:59Z"}],"serverTime":"2026-10-24T05:00:00Z"}`；平台超管返回 `[{"code":"*","validFrom":null,"validUntil":null}]` |
-| GET | `/openapi/sdk/user-systems?externalUserId=` | — | `[{"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`；按该 AppKey 对应系统的权限上下文验签，返回该用户 `sys_user_system` 中有效且系统启用的列表（`is_default` 降序）；平台超管返回全部启用系统。供 SDK 的 `/rbac/me/systems` 使用，失败时 SDK 可降级为配置的系统单例 |
+| GET | `/openapi/sdk/user-systems?externalUserId=` | — | `[{"code":"crm","name":"CRM系统","region":"region_a","isDefault":true}]`；按有效角色推导业务系统（排除 platform；过期角色不返回；平台超管返回全部启用业务系统）。供 SDK 的 `/rbac/me/systems` 使用，失败时 SDK 可降级 |
 | GET | `/openapi/sdk/page-actions?systemCode=&pageCode=` | `pageCode` 可省略 | `{"systemCode":"crm","pageActions":[{"id":1,"pageCode":"order:list","code":"order:export","text":"导出","type":"default","action":"callApi","config":"{}","sort":10}]}` |
 | GET | `/openapi/sdk/connection?systemCode=` | — | `{"channel":"redis","region":"region_a","host":"127.0.0.1","port":6379,"password":"...","channelPrefix":"rbac:change:region_a:"}` |
 | POST | `/openapi/sdk/endpoints/sync` | `{"systemCode":"crm","endpoints":[{"method":"GET","path":"/api/order/list","candidateCode":"crm:order:list","source":"GENERATED"}]}` | `{"received":12,"created":10,"updated":2}` |
@@ -372,8 +377,6 @@ spring:
     hibernate.ddl-auto: none
     open-in-view: false
 rbac:
-  platform-admin-ids: [platform-admin-001]
-  management-system-code: ${RBAC_MANAGEMENT_SYSTEM_CODE:rbac}   # 管理端 /api/** 鉴权上下文系统
   security:
     jwt:
       mode: jwk            # jwk | hs256（demo）
@@ -410,7 +413,7 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -427,8 +430,9 @@ rbac:
 - 技术栈严格按需求 §3.3；包管理器 `npm`；Node 通过 nvm 使用 22.23.1+。
 - 环境变量：`VITE_API_BASE_URL`（默认 `http://localhost:8080`）。
 - 登录：`/login` 页面粘贴 JWT（外部认证系统签发；本地用 `scripts/gen-demo-jwt.sh` 生成），存 `localStorage["rbac.token"]`；请求头注入 `Authorization: Bearer`；当前系统存 `localStorage["rbac.systemCode"]`。
-- 系统上下文：登录后 GET `/api/me` + `/api/me/systems`；顶部系统切换器；切换后所有查询带 `X-System-Code`（SDK 开放接口不用这个头，管理端用）。
-- 页面（对应需求 §5.7）：系统管理、角色管理、权限资源管理（树）、角色-权限授权（树勾选 + 时效）、用户-角色分配（含时效）、用户-系统开通、页面操作元数据、SDK 端点上报、审批授权记录、即将到期授权。
+- 系统上下文：登录后 GET `/api/me` → `/api/me/systems` → 选择 `currentSystemCode`（本地缓存命中否则第一条）→ 带 `X-System-Code` 拉 `/api/me/bootstrap`；所有管理端查询都带当前业务系统头；超管可切换所有业务系统并看到「系统接入」，系统管理员只能看到自己的系统。
+- 菜单 IA：`权限管理` 组（角色管理/角色授权 role:manage、权限管理 permission:manage、资源管理 resource:manage、页面元素 page:manage、用户授权 user:manage、授权记录/到期提醒 audit:view）+ 顶级「系统接入」（仅超管）；不再有「用户-系统开通」。
+- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管，含管理员账号录入）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效）、用户授权（含时效）、资源管理（SDK 端点）、页面元素、授权记录、到期提醒。**用户-系统开通已移除**。
 - 状态：TanStack Query 管理服务端状态；Zustand 管理当前用户/系统/权限码集合；不使用 Axios，使用封装的 `request()`（原生 fetch）。
 - 必须 `npm run build` 通过（含 `tsc` 类型检查）。
 
@@ -440,7 +444,7 @@ rbac:
 - 权限中心：`./scripts/start-api.sh`（需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
 - SDK（JDK 8）：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
 - SDK（JDK 21）：`mvn -pl telbank-rbac2-starter test`（JDK 21，字节码 major=65）
-- 权限中心自接入：`GET /api/me/bootstrap`（管理端权限渲染）；管理端 `/api/**` 固定 `X-System-Code: rbac`
+- 系统隔离：`GET /api/me/systems`（有效角色推导）+ `GET /api/me/bootstrap`（当前系统权限）；管理端 `/api/**` 带 `X-System-Code=<业务系统>`；系统接入 `/api/systems/**` 仅超管
 - 数据库初始化：`./scripts/init-db.sh`（手动 SQL，无 Flyway；`--temp-db` 自动执行）
 - 管理前端：`cd telbank-rbac-front && npm install && npm run dev|build`（nvm Node 22）
 - 示例业务系统：`samples/business-demo`（Boot 2.7.18，JDK 8+ 运行时）

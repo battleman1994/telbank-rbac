@@ -31,8 +31,8 @@ export default function ExpiringGrantsPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="即将到期授权"
-        description="即将到期授权按系统查询，需先在顶部选择业务系统。"
+        title="到期提醒"
+        description="当前系统上下文未就绪，无法加载到期授权。"
       />
     )
   }
@@ -124,8 +124,8 @@ function ExpiringGrantsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="即将到期授权"
-      description="按失效时间升序展示 N 天内即将到期的授权；到期后权限查询即视为无权限，并由定时任务标记 status=0。"
+      title="到期提醒"
+      description="按失效时间升序展示当前系统内 N 天内即将到期的授权；到期后权限查询即视为无权限，并由定时任务标记 status=0。"
       extra={
         <Space>
           <Text type="secondary">到期窗口</Text>
@@ -156,7 +156,7 @@ function ExpiringGrantsContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="即将到期授权加载失败"
+              title="到期授权加载失败"
               description={grantsQuery.error.message}
               action={
                 <Button size="small" onClick={() => void grantsQuery.refetch()}>

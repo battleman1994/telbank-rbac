@@ -59,7 +59,7 @@ interface PermissionFormValues {
 export default function PermissionsPage() {
   const systemId = useCurrentSystemId()
   if (!systemId) {
-    return <SystemRequired title="权限资源管理" description="权限资源按业务系统隔离，需先选择系统。" />
+    return <SystemRequired title="权限管理" description="当前系统上下文未就绪，无法加载权限码。" />
   }
   return <PermissionsContent systemId={systemId} />
 }
@@ -108,7 +108,7 @@ function PermissionsContent({ systemId }: { systemId: number }) {
       return createPermission(payload)
     },
     onSuccess: () => {
-      void message.success(editing ? '权限资源已更新' : '权限资源已创建')
+      void message.success(editing ? '权限码已更新' : '权限码已创建')
       setModalOpen(false)
       void queryClient.invalidateQueries({ queryKey: ['permissions', systemId] })
     },
@@ -117,7 +117,7 @@ function PermissionsContent({ systemId }: { systemId: number }) {
   const disableMutation = useMutation({
     mutationFn: (id: number) => disablePermission(id),
     onSuccess: () => {
-      void message.success('权限资源已停用')
+      void message.success('权限码已停用')
       void queryClient.invalidateQueries({ queryKey: ['permissions', systemId] })
     },
   })
@@ -274,8 +274,8 @@ function PermissionsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="权限资源管理"
-      description="权限码是菜单、按钮、接口共用的唯一能力标识；method 与 api_pattern 同时填写后才会进入 SDK 映射表做后端拦截。"
+      title="权限管理"
+      description="维护当前系统内的权限码（菜单/按钮/接口共用唯一能力标识）；method 与 api_pattern 同时填写后才会进入 SDK 映射表做后端拦截。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void permissionsQuery.refetch()}>
@@ -302,7 +302,7 @@ function PermissionsContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="权限资源树加载失败"
+              title="权限树加载失败"
               description={permissionsQuery.error.message}
               action={
                 <Button size="small" onClick={() => void permissionsQuery.refetch()}>

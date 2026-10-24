@@ -12,7 +12,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <pre>
  * rbac:
- *   platform-admin-ids: [...]
  *   security.jwt: {mode, jwk-set-uri, issuer, hs256-secret}
  *   clients: [{app-key, system-code, app-secret}]
  *   approval: {app-key, app-secret}
@@ -23,9 +22,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "rbac")
 public class RbacProperties {
-
-    /** 平台超管 external_user_id 列表，命中后鉴权短路放行。 */
-    private List<String> platformAdminIds = new ArrayList<>();
 
     private final Security security = new Security();
 
@@ -43,22 +39,8 @@ public class RbacProperties {
     /** 过期授权扫描 cron，默认每分钟。 */
     private String expiryScanCron = "0 * * * * *";
 
-    /**
-     * 管理端自身接入 RBAC 的系统编码（契约 §3.1）：管理前端所有 {@code /api/**} 请求带
-     * {@code X-System-Code: <management-system-code>}，{@code @perm.has} 在该系统内查询权限码。
-     */
-    private String managementSystemCode = "rbac";
-
     /** CORS 允许的来源（默认本地前端 dev server）。 */
     private final Cors cors = new Cors();
-
-    public List<String> getPlatformAdminIds() {
-        return platformAdminIds;
-    }
-
-    public void setPlatformAdminIds(List<String> platformAdminIds) {
-        this.platformAdminIds = platformAdminIds == null ? new ArrayList<>() : platformAdminIds;
-    }
 
     public Security getSecurity() {
         return security;
@@ -94,14 +76,6 @@ public class RbacProperties {
 
     public void setExpiryScanCron(String expiryScanCron) {
         this.expiryScanCron = expiryScanCron;
-    }
-
-    public String getManagementSystemCode() {
-        return managementSystemCode;
-    }
-
-    public void setManagementSystemCode(String managementSystemCode) {
-        this.managementSystemCode = managementSystemCode;
     }
 
     public Cors getCors() {

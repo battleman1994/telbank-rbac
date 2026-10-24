@@ -45,13 +45,17 @@ DEMO_ERP_URL = os.environ.get("RBAC_DEMO_ERP_URL", "").rstrip("/")
 DEMO21_CRM_URL = os.environ.get("RBAC_DEMO_JDK21_CRM_URL", "").rstrip("/")
 DEMO21_ERP_URL = os.environ.get("RBAC_DEMO_JDK21_ERP_URL", "").rstrip("/")
 
-USER_ADMIN = "13800138000"        # CRM + ERP 管理员
+USER_ADMIN = "13800138000"        # CRM + ERP 管理员（非平台超管）
 USER_OPERATOR = "13900139000"     # 仅 CRM 运营（临时授权）
 USER_CROSS = "13600136000"        # CRM 运营 + ERP 采购员（跨系统隔离验收）
 USER_EXPIRED = "13700137000"      # 授权全部过期
 USER_NEW = "13500135000"          # 审批授权验收（初始无数据）
-PLATFORM_ADMIN = "platform-admin-001"
-MGMT_SYSTEM = "rbac"            # 管理端 /api/** 的 X-System-Code 固定为权限中心自身系统
+SUPER_ADMIN = "superadmin"        # 平台超管（数据驱动：platform 系统 super-admin → platform:admin）
+CRM_ADMIN = "crm-admin-001"       # CRM 系统管理员（仅本系统）
+ERP_ADMIN = "erp-admin-001"       # ERP 系统管理员（仅本系统）
+CRM = "crm"                       # 管理上下文：当前业务系统
+ERP = "erp"
+MGMT_SYSTEM = CRM                 # 兼容既有调用：管理上下文 = 当前业务系统
 
 RESULTS = []
 CURRENT_SECTION = ["?"]
@@ -195,60 +199,91 @@ def test_auth():
 # --------------------------------------------------------------------------
 # §9.1 多系统隔离
 # --------------------------------------------------------------------------
-def test_self_onboarding():
-    section("§9.15 权限中心自接入（rbac 系统 + /api/me/bootstrap）")
-    admin = token_of(USER_ADMIN)
-    status, body = http("GET", "/api/me/bootstrap", token=admin)
-    d = data_of((status, body)) or {}
-    perms = set(d.get("permissions") or [])
-    systems = {s.get("code") for s in (d.get("systems") or [])}
-    check("管理员 bootstrap 返回 200 且 managementSystemCode=rbac",
-          status == 200 and d.get("managementSystemCode") == "rbac", (status, d.get("managementSystemCode")))
-    check("管理员 bootstrap 含 5 个 rbac:* 管理权限",
-          {"rbac:system:manage", "rbac:role:manage", "rbac:permission:manage",
-           "rbac:page:manage", "rbac:audit:view"} <= perms, sorted(perms))
-    check("管理员 bootstrap systems 含 rbac/crm/erp", {"rbac", "crm", "erp"} <= systems, sorted(systems))
-
-    status, body = http("GET", "/api/me/systems", token=admin)
+def test_system_isolation():
+    section("§9.15 系统隔离 / 数据驱动超管 / bootstrap")
+    # 平台超管：DB 驱动（platform 系统 + platform:admin 权限），可跨系统
+    status, body = http("GET", "/api/me", token=token_of(SUPER_ADMIN))
+    check("superadmin 平台超管标识为 true", (data_of((status, body)) or {}).get("platformAdmin") is True,
+          data_of((status, body)))
+    status, body = http("GET", "/api/me/systems", token=token_of(SUPER_ADMIN))
     codes = {s.get("code") for s in (data_of((status, body)) or [])}
-    check("管理员 /api/me/systems 含 rbac 系统", "rbac" in codes, sorted(codes))
+    check("平台超管可见全部业务系统（crm/erp，不含平台系统）",
+          {"crm", "erp"}.issubset(codes) and "platform" not in codes, sorted(codes))
+    status, body = http("GET", "/api/me/bootstrap", token=token_of(SUPER_ADMIN), system=CRM)
+    d = data_of((status, body)) or {}
+    check("平台超管 bootstrap：currentSystemCode=crm、permissions=['*']、systems 不含 platform",
+          d.get("currentSystemCode") == "crm" and d.get("permissions") == ["*"]
+          and "platform" not in {x.get("code") for x in (d.get("systems") or [])}, d)
+    status, body = http("GET", "/api/me/bootstrap", token=token_of(SUPER_ADMIN), system=ERP)
+    check("平台超管可切换上下文到 ERP（currentSystemCode=erp）",
+          (data_of((status, body)) or {}).get("currentSystemCode") == "erp")
 
-    status, body = http("GET", "/api/me/bootstrap", token=token_of(USER_OPERATOR))
+    # 系统管理员：只看到/只能管理自己系统
+    crm_admin = token_of(CRM_ADMIN)
+    status, body = http("GET", "/api/me/systems", token=crm_admin)
+    codes = [s.get("code") for s in (data_of((status, body)) or [])]
+    check("crm-admin-001 只可访问 CRM", codes == ["crm"], codes)
+    status, body = http("GET", "/api/me/bootstrap", token=crm_admin, system=CRM)
     d = data_of((status, body)) or {}
     perms = set(d.get("permissions") or [])
-    systems = {s.get("code") for s in (d.get("systems") or [])}
-    check("operator bootstrap 无管理权限（空集合）", perms == set(), sorted(perms))
-    check("operator 系统列表不含 rbac", "rbac" not in systems, sorted(systems))
+    mgmt = {"role:manage", "permission:manage", "resource:manage",
+            "page:manage", "user:manage", "audit:view"}
+    check("crm-admin-001 bootstrap：currentSystemCode=crm 且含 6 个系统内管理权限码",
+          d.get("currentSystemCode") == "crm" and mgmt <= perms and not any(p.startswith("rbac:") for p in perms),
+          sorted(perms))
+    status, body = http("GET", "/api/me/bootstrap", token=crm_admin, system=ERP)
+    check("crm-admin-001 传 ERP 上下文时回退到自己的 CRM（不泄露 ERP）",
+          (data_of((status, body)) or {}).get("currentSystemCode") == "crm")
+    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=crm_admin, system=CRM)
+    check("系统管理员跨系统查询角色（systemId=2）→ 403", status == 403, status)
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=crm_admin, system=CRM)
+    check("系统管理员本系统查询角色（systemId=1）→ 200", status == 200, status)
+    status, _ = http("GET", "/api/systems?page=1&size=20", token=crm_admin, system=CRM)
+    check("系统管理员访问系统接入接口 → 403", status == 403, status)
 
-    status, body = http("GET", "/api/me/bootstrap", token=token_of(PLATFORM_ADMIN))
-    d = data_of((status, body)) or {}
-    check("平台超管 bootstrap permissions=['*']", d.get("permissions") == ["*"], d.get("permissions"))
+    # 平台系统不能作为管理上下文
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20",
+                     token=token_of(SUPER_ADMIN), system="platform")
+    check("平台系统不能作为业务管理上下文（403）", status == 403, status)
 
-    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=admin, system=MGMT_SYSTEM)
-    check("管理上下文 rbac：管理员 200", status == 200, status)
-    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=token_of(USER_OPERATOR), system=MGMT_SYSTEM)
-    check("管理上下文 rbac：operator 403", status == 403, status)
+    # 普通运营：可访问系统由有效角色推导，无管理权限
+    status, body = http("GET", "/api/me/systems", token=token_of(USER_OPERATOR))
+    codes = [s.get("code") for s in (data_of((status, body)) or [])]
+    check("13900139000 仅能访问 CRM（无用户-系统开通表）", codes == ["crm"], codes)
+    status, body = http("GET", "/api/me/bootstrap", token=token_of(USER_OPERATOR), system=CRM)
+    perms = set((data_of((status, body)) or {}).get("permissions") or [])
+    check("运营 bootstrap 不含任何管理权限码",
+          not ({"role:manage", "permission:manage", "resource:manage",
+                "page:manage", "user:manage", "audit:view"} & perms), sorted(perms))
+
+    # 过期角色不推导出系统
+    status, body = http("GET", "/api/me/systems", token=token_of(USER_EXPIRED))
+    codes = [s.get("code") for s in (data_of((status, body)) or [])]
+    check("13700137000 角色过期后无可访问系统", codes == [], codes)
+
+    # 用户-系统开通接口/表已删除
+    status, _ = http("GET", "/api/user-systems?page=1&size=20", token=token_of(USER_ADMIN), system=CRM)
+    check("用户-系统开通接口已移除（404）", status == 404, status)
 
 
 def test_multi_system():
     section("§9.1 多系统隔离")
     admin = token_of(USER_ADMIN)
     status, body = http("GET", "/api/me/systems", token=admin)
-    systems = data_of((status, body)) or []
-    codes = [s.get("code") for s in systems]
-    check("用户 A 可访问 CRM 与 ERP", {"crm", "erp"}.issubset(set(codes)), codes)
+    codes = {s.get("code") for s in (data_of((status, body)) or [])}
+    check("13800138000 可访问 CRM 与 ERP", {"crm", "erp"}.issubset(codes), sorted(codes))
 
-    # 管理端鉴权：管理上下文固定为 rbac 系统（X-System-Code: rbac）
-    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=token_of(USER_OPERATOR), system=MGMT_SYSTEM)
-    check("operator 无管理权限：管理端角色列表返回 403", status == 403, status)
-    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=admin, system=MGMT_SYSTEM)
-    check("rbac 管理员可查 CRM 角色（systemId=1）返回 200", status == 200, status)
-    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=admin, system=MGMT_SYSTEM)
-    check("rbac 管理员可跨系统查 ERP 角色（systemId=2）返回 200", status == 200, status)
+    # 非超管：systemId 必须与当前上下文一致，跨系统 403
+    status, _ = http("GET", "/api/roles?systemId=1&page=1&size=20", token=admin, system=CRM)
+    check("138 在 CRM 上下文查询 CRM 角色 → 200", status == 200, status)
+    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=admin, system=CRM)
+    check("138 在 CRM 上下文跨系统查询 ERP 角色 → 403", status == 403, status)
+    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=admin, system=ERP)
+    check("138 切到 ERP 上下文查询 ERP 角色 → 200", status == 200, status)
 
-    status, body = http("GET", "/api/me/systems", token=token_of(USER_OPERATOR))
-    codes = [s.get("code") for s in (data_of((status, body)) or [])]
-    check("13900139000 仅能访问 CRM（未接入权限中心系统）", codes == ["crm"], codes)
+    # 平台超管允许跨系统
+    status, _ = http("GET", "/api/roles?systemId=2&page=1&size=20", token=token_of(SUPER_ADMIN), system=CRM)
+    check("平台超管在 CRM 上下文跨系统查询 ERP 角色 → 200", status == 200, status)
 
     # 同一 external_user_id 在不同系统权限集互不干扰
     status, body = openapi("GET", "/openapi/sdk/user-permissions",
@@ -262,6 +297,63 @@ def test_multi_system():
     check("同一用户在 CRM/ERP 权限集不同（隔离）", crm_codes != erp_codes,
           "%s vs %s" % (sorted(crm_codes), sorted(erp_codes)))
     check("同名角色 admin 在 CRM/ERP 独立存在（角色接口按系统过滤）", True, "")
+
+
+def test_system_onboarding():
+    section("§9.16 系统接入（仅超管）与管理员自动开通")
+    super_token = token_of(SUPER_ADMIN)
+    crm_admin = token_of(CRM_ADMIN)
+    suffix = secrets.token_hex(3)
+    code = "oss-" + suffix
+    admin_user = "oss-admin-" + suffix
+
+    status, body = http("POST", "/api/systems", token=super_token, system=CRM, body={
+        "code": code, "name": "OSS系统", "region": "region_a",
+        "adminExternalUserId": admin_user, "adminName": "OSS 管理员", "status": 1,
+    })
+    created = status < 300
+    d = data_of((status, body)) or {}
+    check("超管接入新系统并录入管理员成功", created and d.get("code") == code
+          and d.get("adminExternalUserId") == admin_user, (status, body))
+    system_id = d.get("id")
+
+    status, body = http("GET", "/api/systems?page=1&size=50&keyword=" + code, token=super_token, system=CRM)
+    items = (data_of((status, body)) or {}).get("items", [])
+    check("系统接入列表返回管理员信息", any(i.get("code") == code
+          and i.get("adminExternalUserId") == admin_user for i in items), items)
+    if items:
+        check("系统接入列表排除平台系统（无 platform）",
+              all(i.get("code") != "platform" for i in items), [i.get("code") for i in items])
+
+    status, _ = http("GET", "/api/systems?page=1&size=20", token=crm_admin, system=CRM)
+    check("系统管理员访问系统接入列表 → 403", status == 403, status)
+    status, _ = http("POST", "/api/systems", token=crm_admin, system=CRM, body={
+        "code": "forbidden-" + suffix, "name": "禁止", "region": "region_a",
+        "adminExternalUserId": "x",
+    })
+    check("系统管理员接入系统 → 403", status == 403, status)
+
+    # 新管理员自动获得默认 admin 角色与 6 个管理权限码
+    new_admin = token_of(admin_user)
+    status, body = http("GET", "/api/me/systems", token=new_admin)
+    codes = [s.get("code") for s in (data_of((status, body)) or [])]
+    check("新系统管理员可访问新系统（由角色推导）", code in codes, codes)
+    status, body = http("GET", "/api/me/bootstrap", token=new_admin, system=code)
+    perms = set((data_of((status, body)) or {}).get("permissions") or [])
+    check("新系统管理员 bootstrap 含 6 个管理权限码",
+          {"role:manage", "permission:manage", "resource:manage",
+           "page:manage", "user:manage", "audit:view"} <= perms, sorted(perms))
+    if system_id:
+        status, _ = http("GET", "/api/roles?systemId=%s&page=1&size=20" % system_id,
+                         token=new_admin, system=code)
+        check("新系统管理员可在本系统查询角色 → 200", status == 200, status)
+        status, _ = http("PUT", "/api/systems/%s" % system_id, token=super_token, system=CRM, body={
+            "name": "OSS系统", "region": "region_a", "status": 0,
+        })
+        check("超管可停用系统（PUT status=0）", status == 200, status)
+        status, body = http("GET", "/api/me/systems", token=new_admin)
+        codes = [s.get("code") for s in (data_of((status, body)) or [])]
+        check("系统停用后不再出现在可访问系统列表", code not in codes, codes)
 
 
 # --------------------------------------------------------------------------
@@ -292,13 +384,13 @@ def test_permission_model():
 # --------------------------------------------------------------------------
 def test_public_and_platform_admin():
     section("§9.7 公共权限与平台超管")
-    status, body = http("GET", "/api/me", token=token_of(PLATFORM_ADMIN))
+    status, body = http("GET", "/api/me", token=token_of(SUPER_ADMIN))
     check("平台超管 platformAdmin=true", (data_of((status, body)) or {}).get("platformAdmin") is True)
-    status, body = http("GET", "/api/me/systems", token=token_of(PLATFORM_ADMIN))
+    status, body = http("GET", "/api/me/systems", token=token_of(SUPER_ADMIN))
     codes = [s.get("code") for s in (data_of((status, body)) or [])]
     check("平台超管可见全部启用系统", {"crm", "erp"}.issubset(set(codes)), codes)
     status, body = openapi("GET", "/openapi/sdk/user-permissions",
-                           "systemCode=crm&externalUserId=" + PLATFORM_ADMIN, system="crm")
+                           "systemCode=crm&externalUserId=" + SUPER_ADMIN, system="crm")
     codes = [p.get("code") for p in (data_of((status, body)) or {}).get("permissions", [])]
     check("平台超管权限集返回 *", codes == ["*"], codes)
 
@@ -561,8 +653,9 @@ def test_sdk_data_prereq():
 
 TESTS = [
     ("9.14", test_auth),
-    ("9.15", test_self_onboarding),
+    ("9.15", test_system_isolation),
     ("9.1", test_multi_system),
+    ("9.16", test_system_onboarding),
     ("9.2", test_permission_model),
     ("9.7", test_public_and_platform_admin),
     ("9.5", test_page_actions),

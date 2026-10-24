@@ -31,6 +31,10 @@ import com.telbank.rbac.sdk.util.RbacRequestUtils;
  *
  * <p>路径前缀由 {@code rbac-sdk.endpoint.base-path} 控制（默认 /rbac）。不返回菜单树。</p>
  *
+ * <p>v2.0 系统隔离语义：{@code /rbac/me/systems} 返回「用户有有效角色的业务系统」（由权限中心
+ * 按有效 user_role 推导并排除 platform 平台系统），用户无有效角色时返回空数组；不再有
+ * 「用户-系统开通」概念。仅回源失败时降级为当前配置系统单例。</p>
+ *
  * <p>调用 {@code /rbac/me/bootstrap} 会预热用户权限集缓存（命中缓存则不会额外回源）。</p>
  */
 @RestController
@@ -60,22 +64,27 @@ public class RbacController {
     }
 
     /**
-     * 当前用户可访问的系统列表。权限中心不可用/接口缺失时降级为当前配置系统单例。
+     * 当前用户有有效角色的业务系统列表（v2.0 系统隔离模型）。
+     *
+     * <p>权限中心按「有效 user_role」推导业务系统（排除 platform 平台系统），SDK 原样透传；
+     * 空列表表示用户没有有效角色，属于正常业务结果，不降级。仅当回源失败/接口不可用时，
+     * 才降级为当前配置系统单例（可用性优先）。匿名请求无法推导，返回本系统单例。</p>
      */
     @GetMapping("/me/systems")
     public List<SystemInfo> getSystems(HttpServletRequest request) {
         String externalUserId = RbacRequestUtils.resolveExternalUserId(request);
-        if (externalUserId != null) {
-            try {
-                List<SystemInfo> systems = remoteClient.fetchUserSystems(externalUserId);
-                if (systems != null && !systems.isEmpty()) {
-                    return systems;
-                }
-            } catch (RuntimeException e) {
-                log.warn("查询用户可访问系统失败，降级为本系统单例: {}", e.toString());
-            }
+        if (externalUserId == null) {
+            // 匿名请求无法按有效角色推导（认证由宿主认证链负责）
+            return Collections.singletonList(localSystem());
         }
-        return Collections.singletonList(localSystem());
+        try {
+            List<SystemInfo> systems = remoteClient.fetchUserSystems(externalUserId);
+            // 空列表 = 用户没有有效角色，原样透传，不能降级为配置系统单例
+            return systems == null ? Collections.<SystemInfo>emptyList() : systems;
+        } catch (RuntimeException e) {
+            log.warn("查询用户可访问系统失败，降级为本系统单例: {}", e.toString());
+            return Collections.singletonList(localSystem());
+        }
     }
 
     /**

@@ -9,19 +9,19 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 
 import com.telbank.rbac.common.ApiException;
-import com.telbank.rbac.config.RbacProperties;
+import com.telbank.rbac.service.PlatformAdminService;
 
 /**
  * 从 Spring Security 上下文解析当前用户：JWT {@code sub} 即 {@code external_user_id}
- * （需求 §5.1；本服务只校验 JWT，不签发）。
+ * （需求 §5.1；本服务只校验 JWT，不签发）。平台超管由 DB 计算（platform:admin 权限）。
  */
 @Component
 public class CurrentUserProvider {
 
-    private final RbacProperties properties;
+    private final PlatformAdminService platformAdminService;
 
-    public CurrentUserProvider(RbacProperties properties) {
-        this.properties = properties;
+    public CurrentUserProvider(PlatformAdminService platformAdminService) {
+        this.platformAdminService = platformAdminService;
     }
 
     public Optional<CurrentUser> get() {
@@ -47,11 +47,7 @@ public class CurrentUserProvider {
     }
 
     public boolean isPlatformAdmin(String externalUserId) {
-        if (externalUserId == null || properties.getPlatformAdminIds() == null) {
-            return false;
-        }
-        return properties.getPlatformAdminIds().stream()
-                .anyMatch(id -> id != null && id.equals(externalUserId));
+        return platformAdminService.isPlatformAdmin(externalUserId);
     }
 
     private String resolveSubject(Authentication authentication) {

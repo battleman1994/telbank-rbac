@@ -16,6 +16,7 @@ import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysUserRole;
 import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
 import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantItemVO;
 
 /**
@@ -34,16 +35,20 @@ public class ApprovalAuditService {
 
     private final SysUserRoleRepository userRoleRepository;
     private final SysRolePermissionRepository rolePermissionRepository;
+    private final SystemScopeGuard systemScopeGuard;
 
     public ApprovalAuditService(SysUserRoleRepository userRoleRepository,
-                                SysRolePermissionRepository rolePermissionRepository) {
+                                SysRolePermissionRepository rolePermissionRepository,
+                                SystemScopeGuard systemScopeGuard) {
         this.userRoleRepository = userRoleRepository;
         this.rolePermissionRepository = rolePermissionRepository;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
     public PageResult<ApprovalGrantItemVO> approvalGrants(Long systemId, String externalUserId,
                                                           PageQuery pageQuery) {
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         List<ApprovalGrantItemVO> items = new ArrayList<>();
         for (SysUserRole relation : userRoleRepository.findBySourceApprovalIdIsNotNullOrderByIdDesc()) {
             if (systemId != null && !systemId.equals(relation.getSystemId())) {
@@ -88,6 +93,7 @@ public class ApprovalAuditService {
      */
     @Transactional(readOnly = true)
     public List<ApprovalGrantItemVO> expiringGrants(Integer withinDays, Long systemId) {
+        systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         int days = withinDays == null || withinDays <= 0 ? DEFAULT_WITHIN_DAYS
                 : Math.min(withinDays, MAX_WITHIN_DAYS);
         LocalDateTime now = TimeUtils.nowUtc();

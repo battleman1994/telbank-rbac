@@ -16,6 +16,7 @@ import com.telbank.rbac.domain.entity.SysUserRole;
 import com.telbank.rbac.domain.repository.SysRoleRepository;
 import com.telbank.rbac.domain.repository.SysSystemRepository;
 import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.GrantDtos.UserRoleCreateRequest;
 import com.telbank.rbac.web.dto.GrantDtos.UserRoleVO;
 
@@ -32,15 +33,18 @@ public class UserRoleService {
     private final SysRoleRepository roleRepository;
     private final SysSystemRepository systemRepository;
     private final ChangeNotifyService changeNotifyService;
+    private final SystemScopeGuard systemScopeGuard;
 
     public UserRoleService(SysUserRoleRepository userRoleRepository,
                            SysRoleRepository roleRepository,
                            SysSystemRepository systemRepository,
-                           ChangeNotifyService changeNotifyService) {
+                           ChangeNotifyService changeNotifyService,
+                           SystemScopeGuard systemScopeGuard) {
         this.userRoleRepository = userRoleRepository;
         this.roleRepository = roleRepository;
         this.systemRepository = systemRepository;
         this.changeNotifyService = changeNotifyService;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +55,7 @@ public class UserRoleService {
         if (externalUserId == null || externalUserId.isBlank()) {
             throw ApiException.badRequest("externalUserId is required");
         }
+        systemScopeGuard.requireAccess(systemId);
         List<SysUserRole> relations =
                 userRoleRepository.findBySystemIdAndExternalUserIdOrderByIdAsc(systemId, externalUserId.trim());
         Map<Long, SysRole> roles = loadRoles(relations);
@@ -69,6 +74,7 @@ public class UserRoleService {
 
     @Transactional
     public UserRoleVO assign(UserRoleCreateRequest request) {
+        systemScopeGuard.requireAccess(request.systemId());
         if (!systemRepository.existsById(request.systemId())) {
             throw ApiException.notFound("system not found: " + request.systemId());
         }
@@ -104,6 +110,7 @@ public class UserRoleService {
     public void revoke(Long id) {
         SysUserRole relation = userRoleRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("user role not found: " + id));
+        systemScopeGuard.requireAccess(relation.getSystemId());
         relation.setStatus(RbacConstants.STATUS_DISABLED);
         userRoleRepository.save(relation);
         changeNotifyService.publishAfterCommit(relation.getSystemId(), RbacConstants.CHANGE_TYPE_PERMISSION);

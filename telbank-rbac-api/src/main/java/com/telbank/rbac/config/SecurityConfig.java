@@ -32,6 +32,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import com.telbank.rbac.security.AppKeyAuthFilter;
 import com.telbank.rbac.security.JsonAccessDeniedHandler;
 import com.telbank.rbac.security.JsonAuthenticationEntryPoint;
+import com.telbank.rbac.security.ManagementContextFilter;
+import com.telbank.rbac.security.ManagementContextService;
 import com.telbank.rbac.security.NonceStore;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -49,6 +51,7 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private static final int APP_KEY_FILTER_ORDER = 0;
+    private static final int MANAGEMENT_CONTEXT_FILTER_ORDER = -40;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
@@ -133,6 +136,20 @@ public class SecurityConfig {
             validators.add(new JwtClaimValidator<>("iss", claim -> issuer.equals(claim)));
         }
         return new DelegatingOAuth2TokenValidator<>(validators);
+    }
+
+    /**
+     * 将管理端系统上下文过滤器注册为 Servlet Filter（{@code /api/**}，在 Spring Security 之后执行）。
+     */
+    @Bean
+    public FilterRegistrationBean<ManagementContextFilter> managementContextFilterRegistration(
+            ManagementContextService managementContextService, JsonMapper jsonMapper) {
+        FilterRegistrationBean<ManagementContextFilter> registration = new FilterRegistrationBean<>(
+                new ManagementContextFilter(managementContextService, jsonMapper));
+        registration.setName("rbacManagementContextFilter");
+        registration.addUrlPatterns("/*");
+        registration.setOrder(MANAGEMENT_CONTEXT_FILTER_ORDER);
+        return registration;
     }
 
     /**

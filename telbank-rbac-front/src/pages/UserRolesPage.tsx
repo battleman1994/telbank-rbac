@@ -45,8 +45,8 @@ export default function UserRolesPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="用户-角色分配"
-        description="用户角色关联按系统隔离，需先在顶部选择业务系统。"
+        title="用户授权"
+        description="当前系统上下文未就绪，无法加载用户授权关系。"
       />
     )
   }
@@ -87,7 +87,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
       return createUserRole(payload)
     },
     onSuccess: () => {
-      void message.success('用户角色已分配')
+      void message.success('用户授权已添加')
       setModalOpen(false)
       void queryClient.invalidateQueries({ queryKey: ['user-roles', systemId] })
     },
@@ -96,7 +96,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
   const revokeMutation = useMutation({
     mutationFn: (id: number) => revokeUserRole(id),
     onSuccess: () => {
-      void message.success('用户角色已撤销')
+      void message.success('用户授权已撤销')
       void queryClient.invalidateQueries({ queryKey: ['user-roles', systemId] })
     },
   })
@@ -178,8 +178,8 @@ function UserRolesContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="用户-角色分配"
-      description="用户来自外部系统（无用户主数据），通过 external_user_id 精确查询与分配角色；支持设置授权时效。"
+      title="用户授权"
+      description="在当前系统内为外部用户（无用户主数据）分配角色：通过 external_user_id 精确查询，支持设置授权时效。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void userRolesQuery.refetch()} disabled={!externalUserId}>
@@ -213,7 +213,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="用户角色列表加载失败"
+              title="用户授权列表加载失败"
               description={userRolesQuery.error.message}
               action={
                 <Button size="small" onClick={() => void userRolesQuery.refetch()}>
@@ -245,7 +245,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
       </Card>
 
       <Modal
-        title="新增用户-角色分配"
+        title="新增用户授权"
         open={modalOpen}
         forceRender
         onCancel={() => setModalOpen(false)}

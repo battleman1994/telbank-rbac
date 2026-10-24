@@ -67,8 +67,8 @@ export default function RolePermissionsPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="角色-权限授权"
-        description="授权关系按系统隔离，需先在顶部选择业务系统。"
+        title="角色授权"
+        description="当前系统上下文未就绪，无法加载授权关系。"
       />
     )
   }
@@ -212,8 +212,8 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="角色-权限授权"
-      description="按系统选择角色后勾选权限树节点，可设置生效/失效时间（不设置则为永久授权）；提交后服务端发布 Redis 权限变更通知。"
+      title="角色授权"
+      description="在当前系统内选择角色后勾选权限树节点，可设置生效/失效时间（不设置则为永久授权）；提交后服务端发布 Redis 权限变更通知。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void grantsQuery.refetch()} disabled={!selectedRoleId}>

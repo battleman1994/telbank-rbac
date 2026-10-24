@@ -15,11 +15,11 @@ import com.telbank.rbac.service.ApprovalAuditService;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantItemVO;
 
 /**
- * 审批授权记录 / 即将到期授权（契约 §3.10），需要 {@code rbac:audit:view}。
+ * 审批授权记录 / 即将到期授权（契约 §3.10），需要系统内 {@code audit:view}。
  */
 @RestController
 @RequestMapping("/api")
-@PreAuthorize("@perm.has('rbac:audit:view')")
+@PreAuthorize("@perm.has('audit:view')")
 public class ApprovalAuditController {
 
     private final ApprovalAuditService approvalAuditService;

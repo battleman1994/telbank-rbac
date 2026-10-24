@@ -19,11 +19,11 @@ import com.telbank.rbac.web.dto.SdkEndpointDtos.SdkEndpointVO;
 import jakarta.validation.Valid;
 
 /**
- * SDK 端点上报列表（契约 §3.9），需要 {@code rbac:permission:manage}。
+ * SDK 端点上报列表（契约 §3.9），需要系统内 {@code resource:manage}。
  */
 @RestController
 @RequestMapping("/api/sdk-endpoints")
-@PreAuthorize("@perm.has('rbac:permission:manage')")
+@PreAuthorize("@perm.has('resource:manage')")
 public class SdkEndpointController {
 
     private final SdkEndpointService sdkEndpointService;

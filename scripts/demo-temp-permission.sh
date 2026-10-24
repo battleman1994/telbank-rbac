@@ -5,15 +5,15 @@
 #       直接访问对应路由显示「无权限」（后端 API 也会返回 403）。
 #
 # 用法:
-#   ./scripts/demo-temp-permission.sh                    # 默认 demo-1min / rbac:audit:view / rbac / 1 分钟
-#   ./scripts/demo-temp-permission.sh demo-1min rbac:audit:view rbac 1
+#   ./scripts/demo-temp-permission.sh                    # 默认 demo-1min / audit:view / crm / 1 分钟
+#   ./scripts/demo-temp-permission.sh demo-1min audit:view crm 1
 #   ./scripts/demo-temp-permission.sh 13700137000 order:delete crm 1   # 业务权限（需示例业务系统在跑）
 #   ./scripts/demo-temp-permission.sh --clean            # 清理演示角色/授权
 #
 # 参数:
 #   $1 账号 external_user_id（默认 demo-1min）
-#   $2 权限码（默认 rbac:audit:view；系统内必须已存在）
-#   $3 系统 code（默认 rbac）
+#   $2 权限码（默认 audit:view；系统内必须已存在）
+#   $3 系统 code（默认 crm）
 #   $4 有效分钟数（默认 1，建议 1）
 #
 # 环境变量: MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/RBAC_DB_NAME（同 init-db.sh）
@@ -46,8 +46,8 @@ if [ "${1:-}" = "--clean" ]; then
 fi
 
 ACCOUNT="${1:-demo-1min}"
-PERM_CODE="${2:-rbac:audit:view}"
-SYSTEM_CODE="${3:-rbac}"
+PERM_CODE="${2:-audit:view}"
+SYSTEM_CODE="${3:-crm}"
 MINUTES="${4:-1}"
 
 for v in "$ACCOUNT" "$PERM_CODE" "$SYSTEM_CODE" "$MINUTES"; do
@@ -80,10 +80,7 @@ q "INSERT INTO sys_role_permission
       UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${MINUTES} MINUTE),
       1, '时间权限演示（${MINUTES} 分钟）', 1);"
 
-# 3) 账号接入该系统 + 临时角色
-q "INSERT INTO sys_user_system (system_id, external_user_id, status, is_default)
-   VALUES (${SYS_ID}, '${ACCOUNT}', 1, 0)
-   ON DUPLICATE KEY UPDATE status=1;"
+# 3) 临时角色授权（系统访问由有效角色推导，无需用户-系统开通表）
 q "DELETE FROM sys_user_role WHERE system_id=${SYS_ID} AND external_user_id='${ACCOUNT}' AND role_id=${ROLE_ID};"
 q "INSERT INTO sys_user_role
      (system_id, external_user_id, role_id, valid_from, valid_until, auto_revoke, grant_reason, status)
@@ -108,7 +105,7 @@ cat <<EOF
 验证方式（管理前端，示例）：
   TOKEN=\$(./scripts/gen-demo-jwt.sh ${ACCOUNT})
   浏览器打开 http://localhost:5173 → 粘贴 TOKEN 登录
-  ✅ ${MINUTES} 分钟内：能看到「审批授权记录 / 即将到期授权」菜单（直接访问 /approval-grants 也是 200）
+  ✅ ${MINUTES} 分钟内：能看到「授权记录 / 到期提醒」菜单（直接访问 /approval-grants 也是 200）
   ⏳ 等 ${MINUTES} 分钟后：刷新页面 → 菜单消失；直接访问 /approval-grants → 「无权限」页（后端返回 403）
 
 重新计时（再跑一次）：

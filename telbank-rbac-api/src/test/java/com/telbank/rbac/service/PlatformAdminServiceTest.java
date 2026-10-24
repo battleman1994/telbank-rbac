@@ -1,0 +1,91 @@
+package com.telbank.rbac.service;
+
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.repository.Query;
+
+import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.testutil.TestProxies;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * 平台超管判定（数据驱动）：平台系统（is_platform=1）内有效 {@code platform:admin} 权限即超管。
+ */
+class PlatformAdminServiceTest {
+
+    private PlatformAdminService service(SysSystem platformSystem, List<String> adminUserIds) {
+        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+                (proxy, method, args) -> {
+                    if ("findFirstByIsPlatformOrderByIdAsc".equals(method.getName())) {
+                        return Optional.ofNullable(platformSystem);
+                    }
+                    return TestProxies.defaultValue(method.getReturnType());
+                });
+        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+                (proxy, method, args) -> {
+                    if ("countEffectivePermission".equals(method.getName())) {
+                        return adminUserIds.contains((String) args[1]) ? 1L : 0L;
+                    }
+                    return TestProxies.defaultValue(method.getReturnType());
+                });
+        return new PlatformAdminService(systemRepository, userRoleRepository);
+    }
+
+    @Test
+    void superAdminDetectedByPlatformAdminPermission() {
+        PlatformAdminService service = service(system(4L, "platform", 1, 1),
+                List.of("superadmin"));
+        assertThat(service.isPlatformAdmin("superadmin")).isTrue();
+        assertThat(service.isPlatformAdmin("crm-admin-001")).isFalse();
+        assertThat(service.isPlatformAdmin("13800138000")).isFalse();
+    }
+
+    @Test
+    void noPlatformSystemMeansNoPlatformAdmin() {
+        PlatformAdminService service = service(null, List.of("superadmin"));
+        assertThat(service.isPlatformAdmin("superadmin")).isFalse();
+        assertThat(service.platformSystem()).isEmpty();
+    }
+
+    @Test
+    void blankUserIsNotPlatformAdmin() {
+        PlatformAdminService service = service(system(4L, "platform", 1, 1), List.of("superadmin"));
+        assertThat(service.isPlatformAdmin(null)).isFalse();
+        assertThat(service.isPlatformAdmin(" ")).isFalse();
+    }
+
+    @Test
+    void platformAdminQueryAppliesValidityAndStatusFilters() throws NoSuchMethodException {
+        Method method = SysUserRoleRepository.class.getMethod("countEffectivePermission",
+                Long.class, String.class, String.class);
+        Query query = method.getAnnotation(Query.class);
+        assertThat(query).isNotNull();
+        assertThat(query.value())
+                .contains("ur.status = 1")
+                .contains("r.status = 1")
+                .contains("rp.status = 1")
+                .contains("p.status = 1")
+                .contains("ur.valid_from IS NULL OR ur.valid_from <= NOW()")
+                .contains("ur.valid_until IS NULL OR ur.valid_until > NOW()")
+                .contains("rp.valid_from IS NULL OR rp.valid_from <= NOW()")
+                .contains("rp.valid_until IS NULL OR rp.valid_until > NOW()");
+    }
+
+    private static SysSystem system(Long id, String code, int status, int isPlatform) {
+        SysSystem system = new SysSystem();
+        system.setId(id);
+        system.setCode(code);
+        system.setName(code);
+        system.setRegion("region_a");
+        system.setStatus(status);
+        system.setSort(id.intValue());
+        system.setIsPlatform(isPlatform);
+        return system;
+    }
+}

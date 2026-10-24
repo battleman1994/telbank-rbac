@@ -71,8 +71,8 @@ export default function SdkEndpointsPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="SDK 端点上报"
-        description="端点上报数据按系统隔离，需先在顶部选择业务系统。"
+        title="资源管理"
+        description="当前系统上下文未就绪，无法加载接口资源。"
       />
     )
   }
@@ -239,8 +239,8 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="SDK 端点上报"
-      description="SDK 启动时全量上报受控端点；未配置权限码的端点默认 public，管理员可在此关联或新建权限码（写入 method/api_pattern 进入映射表）。"
+      title="资源管理"
+      description="接口资源管理：SDK 启动时全量上报受控端点；未配置权限码的端点默认 public，管理员可在此关联或新建权限码（写入 method/api_pattern 进入映射表）。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void endpointsQuery.refetch()}>
@@ -287,7 +287,7 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="端点上报列表加载失败"
+              title="资源列表加载失败"
               description={endpointsQuery.error.message}
               action={
                 <Button size="small" onClick={() => void endpointsQuery.refetch()}>

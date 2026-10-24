@@ -16,9 +16,12 @@ import java.util.Set;
 public interface RbacClient {
 
     /**
-     * 查询用户可访问的系统列表（来自 {@code GET /openapi/sdk/user-systems}）。
+     * 查询用户有有效角色的业务系统列表（来自 {@code GET /openapi/sdk/user-systems}）。
      *
-     * <p>权限中心不可用时降级为「当前配置系统」单例，保证业务页面可用。</p>
+     * <p>v2.0 系统隔离模型下，系统访问由有效 user_role 推导（权限中心排除 platform 平台系统），
+     * SDK 不缓存、不推导、原样透传；返回空列表表示用户当前没有任何有效角色，属于正常结果。</p>
+     *
+     * <p>仅当权限中心不可用（回源失败）时降级为「当前配置系统」单例，保证业务页面可用。</p>
      *
      * @param externalUserId 外部用户 ID（JWT sub）
      * @return 系统列表，不返回 null

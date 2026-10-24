@@ -39,7 +39,6 @@ public final class RbacConstants {
     public static final int STATUS_DISABLED = 0;
     public static final int AUTO_REVOKE_YES = 1;
     public static final int IS_PUBLIC_YES = 1;
-    public static final int IS_DEFAULT_YES = 1;
 
     // ------------------------------------------------------------------
     // Redis 变更通知（契约 §6）
@@ -54,13 +53,17 @@ public final class RbacConstants {
     public static final String PLATFORM_ADMIN_PERMISSION_CODE = "*";
 
     // ------------------------------------------------------------------
-    // 管理端自身权限码（契约 §3）
+    // 管理端权限码（系统隔离模型：各系统内短码，契约 §3）
     // ------------------------------------------------------------------
-    public static final String PERM_SYSTEM_MANAGE = "rbac:system:manage";
-    public static final String PERM_ROLE_MANAGE = "rbac:role:manage";
-    public static final String PERM_PERMISSION_MANAGE = "rbac:permission:manage";
-    public static final String PERM_PAGE_MANAGE = "rbac:page:manage";
-    public static final String PERM_AUDIT_VIEW = "rbac:audit:view";
+    /** 平台超管权限码（平台系统内，数据驱动超管判定）。 */
+    public static final String PERM_PLATFORM_ADMIN = "platform:admin";
+
+    public static final String PERM_ROLE_MANAGE = "role:manage";
+    public static final String PERM_PERMISSION_MANAGE = "permission:manage";
+    public static final String PERM_RESOURCE_MANAGE = "resource:manage";
+    public static final String PERM_PAGE_MANAGE = "page:manage";
+    public static final String PERM_USER_MANAGE = "user:manage";
+    public static final String PERM_AUDIT_VIEW = "audit:view";
 
     // ------------------------------------------------------------------
     // 页面操作 action 枚举（契约 §3.8）

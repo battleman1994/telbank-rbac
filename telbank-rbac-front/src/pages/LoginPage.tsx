@@ -12,17 +12,16 @@ interface LoginFormValues {
 }
 
 /**
- * 登录页（契约 §10）：权限中心不签发 JWT，管理员粘贴外部认证系统签发的 JWT。
+ * 登录页：权限中心不签发 JWT，管理员粘贴外部认证系统签发的 JWT。
  * 校验通过后保存 localStorage["rbac.token"]，并按
- * /api/me → /api/me/systems → /api/me/bootstrap 顺序加载管理上下文
- * （管理权限码、管理上下文系统编码、可访问系统），随后进入管理台。
+ * /api/me → /api/me/systems → 选当前系统 → /api/me/bootstrap 顺序加载上下文
+ * （当前系统、系统内权限码、可访问系统），随后进入管理台。
  */
 export default function LoginPage() {
   const token = useAppStore((state) => state.token)
   const setSession = useAppStore((state) => state.setSession)
   const setCurrentUser = useAppStore((state) => state.setCurrentUser)
   const setSystems = useAppStore((state) => state.setSystems)
-  const setCurrentSystemCode = useAppStore((state) => state.setCurrentSystemCode)
   const setBootstrap = useAppStore((state) => state.setBootstrap)
 
   const navigate = useNavigate()
@@ -41,20 +40,15 @@ export default function LoginPage() {
     setLoading(true)
     setErrorMessage(null)
     try {
-      const { me, systems, bootstrap } = await loadAdminSession(inputToken)
+      const session = await loadAdminSession(inputToken)
       setSession(inputToken)
-      setCurrentUser(me)
-      const allSystems = systems.length > 0 ? systems : bootstrap.systems
+      setCurrentUser(session.me)
+      const allSystems =
+        session.bootstrap.systems?.length > 0 ? session.bootstrap.systems : session.systems
       setSystems(allSystems)
-      setBootstrap(bootstrap)
-      // 业务系统选择排除管理上下文系统（默认 rbac），仅作为数据筛选条件
-      const businessSystems = allSystems.filter(
-        (system) => system.code !== bootstrap.managementSystemCode,
-      )
-      const defaultSystem =
-        businessSystems.find((system) => system.isDefault) ?? businessSystems[0]
-      setCurrentSystemCode(defaultSystem?.code ?? null)
-      void message.success(`登录成功，欢迎 ${me.externalUserId}`)
+      // setBootstrap 同时写入 currentSystemCode / permissions / platformAdmin
+      setBootstrap(session.bootstrap)
+      void message.success(`登录成功，欢迎 ${session.me.externalUserId}`)
       // 首页重定向到第一个有权限的菜单（由 HomeRedirect 计算）
       void navigate('/', { replace: true })
     } catch (error) {
@@ -81,7 +75,7 @@ export default function LoginPage() {
         </div>
         <Paragraph type="secondary" style={{ marginTop: 16 }}>
           权限中心不签发 JWT（认证外部化）。请粘贴外部认证系统签发的 JWT，系统仅校验签名与有效期。
-          登录后按管理权限码（rbac:*）加载可访问菜单。
+          登录后按当前系统的管理权限码（role:manage 等）加载可访问菜单。
         </Paragraph>
         {errorMessage ? (
           <Alert
@@ -108,8 +102,9 @@ export default function LoginPage() {
           </Form.Item>
           <div className="login-tip">
             本地联调：后端以 <Text code>demo</Text> profile 启动时，可运行
-            <Text code>scripts/gen-demo-jwt.sh</Text>生成 HS256 演示 token（默认账号
-            <Text code>13800138000</Text> 已具备 rbac 管理权限码）；生产环境使用
+            <Text code>scripts/gen-demo-jwt.sh</Text>生成 HS256 演示 token（演示账号
+            <Text code>superadmin</Text> / <Text code>crm-admin-001</Text> /{' '}
+            <Text code>erp-admin-001</Text>）；生产环境使用
             <Text code>jwk</Text> 模式校验外部认证系统签发的 JWT。
           </div>
           <Form.Item style={{ marginBottom: 0 }}>

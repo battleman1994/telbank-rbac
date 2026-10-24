@@ -16,7 +16,7 @@ import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.service.OpenApiQueryService;
 import com.telbank.rbac.service.PermissionQueryService;
 import com.telbank.rbac.service.SdkEndpointService;
-import com.telbank.rbac.service.UserSystemService;
+import com.telbank.rbac.service.UserAccessService;
 import com.telbank.rbac.web.dto.OpenApiDtos.ConnectionResponse;
 import com.telbank.rbac.web.dto.OpenApiDtos.EndpointsSyncRequest;
 import com.telbank.rbac.web.dto.OpenApiDtos.EndpointsSyncResponse;
@@ -40,16 +40,16 @@ public class OpenApiSdkController {
 
     private final OpenApiQueryService openApiQueryService;
     private final PermissionQueryService permissionQueryService;
-    private final UserSystemService userSystemService;
+    private final UserAccessService userAccessService;
     private final SdkEndpointService sdkEndpointService;
 
     public OpenApiSdkController(OpenApiQueryService openApiQueryService,
                                 PermissionQueryService permissionQueryService,
-                                UserSystemService userSystemService,
+                                UserAccessService userAccessService,
                                 SdkEndpointService sdkEndpointService) {
         this.openApiQueryService = openApiQueryService;
         this.permissionQueryService = permissionQueryService;
-        this.userSystemService = userSystemService;
+        this.userAccessService = userAccessService;
         this.sdkEndpointService = sdkEndpointService;
     }
 
@@ -70,10 +70,10 @@ public class OpenApiSdkController {
         return ApiResponse.ok(new UserPermissionsResponse(permissions, serverTime));
     }
 
-    /** 用户可访问系统列表（SDK 的 /rbac/me/systems 依赖，契约 §4.2）。 */
+    /** 用户可访问系统列表（由有效角色推导；SDK 的 /rbac/me/systems 依赖，契约 §4.2）。 */
     @GetMapping("/user-systems")
     public ApiResponse<List<UserSystemItem>> userSystems(@RequestParam String externalUserId) {
-        return ApiResponse.ok(userSystemService.openApiUserSystems(externalUserId));
+        return ApiResponse.ok(userAccessService.openApiUserSystems(externalUserId));
     }
 
     /** 页面操作元数据下发（模式 B）。 */

@@ -17,6 +17,9 @@ import com.telbank.rbac.sdk.config.RbacSdkProperties;
  *
  * <p>所有数据都走 SDK 内部缓存与开放接口客户端，与拦截器共享同一份缓存：
  * {@code /rbac/me/bootstrap} 预热过的用户权限集，这里可直接命中。</p>
+ *
+ * <p>{@code getSystems} 原样透传权限中心按有效角色推导的业务系统列表（空列表不降级），
+ * 仅回源失败时降级为本系统单例。</p>
  */
 public class DefaultRbacClient implements RbacClient {
 
@@ -50,10 +53,9 @@ public class DefaultRbacClient implements RbacClient {
     public List<SystemInfo> getSystems(String externalUserId) {
         if (isNotBlank(externalUserId)) {
             try {
+                // 权限中心按有效 user_role 推导业务系统（排除 platform）；空列表原样透传
                 List<SystemInfo> systems = remoteClient.fetchUserSystems(externalUserId);
-                if (systems != null && !systems.isEmpty()) {
-                    return systems;
-                }
+                return systems == null ? Collections.<SystemInfo>emptyList() : systems;
             } catch (RuntimeException e) {
                 log.warn("查询用户可访问系统失败，降级为本系统单例: {}", e.toString());
             }

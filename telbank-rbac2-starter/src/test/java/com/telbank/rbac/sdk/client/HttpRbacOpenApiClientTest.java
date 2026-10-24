@@ -120,18 +120,30 @@ class HttpRbacOpenApiClientTest {
     }
 
     @Test
-    void fetchUserSystemsParsesArrayDataAndIsDefaultField() {
+    void fetchUserSystemsParsesRoleDerivedSystemList() {
         HttpFixture fixture = new HttpFixture(properties("https://rbac.example.com"));
-        fixture.expectSuccess("{\"code\":0,\"message\":\"ok\",\"data\":[{\"code\":\"crm\","
-                + "\"name\":\"CRM系统\",\"region\":\"region_a\",\"isDefault\":true}]}");
+        fixture.expectSuccess("{\"code\":0,\"message\":\"ok\",\"data\":["
+                + "{\"code\":\"crm\",\"name\":\"CRM系统\",\"region\":\"region_a\",\"isDefault\":true},"
+                + "{\"code\":\"erp\",\"name\":\"ERP系统\",\"region\":\"region_b\",\"isDefault\":false}]}");
 
-        List<SystemInfo> systems = fixture.api.fetchUserSystems("13800138000");
+        List<SystemInfo> systems = fixture.api.fetchUserSystems("13600136000");
 
-        assertThat(systems).hasSize(1);
+        assertThat(systems).hasSize(2);
         assertThat(systems.get(0).getCode()).isEqualTo("crm");
         assertThat(systems.get(0).getName()).isEqualTo("CRM系统");
         assertThat(systems.get(0).getIsDefault()).isTrue();
-        assertThat(fixture.captured.uri.getRawQuery()).isEqualTo("externalUserId=13800138000");
+        assertThat(systems.get(1).getCode()).isEqualTo("erp");
+        assertThat(systems.get(1).getIsDefault()).isFalse();
+        assertThat(fixture.captured.uri.getRawQuery()).isEqualTo("externalUserId=13600136000");
+        fixture.server.verify();
+    }
+
+    @Test
+    void fetchUserSystemsParsesEmptyArrayAsNoValidRole() {
+        HttpFixture fixture = new HttpFixture(properties("https://rbac.example.com"));
+        fixture.expectSuccess("{\"code\":0,\"message\":\"ok\",\"data\":[]}");
+
+        assertThat(fixture.api.fetchUserSystems("13700137000")).isEmpty();
         fixture.server.verify();
     }
 

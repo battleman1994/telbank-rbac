@@ -27,6 +27,58 @@ public interface SysUserRoleRepository extends JpaRepository<SysUserRole, Long> 
             Integer status, LocalDateTime startInclusive, LocalDateTime endInclusive);
 
     /**
+     * 用户可访问系统（系统隔离模型）：由有效角色推导 {@code DISTINCT system_id}。
+     *
+     * <p>有效角色：user_role.status=1 且时效内、角色 status=1；系统启用由调用方过滤。</p>
+     */
+    @Query(value = """
+            SELECT DISTINCT ur.system_id FROM sys_user_role ur
+            JOIN sys_role r ON r.id = ur.role_id AND r.status = 1
+            WHERE ur.external_user_id = :externalUserId
+              AND ur.status = 1
+              AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
+              AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
+            """, nativeQuery = true)
+    List<Long> findAccessibleSystemIds(@Param("externalUserId") String externalUserId);
+
+    /**
+     * 用户在某系统是否有有效角色（管理上下文准入）：user_role.status=1 且时效内、角色 status=1。
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM sys_user_role ur
+            JOIN sys_role r ON r.id = ur.role_id AND r.status = 1
+            WHERE ur.system_id = :systemId
+              AND ur.external_user_id = :externalUserId
+              AND ur.status = 1
+              AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
+              AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
+            """, nativeQuery = true)
+    long countEffectiveRoles(@Param("systemId") Long systemId,
+                             @Param("externalUserId") String externalUserId);
+
+    /**
+     * 用户在指定系统内是否拥有某权限码的有效授权（用于数据驱动平台超管判定）。
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM sys_user_role ur
+            JOIN sys_role r ON r.id = ur.role_id AND r.status = 1
+            JOIN sys_role_permission rp ON rp.role_id = r.id AND rp.status = 1
+            JOIN sys_permission p ON p.id = rp.permission_id AND p.status = 1
+            WHERE p.system_id = :systemId
+              AND p.code = :code
+              AND ur.system_id = :systemId
+              AND ur.external_user_id = :externalUserId
+              AND ur.status = 1
+              AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
+              AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
+              AND (rp.valid_from IS NULL OR rp.valid_from <= NOW())
+              AND (rp.valid_until IS NULL OR rp.valid_until > NOW())
+            """, nativeQuery = true)
+    long countEffectivePermission(@Param("systemId") Long systemId,
+                                  @Param("externalUserId") String externalUserId,
+                                  @Param("code") String code);
+
+    /**
      * 用户当前生效的权限码及其时效包络（需求 §5.3 时效过滤；含 is_public=1 的公共权限）。
      *
      * <p>返回列：{@code code VARCHAR}, {@code valid_from VARCHAR}, {@code valid_until VARCHAR}

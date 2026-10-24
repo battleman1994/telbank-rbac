@@ -1,5 +1,5 @@
 import { createBrowserRouter } from 'react-router'
-import { HomeRedirect, PermissionGuard } from './components/PermissionGuard'
+import { HomeRedirect, PermissionGuard, PlatformAdminGuard } from './components/PermissionGuard'
 import { MANAGEMENT_PERMISSIONS } from './config/menu'
 import AdminLayout from './layouts/AdminLayout'
 import ApprovalGrantsPage from './pages/ApprovalGrantsPage'
@@ -13,13 +13,14 @@ import RolesPage from './pages/RolesPage'
 import SdkEndpointsPage from './pages/SdkEndpointsPage'
 import SystemsPage from './pages/SystemsPage'
 import UserRolesPage from './pages/UserRolesPage'
-import UserSystemsPage from './pages/UserSystemsPage'
 
 /**
- * 管理端路由（需求 §5.7）：登录页 + 受保护布局 + 10 个功能页面。
- * 每个页面绑定管理权限码（rbac:*），由 PermissionGuard 做路由级权限守卫：
- * 无权限渲染 403 无权限页（可跳转到第一个有权限菜单），平台超管全部放行。
- * 菜单结构由前端代码维护，权限中心不存储菜单（需求 §2）。
+ * 管理端路由（系统隔离模型）：
+ * - 登录页 + 受保护布局 + 8 个权限管理页面 + 平台超管专属「系统接入」
+ * - 权限管理页面绑定当前系统内的短码权限（role:manage / permission:manage /
+ *   resource:manage / page:manage / user:manage / audit:view），
+ *   由 PermissionGuard 做路由级权限守卫（无权限渲染 403 页）
+ * - /systems（系统接入）仅平台超管可访问（PlatformAdminGuard）
  */
 export const router = createBrowserRouter([
   {
@@ -34,9 +35,9 @@ export const router = createBrowserRouter([
       {
         path: 'systems',
         element: (
-          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.system}>
+          <PlatformAdminGuard>
             <SystemsPage />
-          </PermissionGuard>
+          </PlatformAdminGuard>
         ),
       },
       {
@@ -66,16 +67,8 @@ export const router = createBrowserRouter([
       {
         path: 'user-roles',
         element: (
-          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.role}>
+          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.user}>
             <UserRolesPage />
-          </PermissionGuard>
-        ),
-      },
-      {
-        path: 'user-systems',
-        element: (
-          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.system}>
-            <UserSystemsPage />
           </PermissionGuard>
         ),
       },
@@ -90,7 +83,7 @@ export const router = createBrowserRouter([
       {
         path: 'sdk-endpoints',
         element: (
-          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.permission}>
+          <PermissionGuard permission={MANAGEMENT_PERMISSIONS.resource}>
             <SdkEndpointsPage />
           </PermissionGuard>
         ),

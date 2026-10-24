@@ -20,6 +20,7 @@ import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.repository.SysPermissionRepository;
 import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
 import com.telbank.rbac.domain.repository.SysRoleRepository;
+import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.GrantDtos.RolePermissionGrantRequest;
 import com.telbank.rbac.web.dto.GrantDtos.RolePermissionGrantVO;
 import com.telbank.rbac.web.dto.GrantDtos.RolePermissionRevokeRequest;
@@ -38,20 +39,24 @@ public class RolePermissionService {
     private final SysPermissionRepository permissionRepository;
     private final SysRolePermissionRepository rolePermissionRepository;
     private final ChangeNotifyService changeNotifyService;
+    private final SystemScopeGuard systemScopeGuard;
 
     public RolePermissionService(SysRoleRepository roleRepository,
                                  SysPermissionRepository permissionRepository,
                                  SysRolePermissionRepository rolePermissionRepository,
-                                 ChangeNotifyService changeNotifyService) {
+                                 ChangeNotifyService changeNotifyService,
+                                 SystemScopeGuard systemScopeGuard) {
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
         this.rolePermissionRepository = rolePermissionRepository;
         this.changeNotifyService = changeNotifyService;
+        this.systemScopeGuard = systemScopeGuard;
     }
 
     @Transactional(readOnly = true)
     public RolePermissionsVO grants(Long roleId) {
         SysRole role = requireRole(roleId);
+        systemScopeGuard.requireAccess(role.getSystemId());
         List<SysRolePermission> relations = rolePermissionRepository.findByRoleIdOrderByPermissionIdAsc(roleId);
         Map<Long, SysPermission> permissions = new HashMap<>();
         List<Long> permissionIds = relations.stream().map(SysRolePermission::getPermissionId).toList();
@@ -75,6 +80,7 @@ public class RolePermissionService {
     @Transactional
     public RolePermissionsVO grant(Long roleId, RolePermissionGrantRequest request) {
         SysRole role = requireRole(roleId);
+        systemScopeGuard.requireAccess(role.getSystemId());
         validateValidity(request.validFrom(), request.validUntil());
         List<SysRolePermission> toSave = new ArrayList<>(request.permissionIds().size());
         for (Long permissionId : request.permissionIds()) {
@@ -106,6 +112,7 @@ public class RolePermissionService {
     @Transactional
     public RolePermissionsVO revoke(Long roleId, RolePermissionRevokeRequest request) {
         SysRole role = requireRole(roleId);
+        systemScopeGuard.requireAccess(role.getSystemId());
         for (Long permissionId : request.permissionIds()) {
             SysRolePermission relation = rolePermissionRepository
                     .findByRoleIdAndPermissionId(roleId, permissionId)

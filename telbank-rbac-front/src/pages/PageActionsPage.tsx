@@ -49,8 +49,8 @@ export default function PageActionsPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="页面操作元数据"
-        description="页面操作元数据按系统隔离，需先在顶部选择业务系统。"
+        title="页面元素"
+        description="当前系统上下文未就绪，无法加载页面元素配置。"
       />
     )
   }
@@ -93,7 +93,7 @@ function PageActionsContent({ systemId }: { systemId: number }) {
       return createPageAction(payload)
     },
     onSuccess: () => {
-      void message.success(editing ? '页面操作已更新' : '页面操作已创建')
+      void message.success(editing ? '页面元素已更新' : '页面元素已创建')
       setModalOpen(false)
       void queryClient.invalidateQueries({ queryKey: ['page-actions', systemId] })
     },
@@ -102,7 +102,7 @@ function PageActionsContent({ systemId }: { systemId: number }) {
   const disableMutation = useMutation({
     mutationFn: (id: number) => disablePageAction(id),
     onSuccess: () => {
-      void message.success('页面操作已停用')
+      void message.success('页面元素已停用')
       void queryClient.invalidateQueries({ queryKey: ['page-actions', systemId] })
     },
   })
@@ -188,8 +188,8 @@ function PageActionsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="页面操作元数据"
-      description="模式 B：标准 CRUD 操作区按钮由 sys_page_action 配置驱动，业务前端通过 /rbac/me/bootstrap 的 pageActions 渲染。"
+      title="页面元素"
+      description="模式 B：标准 CRUD 操作区按钮由当前系统的 sys_page_action 配置驱动，业务前端通过 /rbac/me/bootstrap 的 pageActions 渲染。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void pageActionsQuery.refetch()}>
@@ -239,7 +239,7 @@ function PageActionsContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="页面操作元数据加载失败"
+              title="页面元素加载失败"
               description={pageActionsQuery.error.message}
               action={
                 <Button size="small" onClick={() => void pageActionsQuery.refetch()}>
