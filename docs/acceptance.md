@@ -176,7 +176,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.11.3 Redis 不可用降级 | ✅ | 示例业务系统日志：`Redis 变更订阅启动失败，降级为兜底短轮询（不影响业务）`，业务接口正常 |
 | §9.12.7 时钟偏移 | 🧪 | `RbacUserPermissionCacheTest`（offset 计算与时效判定） |
 | §9.13.3 全链路 HTTPS | 🔶 | 配置/README 生产说明 + 代码强制不走 HTTP 生产；本机验收为 HTTP（demo） |
-| SDK 的 JDK 8 运行时兼容 | 🧪+🔶 | 构建工具链 JDK 17、产物 major=52（`--release 8`，编译期即限制只能用 JDK 8 API）；有 `.github/workflows/sdk-jdk8-compat.yml` 在 CI 用 JDK 8 运行时冒烟；本机因 Apple Silicon 无法安装官方 JDK 8，未做本机 JDK 8 runtime 冒烟 |
+| SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071190930](https://github.com/battleman1994/telbank-rbac/actions/runs/40071190930)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 
 ## 已知限制（不阻塞验收，生产前建议处理）
 
@@ -186,7 +186,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 4. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
 5. **MySQL 版本**：本机临时 MySQL 26.7 高于 Flyway 官方已验证版本（9.4），启动有 WARN；生产用 MySQL 8.0+ 即无此告警。
 6. **前端包体**：未做路由级 code splitting（单 chunk 1.4 MB / gzip 443 kB），可后续优化。
-7. **SDK 的 JDK 8 运行时冒烟**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本（Homebrew `openjdk@8` 的 macOS 构建仅 x86_64，且当前平台无 bottle），因此本机无法安装 JDK 8 做运行时冒烟。兼容性保证 = JDK 17 工具链 + `--release 8` + 产物 major=52 + Boot 2.7.18/依赖的 Java 8 支持；真实 JDK 8 运行时冒烟由 `.github/workflows/sdk-jdk8-compat.yml` 在 CI 完成（JDK 17 构建 → JDK 8 启动示例业务系统并探测接口）。
+7. **SDK 的 JDK 8 运行时冒烟（已由 CI 补验）**：本机为 Apple Silicon macOS，官方 OpenJDK 8/Oracle JDK 8 均无 macOS ARM 原生版本，无法本机安装 JDK 8。已通过 GitHub Actions（`sdk-jdk8-compat.yml`）在真实 JDK 8 运行时完成冒烟：JDK 17 构建 SDK（90 单测 + major=52 断言）→ JDK 8 启动示例业务系统并探测接口成功，两个 job 均 success（run 40071190930）。
 
 ## 执行记录
 
@@ -194,6 +194,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 14:44 | GitHub Actions `SDK JDK 8 compatibility`（push 自动触发） | **两个 job 全部 success**：JDK 17 构建 SDK（90/90、major=52 断言）→ JDK 8 运行时启动示例业务系统，`/api/health` 返回 200 |
 | 14:30 | `./scripts/build-sdk.sh`（**JDK 17.0.20.1** 工具链，`--release 8`） | **90/90 PASS**，BUILD SUCCESS，产物字节码 **major=52（Java 8）** 校验通过 |
 | 14:17 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-api clean test`（**JDK 21.0.13**，release 21） | **46/46 PASS**，BUILD SUCCESS，字节码 major=65 |
 | 14:16 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-starter clean test`（**JDK 21.0.13**，release 8） | **90/90 PASS**，BUILD SUCCESS，字节码 major=52 |

@@ -24,12 +24,12 @@ on:
 jobs:
   build-sdk-jdk17:
     name: Build SDK with JDK 17 (Java 8 bytecode)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -51,7 +51,7 @@ jobs:
           mvn -B -f samples/business-demo/pom.xml -DskipTests package
 
       - name: Upload sample app for the JDK 8 runtime job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: business-demo-jar
           path: samples/business-demo/target/business-demo-1.0.0.jar
@@ -59,15 +59,15 @@ jobs:
   runtime-jdk8:
     name: Smoke-test sample app on JDK 8 runtime
     needs: build-sdk-jdk17
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Download sample app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: business-demo-jar
 
       - name: Set up JDK 8 (test runtime only)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '8'

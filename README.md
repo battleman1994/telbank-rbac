@@ -2,6 +2,9 @@
 
 统一权限中心 + 多业务系统权限隔离 + 零侵入 SDK 的 RBAC 权限管理平台。权限中心只做授权、不做认证、不管理菜单；业务系统前端不直连权限中心；SDK 以 JDK 8 字节码运行在业务系统后端，自动注册接口拦截器与 `/rbac/me/*` 接口。
 
+[![SDK JDK 8 compatibility](https://github.com/battleman1994/telbank-rbac/actions/workflows/sdk-jdk8-compat.yml/badge.svg)](https://github.com/battleman1994/telbank-rbac/actions/workflows/sdk-jdk8-compat.yml)
+[![Repo](https://img.shields.io/badge/GitHub-battleman1994%2Ftelbank--rbac-blue)](https://github.com/battleman1994/telbank-rbac)
+
 需求基线：[`docs/telbank-rbac.md`](docs/telbank-rbac.md)　接口/实现契约：[`docs/impl/contracts.md`](docs/impl/contracts.md)　验收矩阵：[`docs/acceptance.md`](docs/acceptance.md)
 
 ---
@@ -308,6 +311,7 @@ RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 
 
 - 权限中心后端：`clean test` **46/46 PASS**（JDK 21.0.13，字节码 major=65）。
 - SDK：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，`clean test` 通过、产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
+- **SDK 的 JDK 8 兼容性（GitHub Actions 实测）**：`SDK JDK 8 compatibility` workflow 通过 —— JDK 17 构建 SDK（90 单测 + 断言 major=52）→ 在 **JDK 8 运行时**启动示例业务系统并成功探测 `/api/health`（[run 40071190930](https://github.com/battleman1994/telbank-rbac/actions/runs/40071190930)）。
 - 第 9 节 API 级验收：**50/50 PASS**（JDK 21 运行 + 干净库 + demo profile，Flyway V1+V2）。
 - SDK 端到端：示例业务系统 CRM/ERP 双实例 **4/4 PASS**（CRM 有权限 200、同用户 ERP 同码接口 403、未配置权限码接口默认放行）。
 - 管理前端：`tsc -b && vite build` 通过，dist 1.4 MB（JS gzip 443 kB）。
