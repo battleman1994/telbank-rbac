@@ -10,7 +10,7 @@
 
 ## 0. 如何复现
 
-> 想一条命令起前后端：`./scripts/start-all.sh`（默认 8080/5173，`Ctrl+C` 同时停止，日志见 `logs/`）。
+> 想一条命令起临时库+前后端：`./scripts/start-all.sh --temp-db`（自动起一次性 MySQL/建库，默认后端 8080、前端 5173；`Ctrl+C` 同时停止并清理，日志见 `logs/`）。已有 MySQL 时用 `./scripts/start-all.sh`。
 
 ```bash
 # 1) 一次性本地 MySQL（不影响系统已有实例；root 无密码，端口 3307）

@@ -3,42 +3,53 @@
 #
 # 特性：
 #   - 启动前检查端口占用（默认 8080 / 5173）
+#   - --temp-db：自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac 库，
+#                后端 Flyway 自动建表/灌示例数据；脚本退出时自动停止并清理临时库
+#   - --init-db：针对已有 MySQL 先执行 scripts/init-db.sh（需 MYSQL_* 环境变量）
 #   - 后端就绪后再启动前端（后端 JWT 接口返回 401/200 视为就绪）
 #   - 日志输出到 logs/api.log、logs/front.log
-#   - Ctrl+C / kill 时自动停止前后端并释放端口
-#   - --init-db：启动前先执行 scripts/init-db.sh（需 MySQL 环境变量）
+#   - Ctrl+C / kill 时自动停止前后端（及本脚本启动的临时库）并释放端口
 #
 # 用法：
-#   ./scripts/start-all.sh
-#   API_PORT=18080 FRONT_PORT=5174 ./scripts/start-all.sh
+#   ./scripts/start-all.sh --temp-db                          # 推荐：零依赖本地演示
+#   ./scripts/start-all.sh                                    # 使用已就绪的 MySQL
+#   API_PORT=18080 FRONT_PORT=5174 ./scripts/start-all.sh --temp-db
 #   MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db
 #   RBAC_DB_URL='jdbc:mysql://127.0.0.1:3307/telbank_rbac?...' ./scripts/start-all.sh
 #
 # 环境变量：
-#   API_PORT     后端端口，默认 8080
-#   FRONT_PORT   前端端口，默认 5173
-#   VITE_API_BASE_URL  前端请求的后端地址，默认 http://localhost:API_PORT
-#   RBAC_*       透传给后端（数据库/JWT/AppSecret 等，见 README §7）
+#   API_PORT        后端端口，默认 8080
+#   FRONT_PORT      前端端口，默认 5173
+#   TEMP_MYSQL_PORT 临时 MySQL 端口，默认 3307（仅 --temp-db）
+#   VITE_API_BASE_URL 前端请求的后端地址，默认 http://localhost:API_PORT
+#   RBAC_*          透传给后端（数据库/JWT/AppSecret 等，见 README §7）
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
 API_PORT="${API_PORT:-8080}"
 FRONT_PORT="${FRONT_PORT:-5173}"
+TEMP_MYSQL_PORT="${TEMP_MYSQL_PORT:-3307}"
 API_LOG="$ROOT/logs/api.log"
 FRONT_LOG="$ROOT/logs/front.log"
 INIT_DB=0
+TEMP_DB=0
+TEMP_DB_STARTED=0
+TEMP_DB_DATADIR="${RBAC_TEMP_MYSQL_DATADIR:-/tmp/telbank-rbac-mysql/data}"
+TEMP_DB_DIR="$(dirname "$TEMP_DB_DATADIR")"
 RUNNING=0
+
+usage() {
+  sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
+}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --temp-db) TEMP_DB=1 ;;
     --init-db) INIT_DB=1 ;;
-    -h|--help)
-      sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
-      exit 0
-      ;;
+    -h|--help) usage; exit 0 ;;
     *)
-      echo "未知参数：$1（可用：--init-db）" >&2
+      echo "未知参数：$1（可用：--temp-db、--init-db）" >&2
       exit 1
       ;;
   esac
@@ -52,7 +63,7 @@ port_in_use() {
 }
 
 kill_port() {
-  local port="$1" force="$2" pid
+  local port="$1" force="$2"
   lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null \
     | tail -n +2 | awk '{print $2}' | sort -u \
     | while read -r pid; do
@@ -73,11 +84,26 @@ cleanup() {
   sleep 1
   kill_port "$API_PORT" 1
   kill_port "$FRONT_PORT" 1
+  if [ "$TEMP_DB_STARTED" = "1" ]; then
+    echo "正在停止临时 MySQL（${TEMP_MYSQL_PORT}）并清理数据目录 ..."
+    "$ROOT/scripts/start-temp-mysql.sh" stop >/dev/null 2>&1 || true
+    # 兜底：即使 stop 被中断/进程已退出，也清掉临时数据目录
+    rm -rf "$TEMP_DB_DIR" 2>/dev/null || true
+  fi
   echo "已停止（端口 ${API_PORT}/${FRONT_PORT} 已释放）"
 }
 trap cleanup EXIT INT TERM
 
 # ---------- 预检 ----------
+if [ "$TEMP_DB" = "1" ] && [ -n "${RBAC_DB_URL:-}" ]; then
+  echo "❌ --temp-db 与 RBAC_DB_URL 冲突：临时库由脚本自动配置，请二选一。" >&2
+  exit 1
+fi
+if [ "$TEMP_DB" = "1" ] && [ "$INIT_DB" = "1" ]; then
+  echo "提示：--temp-db 会自动创建 telbank_rbac 库，--init-db 将被忽略。"
+  INIT_DB=0
+fi
+
 if port_in_use "$API_PORT"; then
   echo "❌ 端口 ${API_PORT} 已被占用（可能是已启动的后端）。可设置 API_PORT=其他端口重试。" >&2
   lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN 2>/dev/null | head -3 >&2
@@ -88,9 +114,23 @@ if port_in_use "$FRONT_PORT"; then
   exit 1
 fi
 
-if [ "$INIT_DB" = "1" ]; then
+# ---------- 数据库准备 ----------
+if [ "$TEMP_DB" = "1" ]; then
+  echo "==> 准备临时 MySQL（端口 ${TEMP_MYSQL_PORT}，脚本退出时自动清理）"
+  if "$ROOT/scripts/start-temp-mysql.sh" status 2>/dev/null | grep -q '^running'; then
+    echo "    检测到已有临时 MySQL 在运行，直接复用（退出时不会停止它）"
+  else
+    RBAC_TEMP_MYSQL_PORT="$TEMP_MYSQL_PORT" \
+      "$ROOT/scripts/start-temp-mysql.sh" start >"$ROOT/logs/temp-mysql.log" 2>&1 \
+      || { echo "❌ 临时 MySQL 启动失败，日志 logs/temp-mysql.log：" >&2; tail -n 20 "$ROOT/logs/temp-mysql.log" >&2; exit 1; }
+    TEMP_DB_STARTED=1
+    RUNNING=1
+  fi
+  export RBAC_DB_URL="jdbc:mysql://127.0.0.1:${TEMP_MYSQL_PORT}/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false"
+  echo "    临时库已就绪：telbank_rbac @ 127.0.0.1:${TEMP_MYSQL_PORT}（表结构与示例数据由 Flyway 自动迁移）"
+elif [ "$INIT_DB" = "1" ]; then
   echo "==> 初始化数据库（scripts/init-db.sh）"
-  ./scripts/init-db.sh || { echo "❌ 数据库初始化失败，请检查 MySQL 连接配置" >&2; exit 1; }
+  "$ROOT/scripts/init-db.sh" || { echo "❌ 数据库初始化失败，请检查 MySQL 连接配置" >&2; exit 1; }
 fi
 
 # ---------- 启动后端 ----------
@@ -107,7 +147,7 @@ for _ in $(seq 1 180); do
     echo "❌ 后端进程已退出，日志尾部：" >&2
     tail -n 40 "$API_LOG" >&2
     echo "" >&2
-    echo "常见原因：MySQL 未启动/未初始化（./scripts/init-db.sh 或 ./scripts/start-temp-mysql.sh start）、JDK 不是 21+、端口冲突。" >&2
+    echo "常见原因：MySQL 未启动/未初始化（--temp-db 或 ./scripts/init-db.sh）、JDK 不是 21+、端口冲突。" >&2
     exit 1
   fi
   code="$(curl -s -o /dev/null -w '%{http_code}' -m 2 "http://127.0.0.1:${API_PORT}/api/me" 2>/dev/null || true)"
@@ -162,6 +202,7 @@ cat <<EOF
 ============================================================
  权限中心后端 : http://localhost:${API_PORT}     （日志 logs/api.log）
  管理前端     : http://localhost:${FRONT_PORT}   （日志 logs/front.log）
+$([ "$TEMP_DB" = "1" ] && echo " 临时 MySQL   : 127.0.0.1:${TEMP_MYSQL_PORT}（telbank_rbac，脚本退出时自动清理）")
  演示 JWT     : TOKEN=\$(./scripts/gen-demo-jwt.sh 13800138000)
  登录账号     : 13800138000（CRM/ERP 管理员 + 权限中心管理员 rbac-admin）
  停止服务     : 按 Ctrl+C（或 kill 本脚本）

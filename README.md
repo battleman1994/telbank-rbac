@@ -90,7 +90,10 @@ java -version
 
 ## 4. 快速开始（本地 demo）
 
-> **一键启动（推荐）**：数据库就绪后执行 `./scripts/start-all.sh`，会同时启动权限中心（默认 8080）与管理前端（默认 5173）；日志在 `logs/`，`Ctrl+C` 会同时停止前后端并释放端口。支持 `API_PORT=18080 FRONT_PORT=5174 ./scripts/start-all.sh`、`--init-db`（自动建库）。以下 4.1–4.4 为分步说明。
+> **一键启动（推荐）**：
+> - `./scripts/start-all.sh --temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`（表结构与示例数据由 Flyway 自动迁移），后端就绪后再启动前端；`Ctrl+C` 会同时停止前后端并清理临时库。
+> - `./scripts/start-all.sh`：使用已有 MySQL；可加 `--init-db` 先建库（需 `MYSQL_*` 环境变量）。
+> - 端口可用 `API_PORT=18080 FRONT_PORT=5174` 覆盖；日志在 `logs/`。以下 4.1–4.4 为分步说明。
 
 ### 4.1 初始化数据库
 
