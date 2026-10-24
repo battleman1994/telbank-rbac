@@ -9,8 +9,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.row.PermissionValidityRow;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.MeDtos.AccessedSystemVO;
 import com.telbank.rbac.web.dto.MeDtos.BootstrapVO;
@@ -41,7 +42,7 @@ class UserBootstrapServiceTest {
         List<SysSystem> systems = List.of(crm, erp, platform);
         Map<String, SysSystem> byCode = Map.of("crm", crm, "erp", erp, "platform", platform);
 
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "findByCode" -> Optional.ofNullable(byCode.get((String) args[0]));
                     case "findById" -> systems.stream()
@@ -60,7 +61,7 @@ class UserBootstrapServiceTest {
                             .toList();
                     default -> TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "findAccessibleSystemIds" ->
                             CRM_ADMIN.equals(args[0]) ? List.of(CRM_ID) : List.of();
@@ -78,8 +79,8 @@ class UserBootstrapServiceTest {
                         Long systemId = (Long) args[0];
                         yield systemId == CRM_ID
                                 ? List.of(
-                                        new Object[]{"page:manage", "2026-10-24T00:00:00", null},
-                                        new Object[]{"role:manage", null, null})
+                                        row("page:manage", "2026-10-24T00:00:00", null),
+                                        row("role:manage", null, null))
                                 : List.of();
                     }
                     default -> TestProxies.defaultValue(method.getReturnType());
@@ -161,6 +162,14 @@ class UserBootstrapServiceTest {
                 .contains("\"permissions\":[\"role:manage\",\"page:manage\"]")
                 .contains("\"systems\":[{\"id\":1,\"code\":\"crm\",\"name\":\"CRM系统\","
                         + "\"region\":\"region_a\",\"isDefault\":true}]");
+    }
+
+    private static PermissionValidityRow row(String code, String validFrom, String validUntil) {
+        PermissionValidityRow row = new PermissionValidityRow();
+        row.setCode(code);
+        row.setValidFrom(validFrom);
+        row.setValidUntil(validUntil);
+        return row;
     }
 
     private static SysSystem system(Long id, String code, int status, int isPlatform) {

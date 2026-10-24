@@ -9,8 +9,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.row.PermissionValidityRow;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.service.PermissionQueryService;
 import com.telbank.rbac.service.PlatformAdminService;
 import com.telbank.rbac.testutil.SecurityTestSupport;
@@ -28,7 +29,7 @@ class WildcardPermissionTest {
     private static final Long PLATFORM_ID = 4L;
 
     private PermBean permBean;
-    private List<Object[]> permissionRows = List.<Object[]>of(new Object[]{"*", null, null});
+    private List<PermissionValidityRow> permissionRows = List.of(row("*", null, null));
 
     @BeforeEach
     void setUp() {
@@ -36,7 +37,7 @@ class WildcardPermissionTest {
         SysSystem platform = system(PLATFORM_ID, "platform", 1, 1);
         Map<String, SysSystem> systems = Map.of("crm", crm, "platform", platform);
 
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findByCode".equals(method.getName())) {
                         return Optional.ofNullable(systems.get((String) args[0]));
@@ -46,7 +47,7 @@ class WildcardPermissionTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     switch (method.getName()) {
                         case "countEffectiveRoles": {
@@ -98,9 +99,9 @@ class WildcardPermissionTest {
 
     @Test
     void prefixWildcardOnlyPassesMatchingNamespace() {
-        permissionRows = List.<Object[]>of(
-                new Object[]{"order:*", null, null},
-                new Object[]{"role:manage", null, null});
+        permissionRows = List.of(
+                row("order:*", null, null),
+                row("role:manage", null, null));
         SecurityTestSupport.authenticate("crm-admin-001");
         SecurityTestSupport.requestWithSystemCode("crm");
 
@@ -120,6 +121,14 @@ class WildcardPermissionTest {
         assertThat(permBean.isPlatformAdmin()).isTrue();
         assertThat(permBean.has("role:manage")).isTrue();
         assertThat(permBean.has("anything:not-defined")).isTrue();
+    }
+
+    private static PermissionValidityRow row(String code, String validFrom, String validUntil) {
+        PermissionValidityRow row = new PermissionValidityRow();
+        row.setCode(code);
+        row.setValidFrom(validFrom);
+        row.setValidUntil(validUntil);
+        return row;
     }
 
     private static SysSystem system(Long id, String code, int status, int isPlatform) {

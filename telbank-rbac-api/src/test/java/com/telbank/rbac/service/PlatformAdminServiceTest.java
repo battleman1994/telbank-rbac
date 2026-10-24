@@ -6,11 +6,11 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.data.jpa.repository.Query;
+import org.apache.ibatis.annotations.Select;
 
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,14 +23,14 @@ class PlatformAdminServiceTest {
     private final AtomicReference<String> requestedCode = new AtomicReference<>();
 
     private PlatformAdminService service(SysSystem platformSystem, List<String> adminUserIds) {
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findFirstByIsPlatformOrderByIdAsc".equals(method.getName())) {
                         return Optional.ofNullable(platformSystem);
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("countEffectivePermission".equals(method.getName())) {
                         requestedCode.set((String) args[2]);
@@ -68,11 +68,11 @@ class PlatformAdminServiceTest {
 
     @Test
     void platformAdminQueryAppliesValidityAndStatusFilters() throws NoSuchMethodException {
-        Method method = SysUserRoleRepository.class.getMethod("countEffectivePermission",
+        Method method = SysUserRoleMapper.class.getMethod("countEffectivePermission",
                 Long.class, String.class, String.class);
-        Query query = method.getAnnotation(Query.class);
-        assertThat(query).isNotNull();
-        assertThat(query.value())
+        Select select = method.getAnnotation(Select.class);
+        assertThat(select).isNotNull();
+        assertThat(String.join(" ", select.value()))
                 .contains("ur.status = 1")
                 .contains("r.status = 1")
                 .contains("rp.status = 1")

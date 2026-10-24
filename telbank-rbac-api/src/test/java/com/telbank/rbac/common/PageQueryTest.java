@@ -2,6 +2,8 @@ package com.telbank.rbac.common;
 
 import org.junit.jupiter.api.Test;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PageQueryTest {
@@ -20,6 +22,16 @@ class PageQueryTest {
         assertThat(PageQuery.of(-3, -1)).isEqualTo(new PageQuery(1, 20));
         assertThat(PageQuery.of(4, 10_000)).isEqualTo(new PageQuery(4, PageQuery.MAX_SIZE));
         assertThat(PageQuery.of(3, 15).offset()).isEqualTo(30);
+    }
+
+    @Test
+    void adaptsToMyBatisPlusPage() {
+        Page<Object> page = PageQuery.of(3, 15).toMpPage();
+        assertThat(page.getCurrent()).isEqualTo(3);
+        assertThat(page.getSize()).isEqualTo(15);
+        Page<Object> defaults = PageQuery.of(null, null).toMpPage();
+        assertThat(defaults.getCurrent()).isEqualTo(1);
+        assertThat(defaults.getSize()).isEqualTo(20);
     }
 
     @Test

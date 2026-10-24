@@ -1,46 +1,30 @@
 package com.telbank.rbac.domain.entity;
 
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.MappedSuperclass;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
 
 /**
- * 实体公共字段：自增主键 + created_at / updated_at（UTC 存储，契约 §1.4）。
+ * 实体公共字段：自增主键 + created_at / updated_at。
+ *
+ * <p>created_at / updated_at 由数据库默认值与 ON UPDATE 维护（不参与 Java 侧写入），
+ * 读取时由 MyBatis 映射为 UTC {@link LocalDateTime}。</p>
  */
-@MappedSuperclass
 public abstract class BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id", nullable = false, updatable = false)
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @TableField(value = "created_at", insertStrategy = FieldStrategy.NEVER,
+            updateStrategy = FieldStrategy.NEVER)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
+    @TableField(value = "updated_at", insertStrategy = FieldStrategy.NEVER,
+            updateStrategy = FieldStrategy.NEVER)
     private LocalDateTime updatedAt;
-
-    @PrePersist
-    protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).withNano(0);
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        updatedAt = now;
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now(ZoneOffset.UTC).withNano(0);
-    }
 
     public Long getId() {
         return id;

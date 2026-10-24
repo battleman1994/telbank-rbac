@@ -1,7 +1,8 @@
 package com.telbank.rbac.service;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Sort;
+import java.util.List;
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,8 +11,8 @@ import com.telbank.rbac.common.PageQuery;
 import com.telbank.rbac.common.PageResult;
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysRole;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.RoleDtos.RoleCreateRequest;
 import com.telbank.rbac.web.dto.RoleDtos.RoleUpdateRequest;
@@ -23,11 +24,11 @@ import com.telbank.rbac.web.dto.RoleDtos.RoleVO;
 @Service
 public class RoleService {
 
-    private final SysRoleRepository roleRepository;
-    private final SysSystemRepository systemRepository;
+    private final SysRoleMapper roleRepository;
+    private final SysSystemMapper systemRepository;
     private final SystemScopeGuard systemScopeGuard;
 
-    public RoleService(SysRoleRepository roleRepository, SysSystemRepository systemRepository,
+    public RoleService(SysRoleMapper roleRepository, SysSystemMapper systemRepository,
                        SystemScopeGuard systemScopeGuard) {
         this.roleRepository = roleRepository;
         this.systemRepository = systemRepository;
@@ -38,10 +39,10 @@ public class RoleService {
     public PageResult<RoleVO> page(Long systemId, String keyword, PageQuery pageQuery) {
         systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
-        Page<SysRole> page = roleRepository.search(systemId, normalizedKeyword,
-                pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));
-        return PageResult.of(page.getContent().stream().map(RoleService::toVO).toList(),
-                page.getTotalElements(), pageQuery);
+        Page<SysRole> mpPage = pageQuery.toMpPage();
+        List<SysRole> records = roleRepository.search(mpPage, systemId, normalizedKeyword);
+        return PageResult.of(records.stream().map(RoleService::toVO).toList(),
+                mpPage.getTotal(), pageQuery);
     }
 
     @Transactional

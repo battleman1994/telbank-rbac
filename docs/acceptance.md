@@ -182,6 +182,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | SDK 的 JDK 8 运行时兼容 | ✅ | 构建工具链 JDK 17、产物 major=52（`--release 8`）；**GitHub Actions 实测通过**：JDK 17 构建 + 90 单测 + major=52 断言 → JDK 8 运行时启动示例业务系统并探测 `/api/health` 成功（[run 40071295904](https://github.com/battleman1994/telbank-rbac/actions/runs/40071295904)，[workflow](https://github.com/battleman1994/telbank-rbac/blob/main/.github/workflows/sdk-jdk8-compat.yml)） |
 | §9.15 系统隔离 / 数据驱动超管 / bootstrap（v2.1 A 方案） | ✅ | 全量 API 脚本：`superadmin` DB 判定为超管；`crm-admin-001` 只看到 CRM、bootstrap 含通配 `*`，跨系统/系统接入 403；超管在 CRM 上下文跨系统查 ERP 也 403（须切上下文）；139 仅 CRM；137 过期无系统；`/api/user-systems` 404 |
 | §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + **一条 `*` 权限** + 授权；新管理员凭 `*` 可管理本系统（权限树仅一条 `*`）；非超管 403；PUT status=0 停用后移除 |
+| A13 持久层 MyBatis-Plus（v2.2） | ✅ | JPA/Hibernate 依赖、实体注解、Repository、分页全部移除；112 单测（含 MapperContractTest）+ 真库 v4 全量验收 88/88；源码/依赖树无 JPA 残留 |
 | A12 通配权限 + 严格上下文（v2.1） | ✅ | admin/超管均一条 `*`；`*`/`前缀:*`/精确匹配在后端、前端、SDK 单测与 e2e 验证；所有权限/角色/资源列表按当前系统收敛，超管跨系统 systemId 403；全量验收 88/88 |
 | JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac2-starter`（Boot 4.1.2/JDK21）**98 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
 | Flyway 移除（需求附录 A10） | ✅ | 删除 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `db/manual/01_schema.sql`、`02_seed_data.sql`、`03_rbac_self_onboarding.sql` 手动初始化。全新库导入后 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入 8 表并启动成功 |
@@ -217,6 +218,9 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |
+| 21:22 | `./scripts/verify-all.sh`（MyBatis-Plus 持久层） | **14 项全过**：api **112** 单测、SDK v1 113、SDK v2 114、前端构建、MP 持久层/无 JPA 检查等 |
+| 21:20 | 真库 `telbank_rbac_v4`（01→05）+ 28086 API + 两版 SDK 示例系统 | `acceptance.py` **88/88 PASS**（含 SDK e2e 8/8），JPA/Hibernate 依赖/源码残留为 0 |
+| 21:16 | `mvn -pl telbank-rbac-api clean test`（JPA → MyBatis-Plus） | **112/112 PASS**，BUILD SUCCESS |
 | 21:05 | GitHub Actions `telbank-rbac CI`（commit 7b6bc5d） | **6 个 job 全部 success**：权限中心(104)/SDK v1(113)/SDK v2(114)/前端/Windows 脚本/JDK 8 运行时（[run 40096446088](https://github.com/battleman1994/telbank-rbac/actions/runs/40096446088)） |
 | 21:02 | `./scripts/verify-all.sh`（A 方案） | **13 项全过**：api **104** 单测、SDK v1 **113**、SDK v2 **114**、前端构建、05 通配/严格隔离产物、3 平台脚本 |
 | 21:02 | 8080 最终重启冒烟（用户库 05 迁移后） | superadmin platformAdmin=true；crm-admin bootstrap 含 `*`（currentSystemCode=crm）；超管跨系统 `systemId=2` → **403** |

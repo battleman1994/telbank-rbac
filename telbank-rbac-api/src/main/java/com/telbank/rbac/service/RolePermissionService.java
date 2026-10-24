@@ -17,9 +17,9 @@ import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysRolePermission;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.GrantDtos.RolePermissionGrantRequest;
 import com.telbank.rbac.web.dto.GrantDtos.RolePermissionGrantVO;
@@ -35,15 +35,15 @@ import com.telbank.rbac.web.dto.GrantDtos.RolePermissionsVO;
 @Service
 public class RolePermissionService {
 
-    private final SysRoleRepository roleRepository;
-    private final SysPermissionRepository permissionRepository;
-    private final SysRolePermissionRepository rolePermissionRepository;
+    private final SysRoleMapper roleRepository;
+    private final SysPermissionMapper permissionRepository;
+    private final SysRolePermissionMapper rolePermissionRepository;
     private final ChangeNotifyService changeNotifyService;
     private final SystemScopeGuard systemScopeGuard;
 
-    public RolePermissionService(SysRoleRepository roleRepository,
-                                 SysPermissionRepository permissionRepository,
-                                 SysRolePermissionRepository rolePermissionRepository,
+    public RolePermissionService(SysRoleMapper roleRepository,
+                                 SysPermissionMapper permissionRepository,
+                                 SysRolePermissionMapper rolePermissionRepository,
                                  ChangeNotifyService changeNotifyService,
                                  SystemScopeGuard systemScopeGuard) {
         this.roleRepository = roleRepository;

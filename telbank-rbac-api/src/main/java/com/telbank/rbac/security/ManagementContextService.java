@@ -10,8 +10,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import com.telbank.rbac.common.ApiException;
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -34,12 +34,12 @@ public class ManagementContextService {
     public static final String ATTR_MANAGEMENT_CONTEXT = "rbac.management.context";
 
     private final CurrentUserProvider currentUserProvider;
-    private final SysSystemRepository systemRepository;
-    private final SysUserRoleRepository userRoleRepository;
+    private final SysSystemMapper systemRepository;
+    private final SysUserRoleMapper userRoleRepository;
 
     public ManagementContextService(CurrentUserProvider currentUserProvider,
-                                    SysSystemRepository systemRepository,
-                                    SysUserRoleRepository userRoleRepository) {
+                                    SysSystemMapper systemRepository,
+                                    SysUserRoleMapper userRoleRepository) {
         this.currentUserProvider = currentUserProvider;
         this.systemRepository = systemRepository;
         this.userRoleRepository = userRoleRepository;

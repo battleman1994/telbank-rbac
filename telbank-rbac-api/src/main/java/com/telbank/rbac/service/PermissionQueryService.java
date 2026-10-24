@@ -14,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
+import com.telbank.rbac.domain.mapper.row.PermissionValidityRow;
 import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
 
 /**
@@ -30,10 +31,10 @@ import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
 @Service
 public class PermissionQueryService {
 
-    private final SysUserRoleRepository userRoleRepository;
+    private final SysUserRoleMapper userRoleRepository;
     private final PlatformAdminService platformAdminService;
 
-    public PermissionQueryService(SysUserRoleRepository userRoleRepository,
+    public PermissionQueryService(SysUserRoleMapper userRoleRepository,
                                   PlatformAdminService platformAdminService) {
         this.userRoleRepository = userRoleRepository;
         this.platformAdminService = platformAdminService;
@@ -65,15 +66,16 @@ public class PermissionQueryService {
         if (systemId == null || externalUserId == null || externalUserId.isBlank()) {
             return List.of();
         }
-        List<Object[]> rows = userRoleRepository.findEffectivePermissionValidity(systemId, externalUserId);
+        List<PermissionValidityRow> rows =
+                userRoleRepository.findEffectivePermissionValidity(systemId, externalUserId);
         List<PermissionItem> items = new ArrayList<>(rows.size());
-        for (Object[] row : rows) {
-            String code = row.length > 0 ? asString(row[0]) : null;
+        for (PermissionValidityRow row : rows) {
+            String code = row.getCode();
             if (code == null || code.isBlank()) {
                 continue;
             }
-            LocalDateTime validFrom = row.length > 1 ? asDateTime(row[1]) : null;
-            LocalDateTime validUntil = row.length > 2 ? asDateTime(row[2]) : null;
+            LocalDateTime validFrom = asDateTime(row.getValidFrom());
+            LocalDateTime validUntil = asDateTime(row.getValidUntil());
             items.add(new PermissionItem(code, TimeUtils.toInstant(validFrom), TimeUtils.toInstant(validUntil)));
         }
         return items;

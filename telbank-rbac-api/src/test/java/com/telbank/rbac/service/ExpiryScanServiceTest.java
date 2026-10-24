@@ -6,8 +6,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.telbank.rbac.common.RbacConstants;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,14 +21,14 @@ class ExpiryScanServiceTest {
     void revokesExpiredGrantsAndPublishesOncePerAffectedSystem() {
         List<String> published = new ArrayList<>();
 
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "findExpiredSystemIds" -> List.of(1L, 2L);
                     case "revokeExpired" -> 3;
                     default -> TestProxies.defaultValue(method.getReturnType());
                 });
-        SysRolePermissionRepository rolePermissionRepository = TestProxies.proxy(
-                SysRolePermissionRepository.class, (proxy, method, args) -> switch (method.getName()) {
+        SysRolePermissionMapper rolePermissionRepository = TestProxies.proxy(
+                SysRolePermissionMapper.class, (proxy, method, args) -> switch (method.getName()) {
                     case "findExpiredSystemIds" -> List.of(2L, 3L);
                     case "revokeExpired" -> 1;
                     default -> TestProxies.defaultValue(method.getReturnType());
@@ -52,14 +52,14 @@ class ExpiryScanServiceTest {
     void doesNotPublishWhenNothingWasRevoked() {
         List<String> published = new ArrayList<>();
 
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "findExpiredSystemIds" -> List.of();
                     case "revokeExpired" -> 0;
                     default -> TestProxies.defaultValue(method.getReturnType());
                 });
-        SysRolePermissionRepository rolePermissionRepository = TestProxies.proxy(
-                SysRolePermissionRepository.class, (proxy, method, args) -> switch (method.getName()) {
+        SysRolePermissionMapper rolePermissionRepository = TestProxies.proxy(
+                SysRolePermissionMapper.class, (proxy, method, args) -> switch (method.getName()) {
                     case "findExpiredSystemIds" -> List.of();
                     case "revokeExpired" -> 0;
                     default -> TestProxies.defaultValue(method.getReturnType());

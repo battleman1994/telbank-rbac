@@ -16,7 +16,7 @@
 | 工程 | 目录 | 说明 | 技术栈 |
 |---|---|---|---|
 | 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
-| **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway）、Caffeine + Redis |
+| **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway）、MyBatis-Plus 3.5.17（Boot4 starter）、Caffeine + Redis |
 | **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（带时效 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
 | **JDK 21 业务系统 SDK** | `telbank-rbac2-starter/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
@@ -379,6 +379,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 10. **A10 · 移除 Flyway**：按用户要求去掉 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `telbank-rbac-api/src/main/resources/db/manual/*.sql` 手动初始化（`scripts/init-db.sh` 建库并按序导入，`--temp-db` 自动执行），后端启动前库表须已存在。
 11. **A11 · 系统隔离重构（v2.0）**：删除用户-系统开通（表/接口/页面），系统访问由有效角色推导；平台超管改为数据驱动（platform 系统 + super-admin + platform:admin，删除 `rbac.platform-admin-ids` 配置）；管理上下文改为 `X-System-Code=当前业务系统`，非超管跨系统 403；管理权限改为系统内短码（role:manage 等）；系统接入仅超管且必须录入系统管理员，自动创建默认 admin 角色并授权；菜单统一收在「权限管理」组，新增「系统接入」。
 12. **A12 · A 方案通配权限 + 严格上下文**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再写 6 条短码；所有权限/角色/资源查询严格限定当前 `X-System-Code` 系统，列表缺省 `systemId` 收敛上下文、by-id 校验实体 systemId，**超管也不能单请求跨系统**。
+13. **A13 · 持久层替换为 MyBatis-Plus**：移除 JPA/Hibernate 与 Spring Data Repository；改为 MyBatis-Plus 3.5.17（Boot4 starter + jsqlparser）实体注解/BaseMapper/注解 SQL/MP 分页；REST 契约与数据库表结构不变。
 
 其他实现说明（非偏差，需求本身已明确）：
 
@@ -392,7 +393,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 ## 10. 常见问题
 
-- **启动报 `Access denied ... (using password: NO)` 或 `Unable to determine Dialect without JDBC metadata`**：Hibernate 方言报错通常是「连不上库」的表象。确认 MySQL 已启动、`telbank_rbac` 已创建，并且把密码传给后端：`MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all-macos.sh --init-db`（Linux 用 `start-all-linux.sh`；脚本会自动映射 `MYSQL_*` → `RBAC_DB_*`）；也可显式设置 `RBAC_DB_URL/RBAC_DB_USER/RBAC_DB_PASSWORD`。
+- **启动报 `Access denied ... (using password: NO)` 或数据库连接/方言类错误**：通常是「连不上库」的表象。确认 MySQL 已启动、`telbank_rbac` 已创建，并且把密码传给后端：`MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all-macos.sh --init-db`（Linux 用 `start-all-linux.sh`；脚本会自动映射 `MYSQL_*` → `RBAC_DB_*`）；也可显式设置 `RBAC_DB_URL/RBAC_DB_USER/RBAC_DB_PASSWORD`。
 - **JDK 版本不对**：权限中心需要 **JDK 21+**（`java -version` 校验；平台启动脚本会自动寻找 JDK 21+/SDKMAN/Homebrew 路径）；SDK 用 **JDK 17+ 构建**（产物 Java 8 字节码），业务系统运行时 **JDK 8+** 即可。
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。
@@ -404,19 +405,20 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 ## 11. 本次交付验证记录（摘要）
 
-- 权限中心后端：`clean test` **104/104 PASS**（JDK 21.0.13，A 方案通配 + 严格隔离后）。
+- 权限中心后端：`clean test` **112/112 PASS**（JDK 21.0.13，MyBatis-Plus 持久层 + A 方案通配/严格隔离后）。
+- **持久层（A13）**：JPA/Hibernate 全部移除，改用 MyBatis-Plus 3.5.17（Boot4 starter + `mybatis-plus-jsqlparser`）；实体 `@TableName/@TableId`、7 个 `BaseMapper`、复杂时效 SQL 注解化、MP 分页；真库 v4 验收 **88/88 PASS**（含两版 SDK e2e 8/8）。
 - **系统隔离重构（A11）**：当前业务表 7 张（含平台系统共 3 个系统：crm/erp/platform）；全量 API 验收 **81/81 PASS**（含 JDK8/JDK21 两个 SDK e2e 各 4/4）；覆盖系统由有效角色推导、数据驱动超管、bootstrap `currentSystemCode`、跨系统 403/超管跨系统、系统接入自动创建管理员角色、用户-系统开通接口 404。
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
-- SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **113/113 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
+- SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **113/113 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 113/113。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **114/114 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
-- **一键验证**：`./scripts/verify-all.sh` → **13 项检查全过**（api 104、SDK v1 113、SDK v2 114、前端构建、05 通配/隔离产物、3 平台启动脚本）。
+- **一键验证**：`./scripts/verify-all.sh` → **14 项检查全过**（api 104、SDK v1 113、SDK v2 114、前端构建、05 通配/隔离产物、3 平台启动脚本）。
 - **GitHub Actions（6 job 全绿）**：权限中心（JDK21 88 单测）/ SDK v1（JDK17 97 单测）/ SDK v2（JDK21 98 单测）/ 前端（Node22）/ Windows 启动脚本语法 / JDK 8 运行时冒烟全部 success（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)）。
 - **v1 自接入（已被 A11 取代）**：旧的 `rbac` 系统自接入已移除；现由平台系统 `platform` + `superadmin` 数据驱动超管。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
 - 第 9 节全量验收（v2.0 当前）：**81/81 PASS**（含 JDK8/JDK21 两个 SDK 端到端各 4/4）；历史记录：v1/移除 Flyway 时 65/65、59/59。
 - **权限时效演示（本机验证，A12 后）**：`demo-temp-permission.sh` 给 `demo-1min` 在 CRM 临时授予通配 `*`（1 分钟），有效期内可访问管理接口，过期后 `permissions=[]`、接口 403。
 - 管理前端：`tsc -b && vite build` 通过（3257 modules），dist 1.4 MB（JS 1,410.82 kB / gzip 444.74 kB）；与真实后端的浏览器人工联调待补（当前为 build + mock 冒烟，见验收文档）。
-- 一键验证：`./scripts/verify-all.sh` → **13 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
+- 一键验证：`./scripts/verify-all.sh` → **14 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 
 ---
 

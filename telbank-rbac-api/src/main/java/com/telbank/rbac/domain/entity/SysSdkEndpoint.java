@@ -2,39 +2,39 @@ package com.telbank.rbac.domain.entity;
 
 import java.time.LocalDateTime;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
 
 /**
  * SDK 端点上报（V1 {@code sys_sdk_endpoint}，契约 §9.2 新增的第 8 张表）。
  *
  * <p>按 {@code (system_id, method, path)} 幂等 upsert；管理员可关联权限码。</p>
  */
-@Entity
-@Table(name = "sys_sdk_endpoint")
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+
+@TableName("sys_sdk_endpoint")
 public class SysSdkEndpoint extends BaseEntity {
 
-    @Column(name = "system_id", nullable = false)
+    @TableField("system_id")
     private Long systemId;
 
-    @Column(name = "method", nullable = false, length = 10)
+    @TableField("method")
     private String method;
 
-    @Column(name = "path", nullable = false, length = 255)
+    @TableField("path")
     private String path;
 
-    @Column(name = "candidate_code", length = 128)
+    @TableField(value = "candidate_code", updateStrategy = FieldStrategy.ALWAYS)
     private String candidateCode;
 
     /** GENERATED / ANNOTATION。 */
-    @Column(name = "source", nullable = false, length = 32)
+    @TableField("source")
     private String source = "GENERATED";
 
-    @Column(name = "permission_id")
+    @TableField(value = "permission_id", updateStrategy = FieldStrategy.ALWAYS)
     private Long permissionId;
 
-    @Column(name = "reported_at")
+    @TableField(value = "reported_at", updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime reportedAt;
 
     public Long getSystemId() {

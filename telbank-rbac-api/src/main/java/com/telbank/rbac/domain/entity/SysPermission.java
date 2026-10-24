@@ -1,11 +1,10 @@
 package com.telbank.rbac.domain.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
  * 权限码统一资源（V1 {@code sys_permission}，{@code (system_id, code)} 唯一）。
@@ -13,44 +12,43 @@ import jakarta.persistence.Table;
  * <p>{@code method}/{@code api_pattern} 同时非空才进入 SDK 映射表做后端接口拦截，
  * 否则该权限码只做前端展示控制（需求 §4.2）。</p>
  */
-@Entity
-@Table(name = "sys_permission")
+
+@TableName("sys_permission")
 public class SysPermission extends BaseEntity {
 
-    @Column(name = "system_id", nullable = false)
+    @TableField("system_id")
     private Long systemId;
 
-    @Column(name = "parent_id", nullable = false)
+    @TableField("parent_id")
     private Long parentId = 0L;
 
     /** 1 目录/页面级，2 操作级，3 纯接口。 */
-    @Column(name = "type", nullable = false)
+    @TableField("type")
     private Integer type;
 
-    @Column(name = "code", nullable = false, length = 128)
+    @TableField("code")
     private String code;
 
-    @Column(name = "name", nullable = false, length = 100)
+    @TableField("name")
     private String name;
 
-    @Column(name = "method", length = 10)
+    @TableField(value = "method", updateStrategy = FieldStrategy.ALWAYS)
     private String method;
 
-    @Column(name = "api_pattern", length = 255)
+    @TableField(value = "api_pattern", updateStrategy = FieldStrategy.ALWAYS)
     private String apiPattern;
 
-    @Column(name = "sort", nullable = false)
+    @TableField("sort")
     private Integer sort = 0;
 
-    @Column(name = "status", nullable = false)
+    @TableField("status")
     private Integer status = 1;
 
-    @Column(name = "is_public", nullable = false)
+    @TableField("is_public")
     private Integer isPublic = 0;
 
     /** 扩展元数据，MySQL JSON 列，Java 侧按 JSON 字符串读写。 */
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "meta")
+    @TableField(value = "meta", updateStrategy = FieldStrategy.ALWAYS)
     private String meta;
 
     public Long getSystemId() {

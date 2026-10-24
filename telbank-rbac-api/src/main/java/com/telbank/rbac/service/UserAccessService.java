@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.web.dto.MeDtos.AccessedSystemVO;
 import com.telbank.rbac.web.dto.OpenApiDtos.UserSystemItem;
 
@@ -30,12 +30,12 @@ public class UserAccessService {
             Comparator.comparingInt((SysSystem system) -> system.getSort() == null ? 0 : system.getSort())
                     .thenComparing(SysSystem::getId);
 
-    private final SysSystemRepository systemRepository;
-    private final SysUserRoleRepository userRoleRepository;
+    private final SysSystemMapper systemRepository;
+    private final SysUserRoleMapper userRoleRepository;
     private final PlatformAdminService platformAdminService;
 
-    public UserAccessService(SysSystemRepository systemRepository,
-                             SysUserRoleRepository userRoleRepository,
+    public UserAccessService(SysSystemMapper systemRepository,
+                             SysUserRoleMapper userRoleRepository,
                              PlatformAdminService platformAdminService) {
         this.systemRepository = systemRepository;
         this.userRoleRepository = userRoleRepository;

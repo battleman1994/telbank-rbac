@@ -12,9 +12,9 @@ import com.telbank.rbac.config.RbacProperties;
 import com.telbank.rbac.domain.entity.SysPageAction;
 import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysPageActionRepository;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysPageActionMapper;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.web.dto.OpenApiDtos.ConnectionResponse;
 import com.telbank.rbac.web.dto.OpenApiDtos.MappingItem;
@@ -28,15 +28,15 @@ import com.telbank.rbac.web.dto.OpenApiDtos.PageActionsResponse;
 @Service
 public class OpenApiQueryService {
 
-    private final SysSystemRepository systemRepository;
-    private final SysPermissionRepository permissionRepository;
-    private final SysPageActionRepository pageActionRepository;
+    private final SysSystemMapper systemRepository;
+    private final SysPermissionMapper permissionRepository;
+    private final SysPageActionMapper pageActionRepository;
     private final LocalCacheManager localCacheManager;
     private final RbacProperties properties;
 
-    public OpenApiQueryService(SysSystemRepository systemRepository,
-                               SysPermissionRepository permissionRepository,
-                               SysPageActionRepository pageActionRepository,
+    public OpenApiQueryService(SysSystemMapper systemRepository,
+                               SysPermissionMapper permissionRepository,
+                               SysPageActionMapper pageActionRepository,
                                LocalCacheManager localCacheManager,
                                RbacProperties properties) {
         this.systemRepository = systemRepository;

@@ -10,9 +10,9 @@ import com.telbank.rbac.config.RbacProperties;
 import com.telbank.rbac.domain.entity.SysPageAction;
 import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysPageActionRepository;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysPageActionMapper;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.OpenApiDtos.ConnectionResponse;
@@ -50,21 +50,21 @@ class OpenApiQueryServiceTest {
                 pageAction(3L, "purchase:list", "purchase:create", "新建采购单", "openDialog", "{}", 10, 1),
                 pageAction(4L, "order:list", "order:disabled", "已停用", "download", "{}", 60, 0));
 
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findByCode".equals(method.getName())) {
                         return "crm".equals(args[0]) ? java.util.Optional.of(crm) : java.util.Optional.empty();
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysPermissionRepository permissionRepository = TestProxies.proxy(SysPermissionRepository.class,
+        SysPermissionMapper permissionRepository = TestProxies.proxy(SysPermissionMapper.class,
                 (proxy, method, args) -> {
                     if ("findAllBySystemIdOrderBySortAscIdAsc".equals(method.getName())) {
                         return permissions;
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysPageActionRepository pageActionRepository = TestProxies.proxy(SysPageActionRepository.class,
+        SysPageActionMapper pageActionRepository = TestProxies.proxy(SysPageActionMapper.class,
                 (proxy, method, args) -> {
                     if ("findBySystemIdAndStatusOrderBySortAscIdAsc".equals(method.getName())) {
                         return actions;

@@ -11,8 +11,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.row.PermissionValidityRow;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.service.PermissionQueryService;
 import com.telbank.rbac.service.PlatformAdminService;
 import com.telbank.rbac.testutil.SecurityTestSupport;
@@ -44,7 +45,7 @@ class PermissionContractTest {
         SysSystem platform = system(4L, "platform", 1, 1);
         Map<String, SysSystem> systems = Map.of("crm", crm, "erp", erp, "platform", platform);
 
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findByCode".equals(method.getName())) {
                         return Optional.ofNullable(systems.get((String) args[0]));
@@ -54,7 +55,7 @@ class PermissionContractTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     switch (method.getName()) {
                         case "countEffectiveRoles": {
@@ -71,8 +72,8 @@ class PermissionContractTest {
                             Long systemId = (Long) args[0];
                             if (systemId == 1L) {
                                 return List.of(
-                                        new Object[]{"role:manage", null, null},
-                                        new Object[]{"page:manage", "2026-10-24T00:00:00", null});
+                                        row("role:manage", null, null),
+                                        row("page:manage", "2026-10-24T00:00:00", null));
                             }
                             return List.of();
                         }
@@ -156,6 +157,14 @@ class PermissionContractTest {
         PreAuthorize preAuthorize = controllerType.getAnnotation(PreAuthorize.class);
         assertThat(preAuthorize).as(controllerType.getSimpleName() + " @PreAuthorize").isNotNull();
         assertThat(preAuthorize.value()).isEqualTo(expectedExpression);
+    }
+
+    private static PermissionValidityRow row(String code, String validFrom, String validUntil) {
+        PermissionValidityRow row = new PermissionValidityRow();
+        row.setCode(code);
+        row.setValidFrom(validFrom);
+        row.setValidUntil(validUntil);
+        return row;
     }
 
     private static SysSystem system(Long id, String code, int status, int isPlatform) {

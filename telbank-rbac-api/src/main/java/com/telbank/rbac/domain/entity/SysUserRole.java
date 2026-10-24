@@ -2,42 +2,42 @@ package com.telbank.rbac.domain.entity;
 
 import java.time.LocalDateTime;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
 
 /**
  * 外部用户-角色关联（V1 {@code sys_user_role}，{@code (system_id, external_user_id, role_id)} 唯一）。
  */
-@Entity
-@Table(name = "sys_user_role")
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+
+@TableName("sys_user_role")
 public class SysUserRole extends BaseEntity {
 
-    @Column(name = "system_id", nullable = false)
+    @TableField("system_id")
     private Long systemId;
 
-    @Column(name = "external_user_id", nullable = false, length = 255)
+    @TableField("external_user_id")
     private String externalUserId;
 
-    @Column(name = "role_id", nullable = false)
+    @TableField("role_id")
     private Long roleId;
 
-    @Column(name = "valid_from")
+    @TableField(value = "valid_from", updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime validFrom;
 
-    @Column(name = "valid_until")
+    @TableField(value = "valid_until", updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime validUntil;
 
-    @Column(name = "auto_revoke", nullable = false)
+    @TableField("auto_revoke")
     private Integer autoRevoke = 1;
 
-    @Column(name = "grant_reason", length = 255)
+    @TableField(value = "grant_reason", updateStrategy = FieldStrategy.ALWAYS)
     private String grantReason;
 
-    @Column(name = "source_approval_id", length = 128)
+    @TableField(value = "source_approval_id", updateStrategy = FieldStrategy.ALWAYS)
     private String sourceApprovalId;
 
-    @Column(name = "status", nullable = false)
+    @TableField("status")
     private Integer status = 1;
 
     public Long getSystemId() {

@@ -16,8 +16,8 @@ import com.telbank.rbac.common.ApiException;
 import com.telbank.rbac.common.JsonPayloads;
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysPermission;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.PermissionDtos.PermissionCreateRequest;
@@ -32,15 +32,15 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class PermissionService {
 
-    private final SysPermissionRepository permissionRepository;
-    private final SysSystemRepository systemRepository;
+    private final SysPermissionMapper permissionRepository;
+    private final SysSystemMapper systemRepository;
     private final LocalCacheManager localCacheManager;
     private final ChangeNotifyService changeNotifyService;
     private final JsonMapper jsonMapper;
     private final SystemScopeGuard systemScopeGuard;
 
-    public PermissionService(SysPermissionRepository permissionRepository,
-                             SysSystemRepository systemRepository,
+    public PermissionService(SysPermissionMapper permissionRepository,
+                             SysSystemMapper systemRepository,
                              LocalCacheManager localCacheManager,
                              ChangeNotifyService changeNotifyService,
                              JsonMapper jsonMapper,

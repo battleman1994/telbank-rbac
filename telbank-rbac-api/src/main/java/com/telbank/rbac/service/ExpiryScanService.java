@@ -12,8 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.telbank.rbac.common.RbacConstants;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 
 /**
  * 过期授权自动收回定时任务（需求 §5.5 / 契约 §6）。
@@ -30,12 +30,12 @@ public class ExpiryScanService {
 
     private static final Logger log = LoggerFactory.getLogger(ExpiryScanService.class);
 
-    private final SysUserRoleRepository userRoleRepository;
-    private final SysRolePermissionRepository rolePermissionRepository;
+    private final SysUserRoleMapper userRoleRepository;
+    private final SysRolePermissionMapper rolePermissionRepository;
     private final ChangeNotifyService changeNotifyService;
 
-    public ExpiryScanService(SysUserRoleRepository userRoleRepository,
-                             SysRolePermissionRepository rolePermissionRepository,
+    public ExpiryScanService(SysUserRoleMapper userRoleRepository,
+                             SysRolePermissionMapper rolePermissionRepository,
                              ChangeNotifyService changeNotifyService) {
         this.userRoleRepository = userRoleRepository;
         this.rolePermissionRepository = rolePermissionRepository;

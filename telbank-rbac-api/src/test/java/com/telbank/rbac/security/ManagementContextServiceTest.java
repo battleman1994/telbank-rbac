@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import com.telbank.rbac.common.ApiException;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.service.PlatformAdminService;
 import com.telbank.rbac.testutil.SecurityTestSupport;
 import com.telbank.rbac.testutil.TestProxies;
@@ -36,7 +36,7 @@ class ManagementContextServiceTest {
         Map<String, SysSystem> systems = Map.of(
                 "crm", crm, "erp", erp, "legacy", disabled, "platform", platform);
 
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findByCode".equals(method.getName())) {
                         return Optional.ofNullable(systems.get((String) args[0]));
@@ -46,7 +46,7 @@ class ManagementContextServiceTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("countEffectiveRoles".equals(method.getName())) {
                         Long systemId = (Long) args[0];

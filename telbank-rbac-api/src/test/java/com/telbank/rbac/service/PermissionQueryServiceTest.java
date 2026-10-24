@@ -8,24 +8,25 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
+import com.telbank.rbac.domain.mapper.row.PermissionValidityRow;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.OpenApiDtos.PermissionItem;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 权限查询时效聚合（需求 §5.3 / 契约 §4.2）：原生 SQL 返回 code + validFrom/validUntil，
- * 服务层转换为 UTC Instant；平台超管由 DB（platform:admin）判定并返回 {@code *}。
+ * 权限查询时效聚合（需求 §5.3 / 契约 §4.2）：Mapper 原生 SQL 返回 code + validFrom/validUntil，
+ * 服务层转换为 UTC Instant；平台超管由 DB（平台系统 {@code *}）判定并返回 {@code *}。
  */
 class PermissionQueryServiceTest {
 
     private static final Long CRM_ID = 1L;
     private static final Long PLATFORM_ID = 4L;
 
-    private PermissionQueryService service(List<Object[]> rows, boolean superAdmin) {
-        SysUserRoleRepository repository = TestProxies.proxy(SysUserRoleRepository.class,
+    private PermissionQueryService service(List<PermissionValidityRow> rows, boolean superAdmin) {
+        SysUserRoleMapper repository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("findEffectivePermissionValidity".equals(method.getName())) {
                         return rows;
@@ -35,7 +36,7 @@ class PermissionQueryServiceTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findFirstByIsPlatformOrderByIdAsc".equals(method.getName())) {
                         SysSystem platform = new SysSystem();
@@ -54,10 +55,10 @@ class PermissionQueryServiceTest {
 
     @Test
     void mapsValidityEnvelopeWithUtcInstants() {
-        PermissionQueryService service = service(List.<Object[]>of(
-                new Object[]{"order:delete", "2026-10-24T00:00:00", "2026-10-31T23:59:59"},
-                new Object[]{"order:list", null, null},
-                new Object[]{"common:profile", "2026-10-24T00:00:00", null}), false);
+        PermissionQueryService service = service(List.of(
+                row("order:delete", "2026-10-24T00:00:00", "2026-10-31T23:59:59"),
+                row("order:list", null, null),
+                row("common:profile", "2026-10-24T00:00:00", null)), false);
 
         List<PermissionItem> items = service.effectivePermissions(CRM_ID, "13800138000");
 
@@ -79,9 +80,9 @@ class PermissionQueryServiceTest {
 
     @Test
     void effectiveCodesReturnsSetOfValidPermissionCodes() {
-        PermissionQueryService service = service(List.<Object[]>of(
-                new Object[]{"role:manage", null, null},
-                new Object[]{"page:manage", "2026-10-24T00:00:00", null}), false);
+        PermissionQueryService service = service(List.of(
+                row("role:manage", null, null),
+                row("page:manage", "2026-10-24T00:00:00", null)), false);
 
         Set<String> codes = service.effectiveCodes(CRM_ID, "crm-admin-001");
 
@@ -105,8 +106,7 @@ class PermissionQueryServiceTest {
 
     @Test
     void normalUserReceivesEffectivePermissions() {
-        PermissionQueryService service = service(List.<Object[]>of(
-                new Object[]{"role:manage", null, null}), false);
+        PermissionQueryService service = service(List.of(row("role:manage", null, null)), false);
         SysSystem crm = new SysSystem();
         crm.setId(CRM_ID);
         crm.setCode("crm");
@@ -126,12 +126,20 @@ class PermissionQueryServiceTest {
 
     @Test
     void skipsRowsWithBlankCode() {
-        PermissionQueryService service = service(List.<Object[]>of(
-                new Object[]{"", "2026-10-24T00:00:00", null},
-                new Object[]{null, null, null},
-                new Object[]{"order:list", null, null}), false);
+        PermissionQueryService service = service(List.of(
+                row("", "2026-10-24T00:00:00", null),
+                row(null, null, null),
+                row("order:list", null, null)), false);
         assertThat(service.effectivePermissions(1L, "u1"))
                 .extracting(PermissionItem::code)
                 .containsExactly("order:list");
+    }
+
+    private static PermissionValidityRow row(String code, String validFrom, String validUntil) {
+        PermissionValidityRow row = new PermissionValidityRow();
+        row.setCode(code);
+        row.setValidFrom(validFrom);
+        row.setValidUntil(validUntil);
+        return row;
     }
 }

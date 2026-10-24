@@ -6,11 +6,11 @@ import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.data.jpa.repository.Query;
+import org.apache.ibatis.annotations.Select;
 
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.MeDtos.AccessedSystemVO;
 
@@ -83,10 +83,10 @@ class UserAccessServiceTest {
 
     @Test
     void accessibleSystemQueryAppliesRoleValidityFilters() throws NoSuchMethodException {
-        Method method = SysUserRoleRepository.class.getMethod("findAccessibleSystemIds", String.class);
-        Query query = method.getAnnotation(Query.class);
-        assertThat(query).isNotNull();
-        assertThat(query.value())
+        Method method = SysUserRoleMapper.class.getMethod("findAccessibleSystemIds", String.class);
+        Select select = method.getAnnotation(Select.class);
+        assertThat(select).isNotNull();
+        assertThat(String.join(" ", select.value()))
                 .contains("DISTINCT ur.system_id")
                 .contains("ur.status = 1")
                 .contains("r.status = 1")
@@ -96,15 +96,15 @@ class UserAccessServiceTest {
 
     @Test
     void enabledBusinessSystemsQueryExcludesPlatformSystems() throws NoSuchMethodException {
-        Method method = SysSystemRepository.class.getMethod("findEnabledBusinessSystems", Integer.class);
-        Query query = method.getAnnotation(Query.class);
-        assertThat(query).isNotNull();
-        assertThat(query.value())
-                .contains("s.isPlatform", "s.status = :status");
+        Method method = SysSystemMapper.class.getMethod("findEnabledBusinessSystems", Integer.class);
+        Select select = method.getAnnotation(Select.class);
+        assertThat(select).isNotNull();
+        assertThat(String.join(" ", select.value()))
+                .contains("is_platform", "status = #{status}");
     }
 
     private UserAccessService service(List<SysSystem> systems, List<Long> accessibleIds, boolean platformAdmin) {
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findAllById".equals(method.getName())) {
                         List<Long> ids = new ArrayList<>();
@@ -124,7 +124,7 @@ class UserAccessServiceTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("findAccessibleSystemIds".equals(method.getName())) {
                         return accessibleIds;

@@ -7,8 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 
 /**
  * 平台超管判定（数据驱动，不读取配置文件）。
@@ -19,11 +19,11 @@ import com.telbank.rbac.domain.repository.SysUserRoleRepository;
 @Service
 public class PlatformAdminService {
 
-    private final SysSystemRepository systemRepository;
-    private final SysUserRoleRepository userRoleRepository;
+    private final SysSystemMapper systemRepository;
+    private final SysUserRoleMapper userRoleRepository;
 
-    public PlatformAdminService(SysSystemRepository systemRepository,
-                                SysUserRoleRepository userRoleRepository) {
+    public PlatformAdminService(SysSystemMapper systemRepository,
+                                SysUserRoleMapper userRoleRepository) {
         this.systemRepository = systemRepository;
         this.userRoleRepository = userRoleRepository;
     }

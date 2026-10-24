@@ -9,7 +9,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,9 +22,9 @@ import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysSdkEndpoint;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysSdkEndpointRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysSdkEndpointMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.OpenApiDtos.EndpointReport;
@@ -43,16 +43,16 @@ public class SdkEndpointService {
     private static final String SOURCE_GENERATED = "GENERATED";
     private static final String SOURCE_ANNOTATION = "ANNOTATION";
 
-    private final SysSdkEndpointRepository endpointRepository;
-    private final SysPermissionRepository permissionRepository;
-    private final SysSystemRepository systemRepository;
+    private final SysSdkEndpointMapper endpointRepository;
+    private final SysPermissionMapper permissionRepository;
+    private final SysSystemMapper systemRepository;
     private final LocalCacheManager localCacheManager;
     private final ChangeNotifyService changeNotifyService;
     private final SystemScopeGuard systemScopeGuard;
 
-    public SdkEndpointService(SysSdkEndpointRepository endpointRepository,
-                              SysPermissionRepository permissionRepository,
-                              SysSystemRepository systemRepository,
+    public SdkEndpointService(SysSdkEndpointMapper endpointRepository,
+                              SysPermissionMapper permissionRepository,
+                              SysSystemMapper systemRepository,
                               LocalCacheManager localCacheManager,
                               ChangeNotifyService changeNotifyService,
                               SystemScopeGuard systemScopeGuard) {
@@ -68,14 +68,14 @@ public class SdkEndpointService {
     public PageResult<SdkEndpointVO> page(Long systemId, String keyword, PageQuery pageQuery) {
         systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
-        Page<SysSdkEndpoint> page = endpointRepository.search(systemId, normalizedKeyword,
-                pageQuery.toPageable());
-        Map<Long, String> permissionCodes = loadPermissionCodes(page.getContent());
-        List<SdkEndpointVO> items = page.getContent().stream()
+        Page<SysSdkEndpoint> mpPage = pageQuery.toMpPage();
+        List<SysSdkEndpoint> records = endpointRepository.search(mpPage, systemId, normalizedKeyword);
+        Map<Long, String> permissionCodes = loadPermissionCodes(records);
+        List<SdkEndpointVO> items = records.stream()
                 .map(endpoint -> toVO(endpoint,
                         endpoint.getPermissionId() == null ? null : permissionCodes.get(endpoint.getPermissionId())))
                 .toList();
-        return PageResult.of(items, page.getTotalElements(), pageQuery);
+        return PageResult.of(items, mpPage.getTotal(), pageQuery);
     }
 
     /**

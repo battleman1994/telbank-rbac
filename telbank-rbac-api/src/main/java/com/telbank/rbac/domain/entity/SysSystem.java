@@ -1,45 +1,47 @@
 package com.telbank.rbac.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+
+
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
  * 业务系统（V1 {@code sys_system}）。
  */
-@Entity
-@Table(name = "sys_system")
+
+@TableName("sys_system")
 public class SysSystem extends BaseEntity {
 
-    @Column(name = "code", nullable = false, length = 64)
+    @TableField("code")
     private String code;
 
-    @Column(name = "name", nullable = false, length = 100)
+    @TableField("name")
     private String name;
 
     /** 所属区域，决定 Redis 通知频道。 */
-    @Column(name = "region", nullable = false, length = 32)
+    @TableField("region")
     private String region;
 
-    @Column(name = "status", nullable = false)
+    @TableField("status")
     private Integer status = 1;
 
-    @Column(name = "sort", nullable = false)
+    @TableField("sort")
     private Integer sort = 0;
 
-    @Column(name = "remark", length = 255)
+    @TableField(value = "remark", updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
     /** 1=权限中心平台系统（不参与业务系统选择），0/null=业务系统。 */
-    @Column(name = "is_platform", nullable = false)
+    @TableField("is_platform")
     private Integer isPlatform = 0;
 
     /** 系统管理员外部账号（系统接入时登记）。 */
-    @Column(name = "admin_external_user_id", length = 255)
+    @TableField(value = "admin_external_user_id", updateStrategy = FieldStrategy.ALWAYS)
     private String adminExternalUserId;
 
     /** 系统管理员姓名。 */
-    @Column(name = "admin_name", length = 100)
+    @TableField(value = "admin_name", updateStrategy = FieldStrategy.ALWAYS)
     private String adminName;
 
     public String getCode() {

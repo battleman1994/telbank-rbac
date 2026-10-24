@@ -1,47 +1,45 @@
 package com.telbank.rbac.domain.entity;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
  * 页面操作元数据（V1 {@code sys_page_action}，模式 B，{@code (system_id, page_code, code)} 唯一）。
  */
-@Entity
-@Table(name = "sys_page_action")
+
+@TableName("sys_page_action")
 public class SysPageAction extends BaseEntity {
 
-    @Column(name = "system_id", nullable = false)
+    @TableField("system_id")
     private Long systemId;
 
-    @Column(name = "page_code", nullable = false, length = 128)
+    @TableField("page_code")
     private String pageCode;
 
-    @Column(name = "code", nullable = false, length = 128)
+    @TableField("code")
     private String code;
 
-    @Column(name = "text", nullable = false, length = 64)
+    @TableField("text")
     private String text;
 
-    @Column(name = "type", nullable = false, length = 32)
+    @TableField("type")
     private String type = "default";
 
     /** openDialog / callApi / download / navigate / confirmThenCallApi。 */
-    @Column(name = "action", nullable = false, length = 32)
+    @TableField("action")
     private String action;
 
     /** MySQL JSON 列，按 JSON 字符串读写。 */
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "config")
+    @TableField(value = "config", updateStrategy = FieldStrategy.ALWAYS)
     private String config;
 
-    @Column(name = "sort", nullable = false)
+    @TableField("sort")
     private Integer sort = 0;
 
-    @Column(name = "status", nullable = false)
+    @TableField("status")
     private Integer status = 1;
 
     public Long getSystemId() {

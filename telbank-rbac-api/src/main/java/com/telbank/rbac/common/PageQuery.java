@@ -1,8 +1,6 @@
 package com.telbank.rbac.common;
 
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 /**
  * 管理端分页参数归一化（契约 §1.3：请求 {@code ?page=1&size=20}，缺省 page=1、size=20）。
@@ -26,11 +24,10 @@ public record PageQuery(int page, int size) {
         return (page - 1) * size;
     }
 
-    public Pageable toPageable(Sort sort) {
-        return PageRequest.of(page - 1, size, sort);
-    }
-
-    public Pageable toPageable() {
-        return PageRequest.of(page - 1, size);
+    /**
+     * 适配 MyBatis-Plus 分页对象（页码从 1 开始，与前端契约一致）。
+     */
+    public <T> Page<T> toMpPage() {
+        return new Page<>(page, size);
     }
 }

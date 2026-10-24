@@ -13,9 +13,9 @@ import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.GrantDtos.UserRoleCreateRequest;
 import com.telbank.rbac.web.dto.GrantDtos.UserRoleVO;
@@ -29,15 +29,15 @@ import com.telbank.rbac.web.dto.GrantDtos.UserRoleVO;
 @Service
 public class UserRoleService {
 
-    private final SysUserRoleRepository userRoleRepository;
-    private final SysRoleRepository roleRepository;
-    private final SysSystemRepository systemRepository;
+    private final SysUserRoleMapper userRoleRepository;
+    private final SysRoleMapper roleRepository;
+    private final SysSystemMapper systemRepository;
     private final ChangeNotifyService changeNotifyService;
     private final SystemScopeGuard systemScopeGuard;
 
-    public UserRoleService(SysUserRoleRepository userRoleRepository,
-                           SysRoleRepository roleRepository,
-                           SysSystemRepository systemRepository,
+    public UserRoleService(SysUserRoleMapper userRoleRepository,
+                           SysRoleMapper roleRepository,
+                           SysSystemMapper systemRepository,
                            ChangeNotifyService changeNotifyService,
                            SystemScopeGuard systemScopeGuard) {
         this.userRoleRepository = userRoleRepository;

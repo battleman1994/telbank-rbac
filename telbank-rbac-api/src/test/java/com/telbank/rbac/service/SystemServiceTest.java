@@ -15,11 +15,11 @@ import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.SystemDtos.SystemCreateRequest;
 import com.telbank.rbac.web.dto.SystemDtos.SystemUpdateRequest;
@@ -48,7 +48,7 @@ class SystemServiceTest {
 
     @BeforeEach
     void setUp() {
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "existsByCode" -> systems.stream()
                             .anyMatch(system -> system.getCode().equals(args[0]));
@@ -57,7 +57,7 @@ class SystemServiceTest {
                             .filter(system -> system.getId().equals(args[0])).findFirst();
                     default -> TestProxies.defaultValue(method.getReturnType());
                 });
-        SysRoleRepository roleRepository = TestProxies.proxy(SysRoleRepository.class,
+        SysRoleMapper roleRepository = TestProxies.proxy(SysRoleMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "save" -> saveRole((SysRole) args[0]);
                     case "findBySystemIdAndCode" -> roles.stream()
@@ -66,7 +66,7 @@ class SystemServiceTest {
                             .findFirst();
                     default -> TestProxies.defaultValue(method.getReturnType());
                 });
-        SysPermissionRepository permissionRepository = TestProxies.proxy(SysPermissionRepository.class,
+        SysPermissionMapper permissionRepository = TestProxies.proxy(SysPermissionMapper.class,
                 (proxy, method, args) -> {
                     if ("save".equals(method.getName())) {
                         SysPermission permission = (SysPermission) args[0];
@@ -76,8 +76,8 @@ class SystemServiceTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysRolePermissionRepository rolePermissionRepository = TestProxies.proxy(
-                SysRolePermissionRepository.class, (proxy, method, args) -> {
+        SysRolePermissionMapper rolePermissionRepository = TestProxies.proxy(
+                SysRolePermissionMapper.class, (proxy, method, args) -> {
                     if ("save".equals(method.getName())) {
                         SysRolePermission grant = (SysRolePermission) args[0];
                         rolePermissions.add(grant);
@@ -85,7 +85,7 @@ class SystemServiceTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> switch (method.getName()) {
                     case "save" -> saveUserRole((SysUserRole) args[0]);
                     case "findBySystemIdAndExternalUserIdAndRoleId" -> userRoles.stream()

@@ -16,10 +16,10 @@ import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantRequest;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantResponse;
 
@@ -41,16 +41,16 @@ public class ApprovalGrantService {
     private static final String GRANT_TYPE_ROLE = "role";
     private static final String GRANT_TYPE_PERMISSION = "permission";
 
-    private final SysSystemRepository systemRepository;
-    private final SysRoleRepository roleRepository;
-    private final SysUserRoleRepository userRoleRepository;
-    private final SysRolePermissionRepository rolePermissionRepository;
+    private final SysSystemMapper systemRepository;
+    private final SysRoleMapper roleRepository;
+    private final SysUserRoleMapper userRoleRepository;
+    private final SysRolePermissionMapper rolePermissionRepository;
     private final ChangeNotifyService changeNotifyService;
 
-    public ApprovalGrantService(SysSystemRepository systemRepository,
-                                SysRoleRepository roleRepository,
-                                SysUserRoleRepository userRoleRepository,
-                                SysRolePermissionRepository rolePermissionRepository,
+    public ApprovalGrantService(SysSystemMapper systemRepository,
+                                SysRoleMapper roleRepository,
+                                SysUserRoleMapper userRoleRepository,
+                                SysRolePermissionMapper rolePermissionRepository,
                                 ChangeNotifyService changeNotifyService) {
         this.systemRepository = systemRepository;
         this.roleRepository = roleRepository;

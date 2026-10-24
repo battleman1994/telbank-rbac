@@ -14,8 +14,8 @@ import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantItemVO;
 
@@ -33,12 +33,12 @@ public class ApprovalAuditService {
     private static final int DEFAULT_WITHIN_DAYS = 7;
     private static final int MAX_WITHIN_DAYS = 365;
 
-    private final SysUserRoleRepository userRoleRepository;
-    private final SysRolePermissionRepository rolePermissionRepository;
+    private final SysUserRoleMapper userRoleRepository;
+    private final SysRolePermissionMapper rolePermissionRepository;
     private final SystemScopeGuard systemScopeGuard;
 
-    public ApprovalAuditService(SysUserRoleRepository userRoleRepository,
-                                SysRolePermissionRepository rolePermissionRepository,
+    public ApprovalAuditService(SysUserRoleMapper userRoleRepository,
+                                SysRolePermissionMapper rolePermissionRepository,
                                 SystemScopeGuard systemScopeGuard) {
         this.userRoleRepository = userRoleRepository;
         this.rolePermissionRepository = rolePermissionRepository;

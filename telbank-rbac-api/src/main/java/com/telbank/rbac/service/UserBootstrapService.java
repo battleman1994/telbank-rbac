@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.web.dto.MeDtos.AccessedSystemVO;
 import com.telbank.rbac.web.dto.MeDtos.BootstrapVO;
 
@@ -23,11 +23,11 @@ import com.telbank.rbac.web.dto.MeDtos.BootstrapVO;
 public class UserBootstrapService {
 
     private final UserAccessService userAccessService;
-    private final SysSystemRepository systemRepository;
+    private final SysSystemMapper systemRepository;
     private final PermissionQueryService permissionQueryService;
 
     public UserBootstrapService(UserAccessService userAccessService,
-                                SysSystemRepository systemRepository,
+                                SysSystemMapper systemRepository,
                                 PermissionQueryService permissionQueryService) {
         this.userAccessService = userAccessService;
         this.systemRepository = systemRepository;

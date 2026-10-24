@@ -8,8 +8,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 
 import com.telbank.rbac.common.ApiException;
 import com.telbank.rbac.common.PageQuery;
@@ -18,12 +16,12 @@ import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysPageActionRepository;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysPageActionMapper;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.service.ChangeNotifyService;
 import com.telbank.rbac.service.PageActionService;
 import com.telbank.rbac.service.PermissionService;
@@ -58,7 +56,7 @@ class CrossSystemByIdAccessTest {
             };
     private final LocalCacheManager cacheManager = new LocalCacheManager(Duration.ofMinutes(1), 10);
 
-    private SysSystemRepository systemRepository;
+    private SysSystemMapper systemRepository;
     private SystemScopeGuard guard;
 
     @BeforeEach
@@ -67,7 +65,7 @@ class CrossSystemByIdAccessTest {
         SysSystem erp = system(ERP_ID, "erp", 1, 0);
         SysSystem platform = system(PLATFORM_ID, "platform", 1, 1);
         Map<String, SysSystem> byCode = Map.of("crm", crm, "erp", erp, "platform", platform);
-        systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findByCode".equals(method.getName())) {
                         return Optional.ofNullable(byCode.get((String) args[0]));
@@ -77,7 +75,7 @@ class CrossSystemByIdAccessTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("countEffectiveRoles".equals(method.getName())) {
                         Long systemId = (Long) args[0];
@@ -112,7 +110,7 @@ class CrossSystemByIdAccessTest {
 
     @Test
     void roleByIdInOtherSystemIsForbidden() {
-        SysRoleRepository roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
+        SysRoleMapper roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
         RoleService service = new RoleService(roleRepository, systemRepository, guard);
 
         assertForbidden(() -> service.update(9L, new RoleUpdateRequest("hacked", 1, 0, null)));
@@ -122,11 +120,11 @@ class CrossSystemByIdAccessTest {
     void roleListExplicitOtherSystemIsForbiddenAndDefaultsToContext() {
         java.util.concurrent.atomic.AtomicReference<Long> searchedSystemId =
                 new java.util.concurrent.atomic.AtomicReference<>();
-        SysRoleRepository roleRepository = TestProxies.proxy(SysRoleRepository.class,
+        SysRoleMapper roleRepository = TestProxies.proxy(SysRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("search".equals(method.getName())) {
-                        searchedSystemId.set((Long) args[0]);
-                        return Page.empty(PageRequest.of(0, 20));
+                        searchedSystemId.set((Long) args[1]);
+                        return java.util.List.of();
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
@@ -140,7 +138,7 @@ class CrossSystemByIdAccessTest {
 
     @Test
     void permissionByIdInOtherSystemIsForbidden() {
-        SysPermissionRepository permissionRepository = TestProxies.proxy(SysPermissionRepository.class,
+        SysPermissionMapper permissionRepository = TestProxies.proxy(SysPermissionMapper.class,
                 (proxy, method, args) -> {
                     if ("findById".equals(method.getName())) {
                         return Long.valueOf(19L).equals(args[0])
@@ -157,7 +155,7 @@ class CrossSystemByIdAccessTest {
 
     @Test
     void pageActionByIdInOtherSystemIsForbidden() {
-        SysPageActionRepository pageActionRepository = TestProxies.proxy(SysPageActionRepository.class,
+        SysPageActionMapper pageActionRepository = TestProxies.proxy(SysPageActionMapper.class,
                 (proxy, method, args) -> {
                     if ("findById".equals(method.getName())) {
                         return Long.valueOf(19L).equals(args[0])
@@ -175,7 +173,7 @@ class CrossSystemByIdAccessTest {
 
     @Test
     void userRoleByIdInOtherSystemIsForbidden() {
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("findById".equals(method.getName())) {
                         return Long.valueOf(19L).equals(args[0])
@@ -184,7 +182,7 @@ class CrossSystemByIdAccessTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        SysRoleRepository roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
+        SysRoleMapper roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
         UserRoleService service = new UserRoleService(userRoleRepository, roleRepository,
                 systemRepository, changeNotifyService, guard);
 
@@ -193,10 +191,10 @@ class CrossSystemByIdAccessTest {
 
     @Test
     void rolePermissionGrantsForOtherSystemRoleIsForbidden() {
-        SysRoleRepository roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
+        SysRoleMapper roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
         RolePermissionService service = new RolePermissionService(roleRepository,
-                TestProxies.noop(SysPermissionRepository.class),
-                TestProxies.noop(SysRolePermissionRepository.class),
+                TestProxies.noop(SysPermissionMapper.class),
+                TestProxies.noop(SysRolePermissionMapper.class),
                 changeNotifyService, guard);
 
         assertForbidden(() -> service.grants(9L));
@@ -210,8 +208,8 @@ class CrossSystemByIdAccessTest {
                 });
     }
 
-    private static SysRoleRepository roleRepository(SysRole role) {
-        return TestProxies.proxy(SysRoleRepository.class, (proxy, method, args) -> {
+    private static SysRoleMapper roleRepository(SysRole role) {
+        return TestProxies.proxy(SysRoleMapper.class, (proxy, method, args) -> {
             if ("findById".equals(method.getName())) {
                 return role.getId().equals(args[0]) ? Optional.of(role) : Optional.empty();
             }

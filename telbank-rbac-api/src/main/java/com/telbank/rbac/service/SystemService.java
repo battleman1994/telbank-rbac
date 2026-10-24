@@ -1,7 +1,8 @@
 package com.telbank.rbac.service;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Sort;
+import java.util.List;
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,11 +16,11 @@ import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysPermissionRepository;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysPermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.web.dto.SystemDtos.SystemCreateRequest;
 import com.telbank.rbac.web.dto.SystemDtos.SystemUpdateRequest;
 import com.telbank.rbac.web.dto.SystemDtos.SystemVO;
@@ -39,17 +40,17 @@ public class SystemService {
     public static final String DEFAULT_ADMIN_ROLE_CODE = "admin";
     public static final String DEFAULT_ADMIN_ROLE_NAME = "系统管理员";
 
-    private final SysSystemRepository systemRepository;
-    private final SysRoleRepository roleRepository;
-    private final SysPermissionRepository permissionRepository;
-    private final SysRolePermissionRepository rolePermissionRepository;
-    private final SysUserRoleRepository userRoleRepository;
+    private final SysSystemMapper systemRepository;
+    private final SysRoleMapper roleRepository;
+    private final SysPermissionMapper permissionRepository;
+    private final SysRolePermissionMapper rolePermissionRepository;
+    private final SysUserRoleMapper userRoleRepository;
 
-    public SystemService(SysSystemRepository systemRepository,
-                         SysRoleRepository roleRepository,
-                         SysPermissionRepository permissionRepository,
-                         SysRolePermissionRepository rolePermissionRepository,
-                         SysUserRoleRepository userRoleRepository) {
+    public SystemService(SysSystemMapper systemRepository,
+                         SysRoleMapper roleRepository,
+                         SysPermissionMapper permissionRepository,
+                         SysRolePermissionMapper rolePermissionRepository,
+                         SysUserRoleMapper userRoleRepository) {
         this.systemRepository = systemRepository;
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
@@ -60,10 +61,10 @@ public class SystemService {
     @Transactional(readOnly = true)
     public PageResult<SystemVO> page(String keyword, PageQuery pageQuery) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
-        Page<SysSystem> page = systemRepository.search(normalizedKeyword,
-                pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));
-        return PageResult.of(page.getContent().stream().map(SystemService::toVO).toList(),
-                page.getTotalElements(), pageQuery);
+        Page<SysSystem> mpPage = pageQuery.toMpPage();
+        List<SysSystem> records = systemRepository.search(mpPage, normalizedKeyword);
+        return PageResult.of(records.stream().map(SystemService::toVO).toList(),
+                mpPage.getTotal(), pageQuery);
     }
 
     /**
@@ -125,7 +126,7 @@ public class SystemService {
         userRole.setGrantReason("系统管理员");
         userRole.setStatus(RbacConstants.STATUS_ENABLED);
         userRoleRepository.save(userRole);
-        return toVO(savedSystem);
+        return toVO(reload(savedSystem));
     }
 
     /**
@@ -151,7 +152,7 @@ public class SystemService {
         if (request.adminName() != null) {
             system.setAdminName(blankToNull(request.adminName()));
         }
-        return toVO(systemRepository.save(system));
+        return toVO(reload(systemRepository.save(system)));
     }
 
     private void changeAdministrator(SysSystem system, String newAdminExternalUserId) {
@@ -209,6 +210,15 @@ public class SystemService {
                 system.getStatus(), system.getSort(), system.getRemark(), system.getIsPlatform(),
                 system.getAdminExternalUserId(), system.getAdminName(),
                 TimeUtils.toInstant(system.getCreatedAt()), TimeUtils.toInstant(system.getUpdatedAt()));
+    }
+
+    /** 重新读取，拿到 DB 维护的 created_at/updated_at。 */
+    private SysSystem reload(SysSystem system) {
+        if (system == null || system.getId() == null) {
+            return system;
+        }
+        SysSystem persisted = systemRepository.selectById(system.getId());
+        return persisted == null ? system : persisted;
     }
 
     private static String blankToNull(String value) {

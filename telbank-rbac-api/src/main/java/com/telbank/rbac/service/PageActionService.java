@@ -1,7 +1,8 @@
 package com.telbank.rbac.service;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Sort;
+import java.util.List;
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,8 +12,8 @@ import com.telbank.rbac.common.PageQuery;
 import com.telbank.rbac.common.PageResult;
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysPageAction;
-import com.telbank.rbac.domain.repository.SysPageActionRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysPageActionMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.security.SystemScopeGuard;
 import com.telbank.rbac.web.dto.PageActionDtos.PageActionCreateRequest;
@@ -27,15 +28,15 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class PageActionService {
 
-    private final SysPageActionRepository pageActionRepository;
-    private final SysSystemRepository systemRepository;
+    private final SysPageActionMapper pageActionRepository;
+    private final SysSystemMapper systemRepository;
     private final LocalCacheManager localCacheManager;
     private final ChangeNotifyService changeNotifyService;
     private final JsonMapper jsonMapper;
     private final SystemScopeGuard systemScopeGuard;
 
-    public PageActionService(SysPageActionRepository pageActionRepository,
-                             SysSystemRepository systemRepository,
+    public PageActionService(SysPageActionMapper pageActionRepository,
+                             SysSystemMapper systemRepository,
                              LocalCacheManager localCacheManager,
                              ChangeNotifyService changeNotifyService,
                              JsonMapper jsonMapper,
@@ -52,10 +53,10 @@ public class PageActionService {
     public PageResult<PageActionVO> page(Long systemId, String pageCode, PageQuery pageQuery) {
         systemId = systemScopeGuard.resolveQuerySystemId(systemId);
         String normalizedPageCode = pageCode == null ? "" : pageCode.trim();
-        Page<SysPageAction> page = pageActionRepository.search(systemId, normalizedPageCode,
-                pageQuery.toPageable(Sort.by(Sort.Order.asc("sort"), Sort.Order.asc("id"))));
-        return PageResult.of(page.getContent().stream().map(PageActionService::toVO).toList(),
-                page.getTotalElements(), pageQuery);
+        Page<SysPageAction> mpPage = pageQuery.toMpPage();
+        List<SysPageAction> records = pageActionRepository.search(mpPage, systemId, normalizedPageCode);
+        return PageResult.of(records.stream().map(PageActionService::toVO).toList(),
+                mpPage.getTotal(), pageQuery);
     }
 
     @Transactional

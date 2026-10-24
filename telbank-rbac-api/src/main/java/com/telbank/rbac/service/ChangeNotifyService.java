@@ -13,7 +13,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.config.RbacProperties;
 import com.telbank.rbac.domain.entity.SysSystem;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.service.notify.ChangeEventPublisher;
 
@@ -30,13 +30,13 @@ public class ChangeNotifyService {
 
     private static final Logger log = LoggerFactory.getLogger(ChangeNotifyService.class);
 
-    private final SysSystemRepository systemRepository;
+    private final SysSystemMapper systemRepository;
     private final RbacProperties properties;
     private final ChangeEventPublisher changeEventPublisher;
     private final LocalCacheManager localCacheManager;
     private final JsonMapper jsonMapper;
 
-    public ChangeNotifyService(SysSystemRepository systemRepository,
+    public ChangeNotifyService(SysSystemMapper systemRepository,
                                RbacProperties properties,
                                ChangeEventPublisher changeEventPublisher,
                                LocalCacheManager localCacheManager,

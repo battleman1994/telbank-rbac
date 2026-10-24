@@ -16,10 +16,10 @@ import com.telbank.rbac.common.RbacConstants;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
 import com.telbank.rbac.domain.entity.SysUserRole;
-import com.telbank.rbac.domain.repository.SysRolePermissionRepository;
-import com.telbank.rbac.domain.repository.SysRoleRepository;
-import com.telbank.rbac.domain.repository.SysSystemRepository;
-import com.telbank.rbac.domain.repository.SysUserRoleRepository;
+import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
+import com.telbank.rbac.domain.mapper.SysRoleMapper;
+import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantRequest;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantResponse;
@@ -58,7 +58,7 @@ class ApprovalGrantServiceTest {
         role.setSystemId(1L);
         role.setCode("operator");
 
-        SysSystemRepository systemRepository = TestProxies.proxy(SysSystemRepository.class,
+        SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
                     if ("findByCode".equals(method.getName())) {
                         if (SYSTEM_CODE.equals(args[0])) {
@@ -72,7 +72,7 @@ class ApprovalGrantServiceTest {
                     return TestProxies.defaultValue(method.getReturnType());
                 });
 
-        SysRoleRepository roleRepository = TestProxies.proxy(SysRoleRepository.class,
+        SysRoleMapper roleRepository = TestProxies.proxy(SysRoleMapper.class,
                 (proxy, method, args) -> {
                     if ("findById".equals(method.getName())) {
                         return Long.valueOf(5L).equals(args[0]) ? Optional.of(role) : Optional.empty();
@@ -80,7 +80,7 @@ class ApprovalGrantServiceTest {
                     return TestProxies.defaultValue(method.getReturnType());
                 });
 
-        SysUserRoleRepository userRoleRepository = TestProxies.proxy(SysUserRoleRepository.class,
+        SysUserRoleMapper userRoleRepository = TestProxies.proxy(SysUserRoleMapper.class,
                 (proxy, method, args) -> {
                     switch (method.getName()) {
                         case "findFirstBySourceApprovalIdOrderByIdAsc":
@@ -106,8 +106,8 @@ class ApprovalGrantServiceTest {
                     }
                 });
 
-        SysRolePermissionRepository rolePermissionRepository = TestProxies.proxy(
-                SysRolePermissionRepository.class, (proxy, method, args) -> {
+        SysRolePermissionMapper rolePermissionRepository = TestProxies.proxy(
+                SysRolePermissionMapper.class, (proxy, method, args) -> {
                     if ("findGrantedCodesByRoleId".equals(method.getName())) {
                         return List.of("order:delete", "order:list");
                     }

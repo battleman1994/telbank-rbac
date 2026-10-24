@@ -1,32 +1,34 @@
 package com.telbank.rbac.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+
+
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 /**
  * 角色（V1 {@code sys_role}，{@code (system_id, code)} 唯一）。
  */
-@Entity
-@Table(name = "sys_role")
+
+@TableName("sys_role")
 public class SysRole extends BaseEntity {
 
-    @Column(name = "system_id", nullable = false)
+    @TableField("system_id")
     private Long systemId;
 
-    @Column(name = "code", nullable = false, length = 64)
+    @TableField("code")
     private String code;
 
-    @Column(name = "name", nullable = false, length = 100)
+    @TableField("name")
     private String name;
 
-    @Column(name = "status", nullable = false)
+    @TableField("status")
     private Integer status = 1;
 
-    @Column(name = "sort", nullable = false)
+    @TableField("sort")
     private Integer sort = 0;
 
-    @Column(name = "remark", length = 255)
+    @TableField(value = "remark", updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
     public Long getSystemId() {

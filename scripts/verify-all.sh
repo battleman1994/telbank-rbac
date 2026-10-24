@@ -115,6 +115,18 @@ grep -rq 'class UserSystemController' telbank-rbac-api/src/main/java && die "仍
   || die "缺少 PlatformAdminService（数据驱动超管）"
 grep -q 'platform-admin-ids' telbank-rbac-api/src/main/resources/application.yml && die "仍存在配置驱动超管 platform-admin-ids"
 ok "系统隔离重构产物核对（04 迁移 / 上下文 / 数据驱动超管 / 无 user-system）"
+# 持久层：MyBatis-Plus（A13），无 JPA/Hibernate
+grep -q 'mybatis-plus-spring-boot4-starter' telbank-rbac-api/pom.xml \
+  || die "pom 缺少 mybatis-plus-spring-boot4-starter"
+grep -q 'spring-boot-starter-data-jpa' telbank-rbac-api/pom.xml && die "pom 仍包含 data-jpa"
+if grep -rqi 'jakarta.persistence\|org.hibernate\|JpaRepository\|EntityManager' telbank-rbac-api/src/main/java; then
+  die "源码仍有 JPA/Hibernate 引用"
+fi
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/config/MybatisPlusConfig.java ] \
+  || die "缺少 MybatisPlusConfig"
+[ -d telbank-rbac-api/src/main/java/com/telbank/rbac/domain/mapper ] \
+  || die "缺少 MyBatis-Plus Mapper 目录"
+ok "持久层使用 MyBatis-Plus（无 JPA/Hibernate）"
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"
 done
