@@ -260,11 +260,7 @@ function SdkEndpointsContent({ systemId }: { systemId: number }) {
       width: 140,
       render: (_, record) => (
         <Space size={4}>
-          <Button
-            type={record.permissionId ? 'link' : 'primary'}
-            size="small"
-            onClick={() => openLinkModal(record)}
-          >
+          <Button type="link" size="small" onClick={() => openLinkModal(record)}>
             {record.permissionId ? '改关联' : '关联'}
           </Button>
           <Popconfirm
