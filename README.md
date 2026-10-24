@@ -365,8 +365,8 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 - 权限中心后端：`clean test` **53/53 PASS**（JDK 21.0.13，字节码 major=65）。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **90/90 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
-- SDK（JDK 21 版）：`mvn -pl telbank-rbac-starter-jdk21 clean test`（JDK 21）→ **91/91 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**。
-- **SDK 的 JDK 8 兼容性（GitHub Actions 实测）**：workflow 通过 —— JDK 17 构建 SDK（90 单测 + 断言 major=52）→ 在 **JDK 8 运行时**启动示例业务系统并成功探测 `/api/health`（[Actions](https://github.com/battleman1994/telbank-rbac/actions/workflows/sdk-jdk8-compat.yml)）。
+- SDK（JDK 21 版）：`mvn -pl telbank-rbac-starter-jdk21 clean test`（JDK 21）→ **91/91 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。
+- **GitHub Actions（5 job 全绿）**：权限中心（JDK21 单测/字节码）、SDK v1（JDK17→Java8）、SDK v2（JDK21/Boot4）、前端（Node22 构建）、JDK 8 运行时冒烟全部 success（[run 40073016336](https://github.com/battleman1994/telbank-rbac/actions/runs/40073016336)）。
 - **权限中心自接入（rbac 系统）**：V1+V2+V3 迁移；管理员 bootstrap 返回 5 个 `rbac:*`、operator 空集、平台超管 `["*"]`；管理端 `X-System-Code: rbac` 200 / 业务系统上下文 403；管理前端按权限码过滤菜单与路由、无权限 403 页。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
 - 第 9 节全量验收：**65/65 PASS**（JDK 21 运行 + 干净库 + JDK 8/JDK 21 两个 SDK 端到端各 4/4）。
