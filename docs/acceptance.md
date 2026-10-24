@@ -172,7 +172,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.4 业务前端数据获取 | 🧪 | `RbacControllerTest`（/rbac/me/systems、/rbac/me/bootstrap 结构、不含菜单树、预热缓存） |
 | §9.6 模式 A 按钮 | 🧪 | `RbacPermissionFilterTest`（接口 403）；业务系统前端不在本仓库交付，`hasPerm` 用法见 README §5.4 |
 | §9.9 拦截器判断顺序 | 🧪 | `RbacPermissionFilterTest`（14 个分支用例）+ 示例业务系统 9.1b 实测 |
-| §9.11.1 Redis 跨区域通知 | 🔶 | 本机无 Redis：频道拼接/订阅代码已单测（`RbacChangeSubscriberTest`），示例系统实测了「连接失败降级短轮询」；真实 Redis 双区域需在有 Redis 的环境复跑 |
+| §9.11.1 Redis 跨区域通知 | ✅ | 真实 Redis 8.10.2 实测：CRM(region_a)/ERP(region_b) 两个 SDK 分别订阅 `rbac:change:region_a:crm`、`rbac:change:region_b:erp`（`PUBSUB NUMSUB` 各 1 个订阅者）；管理员变更后 API 日志 `receivers=1`，CRM SDK 收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据（6 条）、ERP SDK 收到 `PERMISSION_CHANGED` 并刷新映射表 + 失效用户权限缓存；过期收回任务同样经 Redis 发布 |
 | §9.11.3 Redis 不可用降级 | ✅ | 示例业务系统日志：`Redis 变更订阅启动失败，降级为兜底短轮询（不影响业务）`，业务接口正常 |
 | §9.12.7 时钟偏移 | 🧪 | `RbacUserPermissionCacheTest`（offset 计算与时效判定） |
 | §9.13.3 全链路 HTTPS | 🔶 | 配置/README 生产说明 + 代码强制不走 HTTP 生产；本机验收为 HTTP（demo） |
@@ -181,7 +181,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 ## 已知限制（不阻塞验收，生产前建议处理）
 
 1. **JDK 21 实机复核（已完成）**：2026-10-24 14:16–14:17 在 **JDK 21.0.13（Homebrew）** 下全量复跑：权限中心 `clean test` 46/46、SDK `clean test` 90/90、API 验收 50/50、SDK 端到端 4/4，字节码 major 分别为 65/52。
-2. **Redis Pub/Sub 真实链路**：本机无 Redis，demo profile 使用 `rbac.redis.enabled=false`；Redis 连接失败降级已实测，真实「两区域各自收到变更并刷新」需有 Redis 环境联调（需求 §9.11.1）。
+2. **Redis Pub/Sub（已在本机补验）**：已安装 Redis 8.10.2，并以 `rbac.redis.enabled=true` 启动权限中心做真实联调：两个 SDK 按区域订阅频道成功、变更通知 `receivers=1`、SDK 收到通知后刷新映射/页面元数据/权限缓存、过期收回任务经 Redis 发布，且 nonce 防重放改用 Redis 存储（`rbac:nonce:*`）。
 3. **审批幂等边界**：同关系重新授权会更新原行并覆盖 `source_approval_id`（数据模型无审批历史表），因此「新审批覆盖后回放更早 approvalId」无法再幂等；同一 approvalId 重复回调幂等已实测通过。
 4. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
 5. **MySQL 版本**：本机临时 MySQL 26.7 高于 Flyway 官方已验证版本（9.4），启动有 WARN；生产用 MySQL 8.0+ 即无此告警。
@@ -194,6 +194,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 14:47 | Redis 8.10.2 + 权限中心 `--rbac.redis.enabled=true` + CRM/ERP 示例系统 | **真实跨区域 Pub/Sub 通过**：频道 `rbac:change:region_a:crm`/`region_b:erp` 各 1 订阅者；变更后 API `receivers=1`，CRM SDK 收到 `PAGE_ACTION_CHANGED` 刷新页面元数据、ERP SDK 收到 `PERMISSION_CHANGED` 刷新映射并失效权限缓存；Redis nonce 键 `rbac:nonce:*` 生效；同期验收 50/50、SDK e2e 4/4 |
 | 14:44 | GitHub Actions `SDK JDK 8 compatibility`（push 自动触发） | **两个 job 全部 success**：JDK 17 构建 SDK（90/90、major=52 断言）→ JDK 8 运行时启动示例业务系统，`/api/health` 返回 200 |
 | 14:30 | `./scripts/build-sdk.sh`（**JDK 17.0.20.1** 工具链，`--release 8`） | **90/90 PASS**，BUILD SUCCESS，产物字节码 **major=52（Java 8）** 校验通过 |
 | 14:17 | `mvn -Dmaven.repo.local=/tmp/rbac-m2repo -pl telbank-rbac-api clean test`（**JDK 21.0.13**，release 21） | **46/46 PASS**，BUILD SUCCESS，字节码 major=65 |
