@@ -2,7 +2,7 @@
 # 同时启动权限中心后端（demo profile）与管理前端（开发模式）—— macOS 版
 #
 # 与 Linux 版逻辑一致，使用 macOS 自带 lsof 做端口检测/清理。
-# Windows 请使用 scripts/start-all.cmd（或 start-all-windows.ps1）。
+# Windows 请使用 scripts/start-all-windows.ps1；本脚本为 macOS 自包含版本。
 #
 # 特性：
 #   - --temp-db：自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac 库，
@@ -13,8 +13,8 @@
 #   - Ctrl+C / kill 时自动停止前后端（及本脚本启动的临时库）并释放端口
 #
 # 用法：
-#   ./scripts/start-all.sh --temp-db                 # 推荐（Unix 分发器会自动识别 macOS）
-#   ./scripts/start-all-macos.sh --temp-db           # 直接调用 macOS 脚本
+#   ./scripts/start-all-macos.sh --temp-db            # 推荐
+#   ./scripts/start-all-macos.sh --temp-db
 #   API_PORT=18080 FRONT_PORT=5174 ./scripts/start-all-macos.sh --temp-db
 #   ./scripts/start-all-macos.sh                     # 使用已就绪的 MySQL
 #   ./scripts/start-all-macos.sh --init-db           # 先建库（需 MYSQL_* 环境变量）
@@ -83,6 +83,122 @@ kill_port() {
       done
 }
 
+# ---------- JDK 21 探测 ----------
+find_jdk21() {
+  local cands=() c ver
+  [ -n "${JAVA_HOME_21:-}" ] && cands+=("${JAVA_HOME_21}")
+  cands+=(
+    "${HOME}/.sdkman/candidates/java/current"
+    "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+    "/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+  )
+  if /usr/libexec/java_home -v 21 >/dev/null 2>&1; then
+    cands+=("$(/usr/libexec/java_home -v 21)")
+  fi
+  for c in "${cands[@]}"; do
+    [ -n "$c" ] && [ -x "$c/bin/java" ] || continue
+    ver="$("$c/bin/java" -version 2>&1 | head -n 1)"
+    case "$ver" in
+      *'"21.'*|*'"22.'*|*'"23.'*|*'"24.'*|*'"25.'*|*'"26.'*|*'"27.'*) echo "$c"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# ---------- 临时 MySQL（脚本内聚，无额外 helper） ----------
+TEMP_MYSQL_DIR="$TEMP_DB_DIR"
+TEMP_MYSQL_SOCKET="$TEMP_MYSQL_DIR/mysql.sock"
+TEMP_MYSQL_PIDFILE="$TEMP_MYSQL_DIR/mysqld.pid"
+TEMP_MYSQL_LOGFILE="$TEMP_MYSQL_DIR/mysqld.log"
+
+find_mysqld() {
+  if [ -n "${MYSQLD:-}" ]; then echo "$MYSQLD"; return 0; fi
+  local c
+  for c in /opt/homebrew/opt/mysql/bin/mysqld /usr/local/opt/mysql/bin/mysqld "$(command -v mysqld || true)"; do
+    [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
+  done
+  return 1
+}
+
+temp_mysql_status() {
+  if [ -f "$TEMP_MYSQL_PIDFILE" ] && kill -0 "$(cat "$TEMP_MYSQL_PIDFILE")" 2>/dev/null; then
+    echo "running pid=$(cat "$TEMP_MYSQL_PIDFILE") port=${TEMP_MYSQL_PORT}"
+  else
+    echo "not running"
+  fi
+}
+
+temp_mysql_start() {
+  local mysqld client
+  mysqld="$(find_mysqld)" || { echo "未找到 mysqld，请安装 MySQL 或设置 MYSQLD 环境变量" >&2; return 1; }
+  mkdir -p "$TEMP_MYSQL_DIR"
+  if [ ! -d "$TEMP_DB_DATADIR/mysql" ]; then
+    "$mysqld" --initialize-insecure --datadir="$TEMP_DB_DATADIR" >/dev/null 2>&1 || return 1
+  fi
+  if [ -f "$TEMP_MYSQL_PIDFILE" ] && kill -0 "$(cat "$TEMP_MYSQL_PIDFILE")" 2>/dev/null; then
+    echo "临时 MySQL 已在运行"
+  else
+    "$mysqld" --datadir="$TEMP_DB_DATADIR" --port="$TEMP_MYSQL_PORT" --socket="$TEMP_MYSQL_SOCKET" \
+      --pid-file="$TEMP_MYSQL_PIDFILE" --log-error="$TEMP_MYSQL_LOGFILE" --skip-networking=0 \
+      --bind-address=127.0.0.1 --mysqlx=0 >/dev/null 2>&1 &
+    local i
+    for i in $(seq 1 30); do [ -S "$TEMP_MYSQL_SOCKET" ] && break; sleep 1; done
+  fi
+  client="${MYSQL_BIN:-/opt/homebrew/opt/mysql/bin/mysql}"
+  [ -x "$client" ] || client="$(command -v mysql || true)"
+  if [ -n "$client" ]; then
+    "$client" --socket="$TEMP_MYSQL_SOCKET" -uroot -e \
+      "CREATE DATABASE IF NOT EXISTS telbank_rbac DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>/dev/null || true
+  fi
+}
+
+temp_mysql_stop() {
+  if [ -f "$TEMP_MYSQL_PIDFILE" ]; then
+    kill "$(cat "$TEMP_MYSQL_PIDFILE")" 2>/dev/null || true
+    sleep 2
+    kill -9 "$(cat "$TEMP_MYSQL_PIDFILE")" 2>/dev/null || true
+    rm -f "$TEMP_MYSQL_PIDFILE"
+    echo "已停止临时 MySQL"
+  fi
+}
+
+# ---------- 后端 / 前端 ----------
+start_backend() {
+  export JAVA_HOME="$JDK21"
+  export PATH="$JDK21/bin:$PATH"
+  if [ -n "${RBAC_M2_REPO:-}" ]; then
+    ( cd "$ROOT" && exec mvn "-Dmaven.repo.local=${RBAC_M2_REPO}" \
+        -pl telbank-rbac-api -am spring-boot:run \
+        -Dspring-boot.run.profiles=demo \
+        -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
+        "-Dspring-boot.run.arguments=--server.port=${API_PORT}" ) >"$API_LOG" 2>&1 &
+  else
+    ( cd "$ROOT" && exec mvn \
+        -pl telbank-rbac-api -am spring-boot:run \
+        -Dspring-boot.run.profiles=demo \
+        -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
+        "-Dspring-boot.run.arguments=--server.port=${API_PORT}" ) >"$API_LOG" 2>&1 &
+  fi
+  BACKEND_PID=$!
+}
+
+start_frontend() {
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  if [ -s "${NVM_DIR}/nvm.sh" ]; then
+    # shellcheck disable=SC1091
+    . "${NVM_DIR}/nvm.sh"
+    nvm use 22 >/dev/null 2>&1 || true
+  fi
+  if [ ! -d "$ROOT/telbank-rbac-front/node_modules" ]; then
+    ( cd "$ROOT/telbank-rbac-front" && npm install --no-audit --no-fund ) >>"$FRONT_LOG" 2>&1 || true
+  fi
+  ( cd "$ROOT/telbank-rbac-front" && \
+    VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:${API_PORT}}" \
+    exec npm run dev -- --port "$FRONT_PORT" ) >"$FRONT_LOG" 2>&1 &
+  FRONTEND_PID=$!
+}
+
+
 cleanup() {
   trap - EXIT INT TERM
   [ "$RUNNING" = "1" ] || return 0
@@ -97,7 +213,7 @@ cleanup() {
   kill_port "$FRONT_PORT" 1
   if [ "$TEMP_DB_STARTED" = "1" ]; then
     echo "正在停止临时 MySQL（${TEMP_MYSQL_PORT}）并清理数据目录 ..."
-    "$ROOT/scripts/start-temp-mysql.sh" stop >/dev/null 2>&1 || true
+    temp_mysql_stop >/dev/null 2>&1 || true
     # 兜底：即使 stop 被中断/进程已退出，也清掉临时数据目录
     rm -rf "$TEMP_DB_DIR" 2>/dev/null || true
   fi
@@ -128,11 +244,10 @@ fi
 # ---------- 数据库准备 ----------
 if [ "$TEMP_DB" = "1" ]; then
   echo "==> 准备临时 MySQL（端口 ${TEMP_MYSQL_PORT}，脚本退出时自动清理）"
-  if "$ROOT/scripts/start-temp-mysql.sh" status 2>/dev/null | grep -q '^running'; then
+  if temp_mysql_status | grep -q '^running'; then
     echo "    检测到已有临时 MySQL 在运行，直接复用（退出时不会停止它）"
   else
-    RBAC_TEMP_MYSQL_PORT="$TEMP_MYSQL_PORT" \
-      "$ROOT/scripts/start-temp-mysql.sh" start >"$ROOT/logs/temp-mysql.log" 2>&1 \
+    temp_mysql_start >"$ROOT/logs/temp-mysql.log" 2>&1 \
       || { echo "❌ 临时 MySQL 启动失败，日志 logs/temp-mysql.log：" >&2; tail -n 20 "$ROOT/logs/temp-mysql.log" >&2; exit 1; }
     TEMP_DB_STARTED=1
     RUNNING=1
@@ -166,10 +281,13 @@ if [ "$TEMP_DB" != "1" ]; then
   fi
 fi
 
+JDK21="$(find_jdk21)" || { echo "❌ 未找到 JDK 21+（设置 JAVA_HOME_21 或安装 openjdk@21）" >&2; exit 1; }
+echo "使用 JAVA_HOME=${JDK21}"
+
 # ---------- 启动后端 ----------
 echo "==> 启动权限中心后端（端口 ${API_PORT}，日志 logs/api.log）"
-"$ROOT/scripts/start-api.sh" "-Dspring-boot.run.arguments=--server.port=${API_PORT}" >"$API_LOG" 2>&1 &
-API_PID=$!
+start_backend
+API_PID=$BACKEND_PID
 RUNNING=1
 
 echo -n "    等待后端就绪"
@@ -201,9 +319,8 @@ echo " 就绪"
 
 # ---------- 启动前端 ----------
 echo "==> 启动管理前端（端口 ${FRONT_PORT}，日志 logs/front.log）"
-VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:${API_PORT}}" \
-  "$ROOT/scripts/start-front.sh" --port "$FRONT_PORT" >"$FRONT_LOG" 2>&1 &
-FRONT_PID=$!
+start_frontend
+FRONT_PID=$FRONTEND_PID
 
 echo -n "    等待前端就绪"
 FRONT_READY=0
@@ -236,8 +353,8 @@ cat <<EOF
  权限中心后端 : http://localhost:${API_PORT}     （日志 logs/api.log）
  管理前端     : http://localhost:${FRONT_PORT}   （日志 logs/front.log）
 $([ "$TEMP_DB" = "1" ] && echo " 临时 MySQL   : 127.0.0.1:${TEMP_MYSQL_PORT}（telbank_rbac，脚本退出时自动清理）")
- 演示 JWT     : TOKEN=\$(./scripts/gen-demo-jwt.sh 13800138000)
- 登录账号     : 13800138000（CRM/ERP 管理员 + 权限中心管理员 rbac-admin）
+ 演示 JWT     : TOKEN=\$(./scripts/gen-demo-jwt.sh superadmin)
+ 登录账号     : superadmin（平台超管）/ crm-admin-001 / erp-admin-001
  停止服务     : 按 Ctrl+C（或 kill 本脚本）
 ============================================================
 

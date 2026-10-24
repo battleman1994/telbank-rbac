@@ -30,7 +30,7 @@ java -jar samples/business-demo/target/business-demo-1.0.0.jar \
   --rbac-sdk.app-secret=erp-dev-secret
 ```
 
-前置：权限中心 demo profile 已启动（`./scripts/start-api.sh`）。运行 JDK 可用 JDK 8+（CI 环境用 JDK 8 验证；本机 JDK 17 亦可）。demo profile 默认关闭 Redis；如需验证真实 Pub/Sub，启动权限中心时追加 `--rbac.redis.enabled=true` 并确保本机 Redis 可用。
+前置：权限中心 demo profile 已启动（`./scripts/start-all-macos.sh`，Linux 用 `start-all-linux.sh`）。运行 JDK 可用 JDK 8+（CI 环境用 JDK 8 验证；本机 JDK 17 亦可）。demo profile 默认关闭 Redis；如需验证真实 Pub/Sub，启动权限中心时追加 `--rbac.redis.enabled=true` 并确保本机 Redis 可用。
 
 ## 3. 验证接口拦截
 

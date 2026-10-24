@@ -1090,7 +1090,7 @@ interface AppState {
 | A7 | §3.2 SDK「JDK 8 字节码」 | 字节码目标仍为 Java 8（major=52），但**构建工具链为 JDK 17+**（`--release 8`）；运行时 JDK 8+ | 官方 OpenJDK 8 无 macOS ARM 原生版本；GitHub Actions 已用 JDK 8 运行时验证；README §5 |
 | A8 | §2 / §5 未明确权限中心自身是否接入权限体系 | v1 曾实现为权限中心作为 `rbac` 系统自接入；**v2.0 已被 A11 取代并删除** | 方案 A（用户确认）→ A11 系统隔离重构；契约 v2.0 |
 | A9 | §3.2 SDK 仅面向 JDK 8 | 新增 **JDK 21 + Spring Boot 4.x SDK 变体** `telbank-rbac2-starter`：类名/包名/配置键/HTTP 协议与 JDK 8 版一致，同一业务系统二选一（同包名不可共存） | 供 JDK 21 + Boot 4 业务系统接入；契约 §0/§7.9 |
-| A10 | §3.1/§4.1 数据库迁移使用 Flyway | **移除 Flyway**（依赖 + 手动 `FlywayConfig`）；数据库改为手动 SQL：`telbank-rbac-api/src/main/resources/db/manual/*.sql`，由 `scripts/init-db.sh` 建库并按顺序导入；`start-all.sh --temp-db` 自动导入；后端启动前库表须已存在 | 用户确认不需要 Flyway；契约 §2、README §4/§9 |
+| A10 | §3.1/§4.1 数据库迁移使用 Flyway | **移除 Flyway**（依赖 + 手动 `FlywayConfig`）；数据库改为手动 SQL：`telbank-rbac-api/src/main/resources/db/manual/*.sql`，由 `scripts/init-db.sh` 建库并按顺序导入；平台一键脚本 `--temp-db` 自动导入；后端启动前库表须已存在 | 用户确认不需要 Flyway；契约 §2、README §4/§9 |
 | A11 | §2/§5 权限管理模型：系统隔离、超管定义、用户-系统开通未明确 | **系统作为隔离边界**：系统管理员只管理本系统角色/权限，跨系统 403；平台超管改为**数据驱动**（平台系统 `platform` + `super-admin` + `platform:admin`，种子账号 `superadmin`），删除配置文件；**删除 `sys_user_system` 与用户-系统开通**，系统访问由有效角色推导；管理上下文 `X-System-Code=当前业务系统`；管理权限码改为系统内短码（`role:manage` 等）；**系统接入仅超管**且必须录入系统管理员，服务端自动创建默认 `admin` 角色 + 6 个短权限码并授权；菜单重构为「权限管理」组 + 顶级「系统接入」 | 用户确认的新设计（v2.0，取代 A8）；契约 v2.0 §1.5/§3/§10、README §1.1 |
 
 > 补充验证：真实 Redis Pub/Sub 联调、JDK 8 运行时 CI、JDK 21 SDK 单测、**v2.0 系统隔离验收（API 81/81，含两个 SDK e2e 各 4/4）** 的记录见 `docs/acceptance.md`。

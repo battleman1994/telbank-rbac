@@ -115,53 +115,52 @@ for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/i
   [ -s "$f" ] || die "缺少文档 $f"
 done
 ok "需求/验收/契约/README/文档总览齐备"
-for f in scripts/init-db.sh scripts/start-api.sh scripts/start-front.sh scripts/gen-demo-jwt.sh \
-         scripts/acceptance.py scripts/build-sdk.sh scripts/verify-all.sh scripts/start-all.sh \
-         scripts/demo-temp-permission.sh; do
+for f in scripts/init-db.sh scripts/gen-demo-jwt.sh scripts/acceptance.py \
+         scripts/build-sdk.sh scripts/verify-all.sh scripts/demo-temp-permission.sh; do
   [ -x "$f" ] || die "脚本不可执行或缺失：$f"
 done
-ok "启动/验收/构建脚本齐备且可执行"
+ok "工具脚本齐备且可执行"
 
-# 分平台启动脚本（macOS / Linux / Windows）
+# 每平台一个自包含启动脚本（共 3 个，无分发器/helper）
 for f in scripts/start-all-macos.sh scripts/start-all-linux.sh; do
-  [ -x "$f" ] || die "分平台启动脚本缺失或不可执行：$f"
-  bash -n "$f" || die "分平台启动脚本语法错误：$f"
+  [ -x "$f" ] || die "平台启动脚本缺失或不可执行：$f"
+  bash -n "$f" || die "平台启动脚本语法错误：$f"
+  grep -q 'start_backend' "$f" || die "平台启动脚本未内聚后端启动：$f"
+  grep -q 'start_frontend' "$f" || die "平台启动脚本未内聚前端启动：$f"
 done
-ok "macOS/Linux 启动脚本存在且语法正确"
 [ -f scripts/start-all-windows.ps1 ] || die "缺少 Windows 启动脚本 scripts/start-all-windows.ps1"
-[ -f scripts/start-all.cmd ] || die "缺少 Windows 包装器 scripts/start-all.cmd"
-grep -q 'TempDb' scripts/start-all-windows.ps1 || die "Windows 启动脚本未实现临时库参数"
-ok "Windows 启动脚本（ps1 + cmd）齐备"
+grep -q 'Invoke-InitSchema' scripts/start-all-windows.ps1 || die "Windows 启动脚本未实现数据库初始化"
+ok "3 个平台启动脚本齐备且自包含（macOS/Linux/Windows）"
+[ ! -e scripts/start-all.sh ] || die "不应再有 start-all.sh 分发器"
+[ ! -e scripts/start-all.cmd ] || die "不应再有 start-all.cmd 包装器"
+[ ! -e scripts/start-api.sh ] || die "不应再有 start-api.sh helper"
+[ ! -e scripts/start-front.sh ] || die "不应再有 start-front.sh helper"
+[ ! -e scripts/start-temp-mysql.sh ] || die "不应再有 start-temp-mysql.sh helper"
+ok "已删除分发器 / Windows 包装器 / 3 个 helper 启动脚本"
 case "$(uname -s)" in
-  Darwin|Linux)
-    HELP_OUT="$(./scripts/start-all.sh --help 2>&1 || true)"
+  Darwin)
+    HELP_OUT="$(./scripts/start-all-macos.sh --help 2>&1 || true)"
     case "$HELP_OUT" in
-      *"--temp-db"*) ok "start-all.sh 平台分发正常（$(uname -s)）" ;;
-      *) die "start-all.sh 平台分发异常：${HELP_OUT}" ;;
+      *"--temp-db"*) ok "macOS 启动脚本 --help 正常" ;;
+      *) die "macOS 启动脚本 --help 异常：${HELP_OUT}" ;;
     esac
     ;;
-esac
-
-# macOS 自带 bash 3.2 + set -u 空数组展开回归检查（start-api.sh 曾因此报 unbound variable）
-FAKE_BIN="$(mktemp -d)"
-printf '#!/bin/sh\necho fake-mvn "$@"\n' > "$FAKE_BIN/mvn"
-chmod +x "$FAKE_BIN/mvn"
-API_SMOKE_OUT="$(env -u RBAC_M2_REPO PATH="$FAKE_BIN:$PATH" JAVA_HOME="$JDK21" \
-  ./scripts/start-api.sh 2>&1 || true)"
-rm -rf "$FAKE_BIN"
-case "$API_SMOKE_OUT" in
-  *unbound*) die "start-api.sh 在 bash 3.2 下存在空数组展开问题" ;;
-  *fake-mvn*) ok "start-api.sh bash 3.2 兼容冒烟通过（未设置 RBAC_M2_REPO）" ;;
-  *) die "start-api.sh bash 3.2 冒烟失败：${API_SMOKE_OUT}" ;;
+  Linux)
+    HELP_OUT="$(./scripts/start-all-linux.sh --help 2>&1 || true)"
+    case "$HELP_OUT" in
+      *"--temp-db"*) ok "Linux 启动脚本 --help 正常" ;;
+      *) die "Linux 启动脚本 --help 异常：${HELP_OUT}" ;;
+    esac
+    ;;
 esac
 
 printf '\n\033[1;32m全部通过（%d 项检查）。\033[0m\n' "$PASS"
 cat <<'EOF'
 
 下一步（需要启动服务，端到端验收）：
-  ./scripts/init-db.sh                          # 或 ./scripts/start-temp-mysql.sh start
-  ./scripts/start-api.sh                        # 权限中心 demo profile（管理端 X-System-Code: rbac）
-  python3 scripts/acceptance.py                 # 第 9 节 API 级验收（含 §9.15 权限中心自接入）
+  ./scripts/init-db.sh                          # 可选：已有库/临时库
+  ./scripts/start-all-macos.sh --temp-db        # macOS；Linux 用 start-all-linux.sh；Windows 用 ps1
+  python3 scripts/acceptance.py                 # 第 9 节 API 级验收（含系统隔离/系统接入）
   # SDK 端到端（另起 CRM/ERP 示例业务系统）：
   #   RBAC_DEMO_CRM_URL=http://localhost:8081 RBAC_DEMO_ERP_URL=http://localhost:8082 \
   #     python3 scripts/acceptance.py --only 9.1b

@@ -11,29 +11,25 @@
 ## 0. 如何复现
 
 > 想一条命令起临时库+前后端（分平台脚本）：
-> - macOS：`./scripts/start-all.sh --temp-db`（→ `start-all-macos.sh`）
-> - Linux：`./scripts/start-all.sh --temp-db`（→ `start-all-linux.sh`）
-> - Windows：`scripts\start-all.cmd --temp-db`（→ `start-all-windows.ps1`）
+> - macOS：`./scripts/start-all-macos.sh --temp-db`
+> - Linux：`./scripts/start-all-linux.sh --temp-db`
+> - Windows：`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 -TempDb`
 >
 > 自动起一次性 MySQL/建库（默认后端 8080、前端 5173），`Ctrl+C` 同时停止并清理，日志见 `logs/`；已有 MySQL 时去掉 `--temp-db`。
 
 ```bash
-# 1) 一次性本地 MySQL（不影响系统已有实例；root 无密码，端口 3307）
-./scripts/start-temp-mysql.sh start
+# 1) 一次性本地 MySQL + 后端 + 前端（每平台一个自包含脚本；已有 MySQL 时去掉 --temp-db）
+./scripts/start-all-macos.sh --temp-db   # Linux 用 start-all-linux.sh；Windows 用 start-all-windows.ps1 -TempDb
 
-# 2) 启动权限中心（demo profile：HS256 演示 JWT；无 Redis 也可跑）
-export RBAC_DB_URL='jdbc:mysql://127.0.0.1:3307/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false'
-./scripts/start-api.sh
-
-# 3) API 级验收（另开终端）
+# 2) API 级验收（另开终端）
 python3 scripts/acceptance.py
 
-# 4) SDK / 前端单元与构建
+# 3) SDK / 前端单元与构建
 mvn -pl telbank-rbac-starter test
 cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
-# 5) 管理前端联调（可选）
-./scripts/start-front.sh   # 浏览器打开 http://localhost:5173
+# 4) 管理前端联调（可选）
+# 前端由平台一键脚本启动；也可 cd telbank-rbac-front && npm run dev
 ```
 
 ---
@@ -222,8 +218,8 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 20:16 | 全量 API 验收（`telbank_rbac_v2` + JDK21 API + JDK8/JDK21 两套示例系统） | **81/81 PASS**：v2.0 系统隔离 + 系统接入 + 原有开放接口/审批/时效 + 两个 SDK e2e 各 4/4 |
 | 20:15 | `mvn -pl telbank-rbac-api clean test`（v2.0 后端） | **88/88 PASS**，BUILD SUCCESS |
 | 20:11 | 前端 `npm run build`（v2.0 菜单/上下文重构） | tsc 0 error；3255 modules；dist 1.4 MB（JS gzip 442 kB） |
-| 20:05 | 04 系统隔离迁移（全新库 `telbank_rbac_v2`） | 无 `sys_user_system`；系统 crm/erp/platform；各业务系统 6 短码；`superadmin`/`crm-admin-001`/`erp-admin-001` 就绪 |
-| 19:19 | `./scripts/start-all.sh --temp-db`（移除 Flyway 后） | 临时库自动导入 `db/manual` 01→03：**8 张表（无 flyway_schema_history）**；后端 401 就绪、前端 200；退出清理正常 |
+| 20:05 | 04 系统隔离迁移（全新库 `telbank_rbac_v2`） | 无 `sys_user_system`（业务表 **7 张**）；系统 crm/erp/platform；各业务系统 6 短码；`superadmin`/`crm-admin-001`/`erp-admin-001` 就绪 |
+| 19:19 | 平台一键脚本 `--temp-db`（移除 Flyway 后） | 临时库自动导入 `db/manual` 01→03：**8 张表（无 flyway_schema_history）**；后端 401 就绪、前端 200；退出清理正常 |
 | 19:18 | 全新库手动初始化 + API 验收（`telbank_rbac_manual`，无 Flyway） | `init-db.sh` 导入 01→03 成功（8 表 / 3 系统 / 17 权限 / 5 角色）；`RBAC_BASE_URL=http://127.0.0.1:28081 python3 scripts/acceptance.py` → **59/59 PASS**（跳过示例业务系统） |
 | 19:17 | `mvn -pl telbank-rbac-api clean test`（移除 Flyway 依赖后） | **53/53 PASS**，BUILD SUCCESS |
 | 15:12 | GitHub Actions `telbank-rbac CI`（commit 6e65f4f） | **5 个 job 全部 success**：Build permission center (JDK21) / SDK v1 (JDK17) / SDK v2 (JDK21+Boot4) / Admin frontend (Node22) / JDK 8 runtime smoke（[run 40073016336](https://github.com/battleman1994/telbank-rbac/actions/runs/40073016336)） |

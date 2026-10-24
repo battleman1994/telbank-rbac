@@ -92,14 +92,14 @@ java -version
 
 > **一键启动（推荐，按平台）**：
 >
-> | 平台 | 命令 |
+> | 平台 | 命令（每平台仅一个自包含脚本） |
 > |---|---|
-> | macOS | `./scripts/start-all.sh --temp-db`（分发到 `start-all-macos.sh`） |
-> | Linux | `./scripts/start-all.sh --temp-db`（分发到 `start-all-linux.sh`） |
-> | Windows | `scripts\start-all.cmd --temp-db`（PowerShell 实现 `start-all-windows.ps1`，参数用 `-TempDb -InitDb -ApiPort -FrontPort`） |
+> | macOS | `./scripts/start-all-macos.sh --temp-db` |
+> | Linux | `./scripts/start-all-linux.sh --temp-db` |
+> | Windows | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 -TempDb` |
 >
 > - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`、导入 `db/manual/*.sql`（表结构 + 示例数据），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
-> - 已有 MySQL：去掉 `--temp-db`；首次建库用 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db`（脚本会自动把 `MYSQL_*` 映射为后端 `RBAC_DB_*`）；之后直接 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh`。
+> - 已有 MySQL：去掉 `--temp-db`；首次建库用 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all-macos.sh --init-db`（Linux 换成 `start-all-linux.sh`；Windows 用 `-InitDb` + 环境变量）；脚本会自动把 `MYSQL_*` 映射为后端 `RBAC_DB_*`。
 > - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.5 为分步说明。
 
 ### 4.1 初始化数据库
@@ -110,15 +110,19 @@ export MYSQL_USER=root MYSQL_PASSWORD='你的密码'
 ```
 
 > `init-db.sh` 会创建库，并按文件名顺序导入 `telbank-rbac-api/src/main/resources/db/manual/` 下的手动 SQL：
-> `01_schema.sql`（8 张表）、`02_seed_data.sql`（CRM/ERP 示例数据）、`03_rbac_self_onboarding.sql`（权限中心自接入）。
+> `01_schema.sql`（8 张表，v2.0 经 `04_system_isolation.sql` 删除 `sys_user_system` 后为 7 张）、`02_seed_data.sql`（CRM/ERP 示例数据）、`03_rbac_self_onboarding.sql`（历史自接入，已被 04 清理）、`04_system_isolation.sql`（v2.0 系统隔离迁移）。
 > **本项目不使用 Flyway**；已有表结构的库会自动跳过导入，`./scripts/init-db.sh --drop` 可删库重建。
-> 用 `start-all.sh` 时无需再单独导出：脚本会把 `MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/RBAC_DB_NAME` 自动映射为后端的 `RBAC_DB_*`（含 `RBAC_DB_URL`）；`--temp-db` 会自动执行上述导入。
-> 如果本机已有 MySQL 且 root 密码未知，可起一个一次性实例：`./scripts/start-temp-mysql.sh start`（127.0.0.1:3307，root 无密码），启动后端时用 `RBAC_DB_URL` 指向它（脚本会打印完整命令）。
+> 用平台一键脚本时无需再单独导出：脚本会把 `MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/RBAC_DB_NAME` 自动映射为后端的 `RBAC_DB_*`（含 `RBAC_DB_URL`）；`--temp-db` 会自动执行上述导入。
+> 如果本机已有 MySQL 且 root 密码未知，直接用平台一键脚本的 `--temp-db`（自动起一次性 MySQL 3307，root 无密码并在退出时清理）。
 
 ### 4.2 启动权限中心后端（demo profile）
 
 ```bash
-./scripts/start-api.sh
+# 推荐直接用平台一键脚本（自动探测 JDK21，会连同前端一起启动）：
+./scripts/start-all-macos.sh        # Linux 换成 start-all-linux.sh
+
+# 只启动后端（手动）：
+JAVA_HOME=<JDK21> mvn -pl telbank-rbac-api -am spring-boot:run -Dspring-boot.run.profiles=demo
 ```
 
 demo profile 特点：`rbac.security.jwt.mode=hs256`（演示 JWT）、`rbac.redis.enabled=false`（无 Redis 也能跑；变更发布降级为 no-op，nonce 用本地缓存），默认端口 `8080`。
@@ -137,7 +141,8 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/me/systems
 启动前端并在浏览器打开 <http://localhost:5173>，在登录页粘贴上面的 `TOKEN`：
 
 ```bash
-./scripts/start-front.sh
+# 前端由平台一键脚本自动启动；也可手动：
+cd telbank-rbac-front && npm run dev
 ```
 
 示例账号（`external_user_id`，对应 Seed 数据）：
@@ -384,8 +389,8 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 ## 10. 常见问题
 
-- **启动报 `Access denied ... (using password: NO)` 或 `Unable to determine Dialect without JDBC metadata`**：Hibernate 方言报错通常是「连不上库」的表象。确认 MySQL 已启动、`telbank_rbac` 已创建，并且把密码传给后端：`MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all.sh --init-db`（启动脚本会自动映射 `MYSQL_*` → `RBAC_DB_*`）；也可显式设置 `RBAC_DB_URL/RBAC_DB_USER/RBAC_DB_PASSWORD`。
-- **JDK 版本不对**：权限中心需要 **JDK 21+**（`java -version` 校验；`./scripts/start-api.sh` 会自动寻找 JDK 21+/SDKMAN/Homebrew 路径）；SDK 用 **JDK 17+ 构建**（产物 Java 8 字节码），业务系统运行时 **JDK 8+** 即可。
+- **启动报 `Access denied ... (using password: NO)` 或 `Unable to determine Dialect without JDBC metadata`**：Hibernate 方言报错通常是「连不上库」的表象。确认 MySQL 已启动、`telbank_rbac` 已创建，并且把密码传给后端：`MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all-macos.sh --init-db`（Linux 用 `start-all-linux.sh`；脚本会自动映射 `MYSQL_*` → `RBAC_DB_*`）；也可显式设置 `RBAC_DB_URL/RBAC_DB_USER/RBAC_DB_PASSWORD`。
+- **JDK 版本不对**：权限中心需要 **JDK 21+**（`java -version` 校验；平台启动脚本会自动寻找 JDK 21+/SDKMAN/Homebrew 路径）；SDK 用 **JDK 17+ 构建**（产物 Java 8 字节码），业务系统运行时 **JDK 8+** 即可。
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。
 - **切系统后接口 403**：用户在该系统没有有效角色（`sys_user_role`），或调用了与 `X-System-Code` 不一致的 `systemId`；系统管理员只能操作自己系统；到「用户授权」给用户分配系统内角色即可。
@@ -397,7 +402,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 ## 11. 本次交付验证记录（摘要）
 
 - 权限中心后端：`clean test` **88/88 PASS**（JDK 21.0.13，系统隔离重构后）。
-- **系统隔离重构（A11）**：全量 API 验收 **81/81 PASS**（含 JDK8/JDK21 两个 SDK e2e 各 4/4）；覆盖系统由有效角色推导、数据驱动超管、bootstrap `currentSystemCode`、跨系统 403/超管跨系统、系统接入自动创建管理员角色、用户-系统开通接口 404。
+- **系统隔离重构（A11）**：当前业务表 7 张（含平台系统共 3 个系统：crm/erp/platform）；全量 API 验收 **81/81 PASS**（含 JDK8/JDK21 两个 SDK e2e 各 4/4）；覆盖系统由有效角色推导、数据驱动超管、bootstrap `currentSystemCode`、跨系统 403/超管跨系统、系统接入自动创建管理员角色、用户-系统开通接口 404。
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **97/97 PASS**，产物字节码 **major=52（Java 8）**；JDK 21 下同样 90/90。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **98/98 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过（订阅 `rbac:change:region_a:crm`，变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据）。

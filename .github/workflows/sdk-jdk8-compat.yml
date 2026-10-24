@@ -143,9 +143,15 @@ jobs:
             exit 1
           }
           Write-Host "PowerShell syntax OK"
-      - name: Check cmd wrapper
-        shell: cmd
-        run: if not exist scripts\start-all.cmd exit /b 1
+      - name: Check platform startup scripts are exactly three
+        shell: pwsh
+        run: |
+          $expected = @('scripts/start-all-macos.sh','scripts/start-all-linux.sh','scripts/start-all-windows.ps1')
+          foreach ($f in $expected) { if (-not (Test-Path $f)) { throw "missing $f" } }
+          foreach ($unexpected in @('scripts/start-all.sh','scripts/start-all.cmd','scripts/start-api.sh','scripts/start-front.sh','scripts/start-temp-mysql.sh')) {
+            if (Test-Path $unexpected) { throw "should be removed: $unexpected" }
+          }
+          Write-Host "startup scripts OK"
 
   runtime-jdk8:
     name: Smoke-test sample app on JDK 8 runtime

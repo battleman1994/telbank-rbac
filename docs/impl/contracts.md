@@ -53,10 +53,10 @@
 ## 2. 数据库初始化（手动 SQL，无 Flyway）
 
 - 本项目**不使用 Flyway**（用户确认移除，需求附录 A10）。数据库结构/种子数据由 `telbank-rbac-api/src/main/resources/db/manual/` 下的 SQL 维护，按文件名顺序执行：
-  - `01_schema.sql`：8 张表（`system_id` 隔离以 §9.2 偏差为准）
+  - `01_schema.sql`：8 张表（v2.0 经 `04_system_isolation.sql` 删除 `sys_user_system` 后为 **7 张**；`system_id` 隔离以 §9.2 偏差为准）
   - `02_seed_data.sql`：CRM/ERP 示例系统、角色、权限码、演示用户
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
-- 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。`start-all.sh --temp-db` 会在临时库启动后自动执行。
+- 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。平台一键脚本（`start-all-macos.sh` / `start-all-linux.sh` / `start-all-windows.ps1`）的 `--temp-db` 会在临时库启动后自动执行。
 - `04_system_isolation.sql`（v2.0）：删除 `sys_user_system`；`sys_system` 增加 `is_platform/admin_external_user_id/admin_name`；新增平台系统、`super-admin` 角色、`platform:admin` 权限、种子超管 `superadmin`；新增各业务系统短管理权限码与两个系统管理员演示账号。
 - 启动前提：数据库与表已经存在（`spring.jpa.hibernate.ddl-auto=none`，后端不会自动建表）。
 - SQL 文件由 Lead 维护；**新增变更不要改历史文件**，以 `05_xxx.sql` 递增并在 README/验收文档登记。
@@ -441,7 +441,7 @@ rbac:
 ## 11. 验收与命令（已落地）
 
 - 一键验证：`./scripts/verify-all.sh`（后端 46 单测 + SDK 90 单测 + 前端类型检查/构建 + 产物核对）
-- 权限中心：`./scripts/start-api.sh`（需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
+- 权限中心：`./scripts/start-all-macos.sh`（Linux 用 `start-all-linux.sh`；需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
 - SDK（JDK 8）：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
 - SDK（JDK 21）：`mvn -pl telbank-rbac2-starter test`（JDK 21，字节码 major=65）
 - 系统隔离：`GET /api/me/systems`（有效角色推导）+ `GET /api/me/bootstrap`（当前系统权限）；管理端 `/api/**` 带 `X-System-Code=<业务系统>`；系统接入 `/api/systems/**` 仅超管

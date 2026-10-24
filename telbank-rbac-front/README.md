@@ -61,7 +61,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8080
 
 ```bash
 # 1) 启动权限中心（JDK 21+，demo profile；HS256 演示 JWT）
-cd .. && ./scripts/start-api.sh
+cd .. && ./scripts/start-all-macos.sh   # Linux 用 start-all-linux.sh
 
 # 2) 生成演示 JWT（另开终端，演示账号如 superadmin / crm-admin-001 / erp-admin-001）
 TOKEN=$(./scripts/gen-demo-jwt.sh superadmin)

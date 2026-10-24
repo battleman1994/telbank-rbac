@@ -28,7 +28,7 @@ java -jar samples/business-demo-jdk21/target/business-demo-jdk21-1.0.0.jar \
   --rbac-sdk.app-secret=erp-dev-secret
 ```
 
-前置：权限中心 demo profile 已启动（`./scripts/start-api.sh`）。
+前置：权限中心 demo profile 已启动（`./scripts/start-all-macos.sh`，Linux 用 `start-all-linux.sh`）。
 
 ## 3. 验证接口拦截
 

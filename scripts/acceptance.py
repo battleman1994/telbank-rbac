@@ -2,8 +2,8 @@
 """telbank-rbac 需求第 9 节 · 权限中心 API 级验收冒烟脚本。
 
 前置：
-  1) 已初始化 MySQL 库 telbank_rbac（scripts/init-db.sh 或 scripts/start-temp-mysql.sh）
-  2) 权限中心以 demo profile 启动（./scripts/start-api.sh），监听 8080
+  1) 已初始化 MySQL 库 telbank_rbac（scripts/init-db.sh）
+  2) 权限中心以 demo profile 启动（平台一键脚本，或 mvn spring-boot:run），监听 8080
   3) 本脚本只依赖 Python 3 标准库
 
 用法：

@@ -2,10 +2,10 @@
 #
 # 同时启动权限中心后端（demo profile）与管理前端（开发模式），可选自动准备临时 MySQL。
 #
-# 用法（在仓库根目录）：
-#   .\scripts\start-all.cmd --temp-db
-#   .\scripts\start-all.cmd
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 --temp-db
+# 用法（在仓库根目录，PowerShell 5.1+）：
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 -TempDb
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1
+#   带管理员账号接入示例：先用 superadmin 登录前端「系统接入」录入管理员
 #
 # 参数：
 #   -TempDb            自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac，退出时清理
@@ -41,7 +41,7 @@ $TempDir = Join-Path $env:TEMP 'telbank-rbac-mysql'
 
 function Show-Usage {
     Write-Host @"
-用法: .\scripts\start-all.cmd [--temp-db] [--init-db]
+用法: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 [-TempDb] [-InitDb]
 
   --temp-db   自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac，退出时清理
   --init-db   针对已有 MySQL 先执行 scripts/init-db.sh（需 MYSQL_* 环境变量）
