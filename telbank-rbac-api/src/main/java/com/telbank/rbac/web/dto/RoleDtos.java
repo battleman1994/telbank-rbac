@@ -18,7 +18,9 @@ public final class RoleDtos {
                          String name,
                          Integer status,
                          Integer sort,
-                         String remark) {
+                         String remark,
+                         Long timeTemplateId,
+                         String timeTemplateName) {
     }
 
     public record RoleCreateRequest(@NotNull Long systemId,
@@ -26,12 +28,14 @@ public final class RoleDtos {
                                     @NotBlank @Size(max = 100) String name,
                                     Integer status,
                                     Integer sort,
-                                    @Size(max = 255) String remark) {
+                                    @Size(max = 255) String remark,
+                                    Long timeTemplateId) {
     }
 
     public record RoleUpdateRequest(@NotBlank @Size(max = 100) String name,
                                     Integer status,
                                     Integer sort,
-                                    @Size(max = 255) String remark) {
+                                    @Size(max = 255) String remark,
+                                    Long timeTemplateId) {
     }
 }

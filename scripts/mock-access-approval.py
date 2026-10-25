@@ -19,9 +19,11 @@
   ./scripts/mock-access-approval.py list --status ALL --system-code crm --limit 50
   ./scripts/mock-access-approval.py show --application-no RA-20261025-A1B2C3
   ./scripts/mock-access-approval.py approve --application-no RA-20261025-A1B2C3 --comment "同意，仅限本次"
-  ./scripts/mock-access-approval.py approve --application-no RA-... \
-      --valid-from 2026-10-25T01:30:00Z --valid-until 2026-10-26T01:30:00Z
   ./scripts/mock-access-approval.py reject --application-no RA-... --comment "不符合规定"
+
+A21 起审批决策不再携带授权窗口：权限中心在决策时按每个角色绑定的时间模板计算绝对窗口
+（多角色可各自不同），脚本只提交申请单号、决策、审批人与意见。list/show 展示的逐角色窗口
+来自权限中心落库结果（快照），仅用于本地演示核对。
 
   # 兼容计划 Task 7 的参数风格（无子命令时按旧参数执行决策）：
   ./scripts/mock-access-approval.py --application-no RA-... --decision REJECTED --comment 不符合规定
@@ -36,6 +38,9 @@
                              127.0.0.1:3306 root 空密码 telbank_rbac）
   RBAC_MYSQL_BIN             mysql 客户端路径，默认 mysql
 
+说明（A21）：审批决策请求不再接收 validFrom/validUntil，窗口由权限中心按角色时间模板计算；
+请求体只含 applicationNo/decision/reviewer/decisionComment。
+
 说明：权限中心当前只开放「决策回调」，没有供审批平台拉取申请单的开放接口（设计 §7.1）。
 list/show 因此直接读取本地 demo 数据库，作为「模拟审批平台的待办箱」，仅用于本地演示与验收；
 approve/reject 只依赖 HTTP，可在没有数据库的环境中直接使用（申请单号从「我的申请」页面复制）。
@@ -44,7 +49,6 @@ approve/reject 只依赖 HTTP，可在没有数据库的环境中直接使用（
 """
 
 import argparse
-import datetime as dt
 import hashlib
 import hmac
 import json
@@ -196,14 +200,17 @@ def query_applications(status=None, system_code=None, limit=20, application_no=N
         "WHEN 2 THEN 'REJECTED' ELSE CAST(a.status AS CHAR) END,"
         "'reason', a.reason,"
         "'roles', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT("
-        "'roleId', r.role_id, 'roleCode', r.role_code, 'roleName', r.role_name)) "
+        "'roleId', r.role_id, 'roleCode', r.role_code, 'roleName', r.role_name,"
+        "'timeTemplateName', r.time_template_name,"
+        "'approvedValidFrom', DATE_FORMAT(r.approved_valid_from, '%Y-%m-%dT%H:%i:%s'),"
+        "'approvedValidUntil', DATE_FORMAT(r.approved_valid_until, '%Y-%m-%dT%H:%i:%s'))) "
         "FROM sys_access_application_role r WHERE r.application_id = a.id), JSON_ARRAY()),"
         "'createdAt', DATE_FORMAT(a.created_at, '%Y-%m-%dT%H:%i:%s'),"
         "'reviewedBy', a.reviewed_by,"
         "'reviewedAt', DATE_FORMAT(a.reviewed_at, '%Y-%m-%dT%H:%i:%s'),"
         "'decisionComment', a.decision_comment,"
-        "'validFrom', DATE_FORMAT(a.approved_valid_from, '%Y-%m-%dT%H:%i:%s'),"
-        "'validUntil', DATE_FORMAT(a.approved_valid_until, '%Y-%m-%dT%H:%i:%s')"
+        "'approvedValidFrom', DATE_FORMAT(a.approved_valid_from, '%Y-%m-%dT%H:%i:%s'),"
+        "'approvedValidUntil', DATE_FORMAT(a.approved_valid_until, '%Y-%m-%dT%H:%i:%s')"
         ") FROM sys_access_application a JOIN sys_system s ON s.id = a.system_id"
         " WHERE " + " AND ".join(where) +
         " ORDER BY a.created_at DESC, a.id DESC"
@@ -329,7 +336,13 @@ def run_show(args):
     print("系统     : %s (%s)" % (item.get("systemCode"), item.get("systemName")))
     print("申请人   : %s" % (item.get("externalUserId") or "-"))
     print("状态     : %s" % status_label(item.get("status")))
-    print("申请角色 : %s" % format_roles(item.get("roles")))
+    roles = item.get("roles") or []
+    print("申请角色 : %s" % format_roles(roles))
+    for role in roles:
+        template = role.get("timeTemplateName") or "-"
+        window = "%s ~ %s" % (role.get("approvedValidFrom") or "-",
+                              role.get("approvedValidUntil") or "-")
+        print("           - %s 模板=%s 窗口=%s" % (role.get("roleCode"), template, window))
     print("申请原因 : %s" % (item.get("reason") or "-"))
     print("创建时间 : %s" % (item.get("createdAt") or "-"))
     if item.get("reviewedBy") or item.get("reviewedAt"):
@@ -337,33 +350,14 @@ def run_show(args):
         print("审批时间 : %s" % (item.get("reviewedAt") or "-"))
     if item.get("decisionComment"):
         print("审批意见 : %s" % item.get("decisionComment"))
-    if item.get("validFrom") or item.get("validUntil"):
-        print("授权窗口 : %s ~ %s" % (item.get("validFrom") or "-", item.get("validUntil") or "-"))
+    if item.get("approvedValidFrom") or item.get("approvedValidUntil"):
+        print("授权窗口（包络）: %s ~ %s" % (item.get("approvedValidFrom") or "-",
+                                            item.get("approvedValidUntil") or "-"))
     return 0
 
 
-def parse_iso8601(value, field):
-    text = value.strip()
-    try:
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        parsed = dt.datetime.fromisoformat(text)
-    except ValueError:
-        raise ScriptError("%s 不是合法 ISO-8601 时间：%s（示例 2026-10-25T01:30:00Z）"
-                          % (field, value))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed.astimezone(dt.timezone.utc).replace(microsecond=0)
-
-
-def iso8601(moment):
-    return moment.astimezone(dt.timezone.utc).replace(microsecond=0).strftime(
-        "%Y-%m-%dT%H:%M:%SZ")
-
-
-def build_decision_payload(application_no, decision, valid_from, valid_until,
-                           comment, reviewer):
-    decided_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+def build_decision_payload(application_no, decision, comment, reviewer):
+    """A21：只提交决策；授权窗口由权限中心按角色时间模板计算，请求不再携带时间字段。"""
     payload = {
         "applicationNo": application_no,
         "decision": decision,
@@ -374,16 +368,6 @@ def build_decision_payload(application_no, decision, valid_from, valid_until,
             raise ScriptError("审批意见不能超过 %d 字（当前 %d 字）"
                               % (MAX_COMMENT_LENGTH, len(comment)))
         payload["decisionComment"] = comment
-    if decision == "APPROVED":
-        from_moment = parse_iso8601(valid_from, "--valid-from") if valid_from else decided_at
-        until_moment = (parse_iso8601(valid_until, "--valid-until") if valid_until
-                        else from_moment + dt.timedelta(days=1))
-        if not until_moment > from_moment:
-            raise ScriptError("--valid-until 必须晚于 --valid-from")
-        if not until_moment > decided_at:
-            raise ScriptError("--valid-until 必须晚于当前时间（否则审批通过也没有实际授权窗口）")
-        payload["validFrom"] = iso8601(from_moment)
-        payload["validUntil"] = iso8601(until_moment)
     return payload
 
 
@@ -391,8 +375,8 @@ def run_decision(args):
     application_no = args.application_no.strip()
     if not APPLICATION_NO_PATTERN.fullmatch(application_no):
         raise ScriptError("申请单号格式不合法：%s" % application_no)
-    payload = build_decision_payload(application_no, args.decision, args.valid_from,
-                                     args.valid_until, args.comment, args.reviewer)
+    payload = build_decision_payload(application_no, args.decision, args.comment,
+                                     args.reviewer)
     raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     print_signed_curl(args.base_url, args.app_key, args.app_secret, "POST", PATH_DECISION, raw)
     return http_post_decision(args.base_url, args.app_key, args.app_secret, payload,
@@ -443,14 +427,6 @@ def build_parser():
         decide_parser = subparsers.add_parser(command, help=title, description=title)
         decide_parser.add_argument("--application-no", required=True,
                                    help="申请单号，如 RA-20261025-A1B2C3")
-        if decision == "APPROVED":
-            decide_parser.add_argument("--valid-from", default=None,
-                                       help="授权生效时间 ISO-8601，默认当前时间")
-            decide_parser.add_argument("--valid-until", default=None,
-                                       help="授权失效时间 ISO-8601，默认生效时间+1 天")
-        else:
-            decide_parser.add_argument("--valid-from", default=None, help=argparse.SUPPRESS)
-            decide_parser.add_argument("--valid-until", default=None, help=argparse.SUPPRESS)
         decide_parser.add_argument("--comment", default="", help="审批意见（<=255 字）")
         decide_parser.add_argument("--reviewer", default="mock-approval-platform",
                                    help="审批方标识，默认 mock-approval-platform")
@@ -467,8 +443,6 @@ def build_legacy_parser():
     parser.add_argument("--application-no", required=True, help="申请单号")
     parser.add_argument("--decision", choices=["APPROVED", "REJECTED"], default="APPROVED",
                         help="决策，默认 APPROVED")
-    parser.add_argument("--valid-from", default="", help="授权生效时间 ISO-8601（APPROVED 时默认当前时间）")
-    parser.add_argument("--valid-until", default="", help="授权失效时间 ISO-8601（APPROVED 时默认 +1 天）")
     parser.add_argument("--comment", default="", help="审批意见（<=255 字）")
     parser.add_argument("--reviewer", default="mock-approval-platform", help="审批方标识")
     add_common_http_args(parser)

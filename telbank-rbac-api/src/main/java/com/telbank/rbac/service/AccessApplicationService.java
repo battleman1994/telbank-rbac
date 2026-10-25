@@ -4,10 +4,12 @@ import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -27,11 +29,13 @@ import com.telbank.rbac.domain.entity.SysAccessApplication;
 import com.telbank.rbac.domain.entity.SysAccessApplicationRole;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysTimeTemplate;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationMapper;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysTimeTemplateMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.domain.mapper.row.AccessRolePermissionRow;
 import com.telbank.rbac.security.CurrentUserProvider;
@@ -72,6 +76,8 @@ public class AccessApplicationService {
     private final SysRoleMapper roleRepository;
     private final SysUserRoleMapper userRoleRepository;
     private final SysRolePermissionMapper rolePermissionRepository;
+    private final SysTimeTemplateMapper templateRepository;
+    private final RoleTimeWindowService roleTimeWindowService;
     private final SysSystemMapper systemRepository;
     private final ManagementContextService contextService;
     private final CurrentUserProvider currentUserProvider;
@@ -82,6 +88,8 @@ public class AccessApplicationService {
                                     SysRoleMapper roleRepository,
                                     SysUserRoleMapper userRoleRepository,
                                     SysRolePermissionMapper rolePermissionRepository,
+                                    SysTimeTemplateMapper templateRepository,
+                                    RoleTimeWindowService roleTimeWindowService,
                                     SysSystemMapper systemRepository,
                                     ManagementContextService contextService,
                                     CurrentUserProvider currentUserProvider,
@@ -91,6 +99,8 @@ public class AccessApplicationService {
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.rolePermissionRepository = rolePermissionRepository;
+        this.templateRepository = templateRepository;
+        this.roleTimeWindowService = roleTimeWindowService;
         this.systemRepository = systemRepository;
         this.contextService = contextService;
         this.currentUserProvider = currentUserProvider;
@@ -135,6 +145,11 @@ public class AccessApplicationService {
         if (roles.stream().anyMatch(role -> ADMIN_ROLE_CODE.equals(role.getCode()))) {
             throw ApiException.badRequest("系统管理员角色不可自助申请");
         }
+        // A21：自助申请只接受绑定了启用时间模板的角色；窗口在审批通过时按模板计算。
+        Map<Long, SysTimeTemplate> templates = loadBoundTemplates(roles);
+        if (templates.size() != roles.size()) {
+            throw ApiException.badRequest("角色未绑定时间模板，不能自助申请");
+        }
 
         Set<Long> ownedRoleIds = new HashSet<>(
                 userRoleRepository.findActiveRoleIds(context.systemId(), externalUserId));
@@ -159,11 +174,14 @@ public class AccessApplicationService {
         }
 
         for (SysRole role : roles) {
+            SysTimeTemplate template = templates.get(role.getId());
             SysAccessApplicationRole snapshot = new SysAccessApplicationRole();
             snapshot.setApplicationId(application.getId());
             snapshot.setRoleId(role.getId());
             snapshot.setRoleCode(role.getCode());
             snapshot.setRoleName(role.getName());
+            snapshot.setTimeTemplateId(template.getId());
+            snapshot.setTimeTemplateName(template.getName());
             applicationRoleRepository.save(snapshot);
         }
         // created_at 由数据库默认值生成，插入后回读一次，保证创建响应与列表/详情一致。
@@ -195,8 +213,8 @@ public class AccessApplicationService {
     }
 
     /**
-     * 当前系统可申请的角色：启用、排除 admin；owned 表示申请人已有效持有；
-     * permissions 为角色当前有效权限的预览（批量查询，避免 N+1）。
+     * 当前系统可申请的角色：启用、排除 admin、且绑定了启用中的时间模板；
+     * owned 表示申请人已有效持有；permissions 为角色当前权限的预览（批量查询，避免 N+1）。
      */
     @Transactional(readOnly = true)
     public OptionsVO options() {
@@ -204,23 +222,61 @@ public class AccessApplicationService {
         String externalUserId = currentUserProvider.requireExternalUserId();
         Set<Long> ownedRoleIds = new HashSet<>(
                 userRoleRepository.findActiveRoleIds(context.systemId(), externalUserId));
-        List<SysRole> roles = roleRepository
+        List<SysRole> enabledRoles = roleRepository
                 .findAllBySystemIdAndStatusOrderBySortAscIdAsc(context.systemId(),
                         RbacConstants.STATUS_ENABLED)
                 .stream()
                 .filter(role -> !ADMIN_ROLE_CODE.equals(role.getCode()))
                 .toList();
+        Map<Long, SysTimeTemplate> templates = loadBoundTemplates(enabledRoles);
+        List<SysRole> roles = enabledRoles.stream()
+                .filter(role -> templates.containsKey(role.getId()))
+                .toList();
         Map<Long, List<RolePermissionVO>> permissions = loadRolePermissions(context.systemId(),
                 roles.stream().map(SysRole::getId).toList());
         List<RoleOptionVO> roleOptions = roles.stream()
-                .map(role -> new RoleOptionVO(role.getId(), role.getCode(), role.getName(),
-                        ownedRoleIds.contains(role.getId()),
-                        permissions.getOrDefault(role.getId(), List.of())))
+                .map(role -> {
+                    SysTimeTemplate template = templates.get(role.getId());
+                    return new RoleOptionVO(role.getId(), role.getCode(), role.getName(),
+                            template.getId(), template.getName(),
+                            RoleTimeWindowService.describe(template),
+                            ownedRoleIds.contains(role.getId()),
+                            permissions.getOrDefault(role.getId(), List.of()));
+                })
                 .toList();
         SysSystem system = systemRepository.findById(context.systemId())
                 .orElseThrow(() -> ApiException.notFound("业务系统不存在"));
         return new OptionsVO(context.systemId(), context.systemCode(), system.getName(),
                 properties.getAccessApproval().getUrlTemplate(), roleOptions);
+    }
+
+    /**
+     * 批量加载角色绑定的启用模板：roleId → 模板；无模板 / 模板不存在 / 已停用的角色不出现在结果中。
+     */
+    private Map<Long, SysTimeTemplate> loadBoundTemplates(List<SysRole> roles) {
+        List<Long> templateIds = roles.stream()
+                .map(SysRole::getTimeTemplateId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (templateIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, SysTimeTemplate> enabledTemplates = templateRepository.findAllById(templateIds)
+                .stream()
+                .filter(template -> Integer.valueOf(RbacConstants.STATUS_ENABLED)
+                        .equals(template.getStatus()))
+                .collect(Collectors.toMap(SysTimeTemplate::getId, template -> template));
+        Map<Long, SysTimeTemplate> bound = new HashMap<>();
+        for (SysRole role : roles) {
+            if (role.getTimeTemplateId() != null) {
+                SysTimeTemplate template = enabledTemplates.get(role.getTimeTemplateId());
+                if (template != null) {
+                    bound.put(role.getId(), template);
+                }
+            }
+        }
+        return bound;
     }
 
     /** 我的申请分页：只查当前系统 + 当前申请人；status 为空表示全部。 */
@@ -273,7 +329,9 @@ public class AccessApplicationService {
                                List<SysAccessApplicationRole> snapshots) {
         List<RoleVO> roles = snapshots.stream()
                 .map(snapshot -> new RoleVO(snapshot.getRoleId(), snapshot.getRoleCode(),
-                        snapshot.getRoleName()))
+                        snapshot.getRoleName(), snapshot.getTimeTemplateName(),
+                        TimeUtils.toInstant(snapshot.getApprovedValidFrom()),
+                        TimeUtils.toInstant(snapshot.getApprovedValidUntil())))
                 .toList();
         return new ApplicationVO(application.getId(), application.getApplicationNo(),
                 application.getSystemId(), context.systemCode(), statusName(application.getStatus()),
@@ -302,7 +360,7 @@ public class AccessApplicationService {
                 application.getApplicationNo());
     }
 
-    /** 批量加载角色当前有效权限（授权启用 + 时效内 + 权限启用）。 */
+    /** 批量加载角色当前权限（授权启用 + 权限启用；A21 起角色-权限无时效）。 */
     private Map<Long, List<RolePermissionVO>> loadRolePermissions(Long systemId,
                                                                   List<Long> roleIds) {
         if (roleIds.isEmpty()) {

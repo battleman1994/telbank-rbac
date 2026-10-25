@@ -305,3 +305,16 @@ body {
   border-radius: 8px;
   background: #fafafa;
 }
+
+/* 我的申请：逐角色时间模板与授权窗口 */
+.access-role-window {
+  padding: 8px 10px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.access-role-window__time {
+  margin-top: 4px;
+  padding-left: 2px;
+}

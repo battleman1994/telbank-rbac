@@ -2,6 +2,7 @@ package com.telbank.rbac.service;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -26,11 +27,13 @@ import com.telbank.rbac.domain.entity.SysAccessApplication;
 import com.telbank.rbac.domain.entity.SysAccessApplicationRole;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysTimeTemplate;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationMapper;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysTimeTemplateMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.domain.mapper.row.AccessRolePermissionRow;
 import com.telbank.rbac.security.CurrentUserProvider;
@@ -58,6 +61,10 @@ class AccessApplicationServiceTest {
     private static final Long OPERATOR_ROLE_ID = 11L;
     private static final Long AUDITOR_ROLE_ID = 12L;
     private static final Long INTERN_ROLE_ID = 13L;
+    private static final Long CONTRACTOR_ROLE_ID = 14L;
+    private static final Long TIME_TEMPLATE_ID = 21L;
+    private static final String TIME_TEMPLATE_NAME = "夜间窗口";
+    private static final String TIME_TEMPLATE_TEXT = "审批后当天 19:00 ~ 次日 07:00";
     private static final Long PENDING_APPLICATION_ID = 100L;
     private static final String USER = "u-crm-001";
     private static final String OTHER_USER = "u-crm-002";
@@ -91,6 +98,7 @@ class AccessApplicationServiceTest {
     private SysRoleMapper roleRepository;
     private SysUserRoleMapper userRoleRepository;
     private SysRolePermissionMapper rolePermissionRepository;
+    private SysTimeTemplateMapper templateRepository;
     private SysSystemMapper systemRepository;
     private AccessApplicationService service;
 
@@ -102,8 +110,13 @@ class AccessApplicationServiceTest {
         SysSystem erp = system(ERP_ID, "erp", "ERP系统");
         SysRole admin = role(ADMIN_ROLE_ID, "admin", "管理员", RbacConstants.STATUS_ENABLED, 1);
         SysRole operator = role(OPERATOR_ROLE_ID, "operator", "CRM运营", RbacConstants.STATUS_ENABLED, 2);
+        operator.setTimeTemplateId(TIME_TEMPLATE_ID);
         SysRole auditor = role(AUDITOR_ROLE_ID, "auditor", "审计员", RbacConstants.STATUS_ENABLED, 3);
+        auditor.setTimeTemplateId(TIME_TEMPLATE_ID);
         SysRole intern = role(INTERN_ROLE_ID, "intern", "实习生", 0, 4);
+        SysRole contractor = role(CONTRACTOR_ROLE_ID, "contractor", "外包", RbacConstants.STATUS_ENABLED, 5);
+        SysTimeTemplate nightTemplate = timeTemplate(TIME_TEMPLATE_ID, TIME_TEMPLATE_NAME,
+                0, LocalTime.of(19, 0), 1, LocalTime.of(7, 0));
         Map<Long, List<AccessRolePermissionRow>> previewRows = Map.of(
                 ADMIN_ROLE_ID, List.of(
                         permissionRow(ADMIN_ROLE_ID, 101L, "*", "全部权限", 2)),
@@ -154,7 +167,7 @@ class AccessApplicationServiceTest {
                 Long systemId = (Long) args[0];
                 Integer status = (Integer) args[1];
                 roleQueryCalls.add(new RoleQueryCall(systemId, status));
-                return List.of(admin, operator, auditor, intern).stream()
+                return List.of(admin, operator, auditor, intern, contractor).stream()
                         .filter(role -> status == null || status.equals(role.getStatus()))
                         .toList();
             }
@@ -166,11 +179,33 @@ class AccessApplicationServiceTest {
                 if (!CRM_ID.equals(systemId)) {
                     return Optional.empty();
                 }
-                return List.of(admin, operator, auditor, intern).stream()
+                return List.of(admin, operator, auditor, intern, contractor).stream()
                         .filter(role -> role.getId().equals(roleId))
                         .findFirst();
             }
             return TestProxies.defaultValue(method.getReturnType());
+        });
+        templateRepository = TestProxies.proxy(SysTimeTemplateMapper.class, (proxy, method, args) -> {
+            switch (method.getName()) {
+                case "findById": {
+                    Long id = (Long) args[0];
+                    return TIME_TEMPLATE_ID.equals(id)
+                            ? Optional.of(nightTemplate)
+                            : Optional.empty();
+                }
+                case "findAllById": {
+                    List<Long> ids = new ArrayList<>();
+                    for (Object arg : (Collection<?>) args[0]) {
+                        ids.add((Long) arg);
+                    }
+                    return ids.stream()
+                            .filter(TIME_TEMPLATE_ID::equals)
+                            .map(id -> nightTemplate)
+                            .toList();
+                }
+                default:
+                    return TestProxies.defaultValue(method.getReturnType());
+            }
         });
         rolePermissionRepository = TestProxies.proxy(SysRolePermissionMapper.class, (proxy, method, args) -> {
             if ("findActivePermissionRows".equals(method.getName())) {
@@ -288,10 +323,17 @@ class AccessApplicationServiceTest {
                 .containsExactly("operator", "auditor");
         assertThat(options.roles()).extracting(RoleOptionVO::owned)
                 .containsExactly(true, false);
+        assertThat(options.roles()).extracting(RoleOptionVO::timeTemplateId)
+                .containsExactly(TIME_TEMPLATE_ID, TIME_TEMPLATE_ID);
+        assertThat(options.roles()).extracting(RoleOptionVO::timeTemplateName)
+                .containsExactly(TIME_TEMPLATE_NAME, TIME_TEMPLATE_NAME);
+        assertThat(options.roles()).extracting(RoleOptionVO::timeTemplateText)
+                .containsExactly(TIME_TEMPLATE_TEXT, TIME_TEMPLATE_TEXT);
         assertThat(options.roles()).flatExtracting(RoleOptionVO::permissions)
                 .extracting(RolePermissionVO::code)
                 .containsExactly("order:read");
-        assertThat(options.roles().toString()).doesNotContain("admin").doesNotContain("intern");
+        assertThat(options.roles().toString()).doesNotContain("admin").doesNotContain("intern")
+                .doesNotContain("contractor");
         assertThat(roleQueryCalls).singleElement().satisfies(call -> {
             assertThat(call.systemId()).isEqualTo(CRM_ID);
             assertThat(call.status()).isEqualTo(RbacConstants.STATUS_ENABLED);
@@ -517,7 +559,20 @@ class AccessApplicationServiceTest {
             assertThat(snapshot.getRoleId()).isEqualTo(AUDITOR_ROLE_ID);
             assertThat(snapshot.getRoleCode()).isEqualTo("auditor");
             assertThat(snapshot.getRoleName()).isEqualTo("审计员");
+            assertThat(snapshot.getTimeTemplateId()).isEqualTo(TIME_TEMPLATE_ID);
+            assertThat(snapshot.getTimeTemplateName()).isEqualTo(TIME_TEMPLATE_NAME);
         });
+    }
+
+    @Test
+    void create_rejectsRoleWithoutTimeTemplate() {
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(CONTRACTOR_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("角色未绑定时间模板，不能自助申请");
+                });
+        assertThat(savedApplicationNos).isEmpty();
     }
 
     @Test
@@ -687,8 +742,24 @@ class AccessApplicationServiceTest {
         ManagementContextService contextService =
                 new ManagementContextService(currentUserProvider, systemRepository, userRoleRepository);
         return new AccessApplicationService(applicationRepository, applicationRoleRepository,
-                roleRepository, userRoleRepository, rolePermissionRepository, systemRepository,
+                roleRepository, userRoleRepository, rolePermissionRepository, templateRepository,
+                new RoleTimeWindowService(templateRepository), systemRepository,
                 contextService, currentUserProvider, properties);
+    }
+
+    private static SysTimeTemplate timeTemplate(Long id, String name, int startDayOffset,
+                                                LocalTime startTime, int endDayOffset,
+                                                LocalTime endTime) {
+        SysTimeTemplate template = new SysTimeTemplate();
+        template.setId(id);
+        template.setName(name);
+        template.setTimezone("Asia/Shanghai");
+        template.setStartDayOffset(startDayOffset);
+        template.setStartTime(startTime);
+        template.setEndDayOffset(endDayOffset);
+        template.setEndTime(endTime);
+        template.setStatus(RbacConstants.STATUS_ENABLED);
+        return template;
     }
 
     private static SysSystem system(Long id, String code, String name) {

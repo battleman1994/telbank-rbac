@@ -26,7 +26,7 @@ export function PlatformAdminGuard({ children }: { children: ReactNode }) {
     return (
       <NoPermission
         title="无访问权限"
-        description="「系统接入」仅平台超管可访问，请联系平台超管操作。"
+        description="该页面仅平台超管可访问，请联系平台超管操作。"
       />
     )
   }

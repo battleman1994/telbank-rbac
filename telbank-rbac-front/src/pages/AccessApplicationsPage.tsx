@@ -68,6 +68,72 @@ function formatApprovedWindow(record: AccessApplicationVO): string {
   return `${formatDateTime(record.approvedValidFrom)} ~ ${formatDateTime(record.approvedValidUntil)}`
 }
 
+const APPROVED_PHASE_META = {
+  PENDING: { text: '待生效', color: 'gold' },
+  ACTIVE: { text: '生效中', color: 'green' },
+  EXPIRED: { text: '已过期', color: 'default' },
+} as const
+
+type ApprovedPhase = keyof typeof APPROVED_PHASE_META
+
+/** 按当前时间判断已通过窗口所处的阶段（仅展示文案，不改变状态字段） */
+function resolveApprovedPhase(
+  validFrom?: string | null,
+  validUntil?: string | null,
+): ApprovedPhase | null {
+  if (!validFrom && !validUntil) return null
+  const now = Date.now()
+  const from = validFrom ? new Date(validFrom).getTime() : null
+  const until = validUntil ? new Date(validUntil).getTime() : null
+  if (from !== null && now < from) return 'PENDING'
+  if (until !== null && now > until) return 'EXPIRED'
+  return 'ACTIVE'
+}
+
+/** 已通过窗口的阶段标签：待生效 / 生效中 / 已过期 */
+function ApprovedPhaseTag({ validFrom, validUntil }: { validFrom?: string | null; validUntil?: string | null }) {
+  const phase = resolveApprovedPhase(validFrom, validUntil)
+  if (!phase) return null
+  const meta = APPROVED_PHASE_META[phase]
+  return <Tag color={meta.color}>{meta.text}</Tag>
+}
+
+/** 详情中的逐角色模板与授权窗口（A21：多角色窗口可以不同） */
+function RoleSnapshotDetails({ record }: { record: AccessApplicationVO }) {
+  const roles = record.roles ?? []
+  if (roles.length === 0) return <Text type="secondary">-</Text>
+  return (
+    <Flex vertical gap={8}>
+      {roles.map((role) => {
+        const roleWindow =
+          role.approvedValidFrom || role.approvedValidUntil
+            ? `${formatDateTime(role.approvedValidFrom)} ~ ${formatDateTime(role.approvedValidUntil)}`
+            : null
+        return (
+          <div key={role.roleId} className="access-role-window">
+            <Space size={6} wrap>
+              <Tag color="geekblue">{role.roleCode}</Tag>
+              <Text strong>{role.roleName}</Text>
+              <Tag color="purple">{role.timeTemplateName || '永久角色'}</Tag>
+              {record.status === 'APPROVED' ? (
+                <ApprovedPhaseTag
+                  validFrom={role.approvedValidFrom}
+                  validUntil={role.approvedValidUntil}
+                />
+              ) : null}
+            </Space>
+            <div className="access-role-window__time">
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                授权窗口：{roleWindow ?? '待审批通过后按模板计算'}
+              </Text>
+            </div>
+          </div>
+        )
+      })}
+    </Flex>
+  )
+}
+
 /** 申请角色快照标签；超过 max 个折叠为 +N（悬停展示全部） */
 function RoleSnapshotTags({ record, max = 3 }: { record: AccessApplicationVO; max?: number }) {
   const roles = record.roles ?? []
@@ -231,7 +297,13 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
       width: 200,
       render: (_, record) =>
         record.status === 'APPROVED' ? (
-          <Text>{formatApprovedWindow(record)}</Text>
+          <Space orientation="vertical" size={0}>
+            <Text>{formatApprovedWindow(record)}</Text>
+            <ApprovedPhaseTag
+              validFrom={record.approvedValidFrom}
+              validUntil={record.approvedValidUntil}
+            />
+          </Space>
         ) : (
           <Text type="secondary">-</Text>
         ),
@@ -261,7 +333,7 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
   return (
     <PageShell
       title="我的申请"
-      description={`当前系统：${currentSystem?.name ?? '-'}（${currentSystem?.code ?? '-'}）。审批通过后按统一连续有效期授予所选角色，过期自动失效；本页不提供审批操作。`}
+      description={`当前系统：${currentSystem?.name ?? '-'}（${currentSystem?.code ?? '-'}）。审批通过后按各角色绑定的时间模板计算授权窗口（多角色窗口可以不同），到期自动失效；本页不提供审批操作。`}
       extra={
         <Space wrap>
           <Button icon={<ReloadOutlined />} onClick={() => void listQuery.refetch()}>
@@ -346,7 +418,7 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
             type="info"
             showIcon
             title="审批通过后自动授予临时权限"
-            description="申请提交后由外部审批平台审批；通过后按统一连续有效期授予所选角色，过期自动失效。请勿在申请原因中填写密码、密钥等敏感信息。"
+            description="申请提交后由外部审批平台审批；通过后按每个角色绑定的时间模板计算生效窗口（如「审批后当天 19:00 ~ 次日 07:00」），到期自动失效。请勿在申请原因中填写密码、密钥等敏感信息。"
           />
 
           {submitError ? (
@@ -406,7 +478,7 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
                 disabled={optionsQuery.isLoading || optionsQuery.isError}
                 options={roleOptions.map((role: AccessRoleOptionVO) => ({
                   value: role.roleId,
-                  label: `${role.roleName}（${role.roleCode}）${role.owned ? ' · 已拥有' : ''}`,
+                  label: `${role.roleName}（${role.roleCode}）${role.timeTemplateText ? ` · ${role.timeTemplateText}` : ''}${role.owned ? ' · 已拥有' : ''}`,
                   disabled: role.owned,
                 }))}
               />
@@ -422,6 +494,9 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
                       <Space size={6} wrap style={{ marginBottom: 6 }}>
                         <Text strong>{role.roleName}</Text>
                         <Tag color="geekblue">{role.roleCode}</Tag>
+                        {role.timeTemplateText ? (
+                          <Tag color="purple">{role.timeTemplateText}</Tag>
+                        ) : null}
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {role.permissions.length} 项权限
                         </Text>
@@ -519,8 +594,8 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
               },
               {
                 key: 'roles',
-                label: '申请角色',
-                children: <RoleSnapshotTags record={detail} max={10} />,
+                label: '申请角色（模板与窗口）',
+                children: <RoleSnapshotDetails record={detail} />,
               },
               {
                 key: 'reason',
@@ -536,7 +611,17 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
                 key: 'approvedWindow',
                 label: '授权有效期',
                 children:
-                  detail.status === 'APPROVED' ? formatApprovedWindow(detail) : '-',
+                  detail.status === 'APPROVED' ? (
+                    <Space size={8} wrap>
+                      <Text>{formatApprovedWindow(detail)}</Text>
+                      <ApprovedPhaseTag
+                        validFrom={detail.approvedValidFrom}
+                        validUntil={detail.approvedValidUntil}
+                      />
+                    </Space>
+                  ) : (
+                    '-'
+                  ),
               },
               {
                 key: 'reviewedBy',

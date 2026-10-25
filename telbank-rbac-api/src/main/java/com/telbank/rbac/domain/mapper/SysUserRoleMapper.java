@@ -60,6 +60,7 @@ public interface SysUserRoleMapper extends RbacMapper<SysUserRole> {
 
     /**
      * 用户当前生效的权限码及其时效包络（时效过滤，含 is_public=1 公共权限）。
+     * A21：角色-权限不再带时效，生效窗口直接取 {@code sys_user_role} 的窗口。
      * 时间用 DATE_FORMAT 输出 ISO-8601 字符串，避免 JDBC 时区二次转换。
      */
     @Select("""
@@ -71,12 +72,8 @@ public interface SysUserRoleMapper extends RbacMapper<SysUserRole> {
             FROM sys_permission p
             JOIN (
                 SELECT rp.permission_id AS permission_id,
-                       CASE WHEN ur.valid_from IS NULL THEN rp.valid_from
-                            WHEN rp.valid_from IS NULL THEN ur.valid_from
-                            ELSE GREATEST(ur.valid_from, rp.valid_from) END AS valid_from,
-                       CASE WHEN ur.valid_until IS NULL THEN rp.valid_until
-                            WHEN rp.valid_until IS NULL THEN ur.valid_until
-                            ELSE LEAST(ur.valid_until, rp.valid_until) END AS valid_until
+                       ur.valid_from AS valid_from,
+                       ur.valid_until AS valid_until
                 FROM sys_user_role ur
                 JOIN sys_role r ON r.id = ur.role_id AND r.status = 1
                 JOIN sys_role_permission rp ON rp.role_id = r.id AND rp.status = 1
@@ -85,8 +82,6 @@ public interface SysUserRoleMapper extends RbacMapper<SysUserRole> {
                   AND ur.external_user_id = #{externalUserId}
                   AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
                   AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
-                  AND (rp.valid_from IS NULL OR rp.valid_from <= NOW())
-                  AND (rp.valid_until IS NULL OR rp.valid_until > NOW())
                 UNION ALL
                 SELECT pp.id AS permission_id, NULL AS valid_from, NULL AS valid_until
                 FROM sys_permission pp
@@ -152,8 +147,6 @@ public interface SysUserRoleMapper extends RbacMapper<SysUserRole> {
               AND ur.status = 1
               AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
               AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
-              AND (rp.valid_from IS NULL OR rp.valid_from <= NOW())
-              AND (rp.valid_until IS NULL OR rp.valid_until > NOW())
             """)
     long countEffectivePermission(@Param("systemId") Long systemId,
                                   @Param("externalUserId") String externalUserId,

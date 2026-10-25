@@ -24,10 +24,13 @@ public final class AccessApplicationDtos {
                                    Integer type) {
     }
 
-    /** 可申请角色：owned 表示申请人当前已有效持有，前端禁止勾选。 */
+    /** 可申请角色：owned 表示申请人当前已有效持有，前端禁止勾选；仅返回绑定启用模板的角色。 */
     public record RoleOptionVO(Long roleId,
                                String roleCode,
                                String roleName,
+                               Long timeTemplateId,
+                               String timeTemplateName,
+                               String timeTemplateText,
                                boolean owned,
                                List<RolePermissionVO> permissions) {
     }
@@ -45,10 +48,13 @@ public final class AccessApplicationDtos {
                                 @NotBlank @Size(max = 200) String reason) {
     }
 
-    /** 申请单中的角色快照（申请时的 role_code/role_name）。 */
+    /** 申请单中的角色快照（申请时的 role_code/role_name/时间模板与审批窗口）。 */
     public record RoleVO(Long roleId,
                          String roleCode,
-                         String roleName) {
+                         String roleName,
+                         String timeTemplateName,
+                         Instant approvedValidFrom,
+                         Instant approvedValidUntil) {
     }
 
     /** 申请单视图：status 转为 PENDING/APPROVED/REJECTED，时间统一 Instant。 */
@@ -69,11 +75,9 @@ public final class AccessApplicationDtos {
                                 String approvalUrl) {
     }
 
-    /** 审批回调：decision 仅接受 APPROVED/REJECTED，validFrom/validUntil 为可选审批窗口。 */
+    /** 审批回调：decision 仅接受 APPROVED/REJECTED；生效窗口由角色绑定的时间模板在审批时计算。 */
     public record DecisionRequest(@NotBlank String applicationNo,
                                   @NotBlank String decision,
-                                  Instant validFrom,
-                                  Instant validUntil,
                                   @Size(max = 128) String reviewer,
                                   @Size(max = 255) String decisionComment) {
     }

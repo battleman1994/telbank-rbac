@@ -175,6 +175,49 @@ export interface SystemApproveResultVO extends SystemApplicationVO {
 }
 
 /* ------------------------------------------------------------------ */
+/* §3.2d 时间模板（A21，全局，不按系统隔离）                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 时间模板：只在「用户角色」写入时计算一个绝对授权窗口，本身不按系统隔离。
+ * 角色绑定模板后为临时角色；未绑定模板为永久角色（窗口为空）。
+ */
+export interface TimeTemplateVO {
+  id: number
+  name: string
+  /** IANA 时区，默认 Asia/Shanghai */
+  timezone: string
+  /** 相对锚点日期的开始天数偏移（0–3650） */
+  startDayOffset: number
+  /** 本地开始时间 HH:mm */
+  startTime: string
+  /** 相对锚点日期的结束天数偏移（0–3650） */
+  endDayOffset: number
+  /** 本地结束时间 HH:mm */
+  endTime: string
+  status: number
+  remark?: string | null
+}
+
+export interface TimeTemplateCreatePayload {
+  name: string
+  timezone?: string
+  startDayOffset: number
+  startTime: string
+  endDayOffset: number
+  endTime: string
+  status?: number
+  remark?: string
+}
+
+export type TimeTemplateUpdatePayload = TimeTemplateCreatePayload
+
+export interface TimeTemplateListQuery {
+  /** 1 启用 / 0 停用；不传返回全部 */
+  status?: number
+}
+
+/* ------------------------------------------------------------------ */
 /* §3.3 角色管理                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -186,6 +229,10 @@ export interface RoleVO {
   status: number
   sort: number
   remark?: string | null
+  /** 绑定的时间模板 ID；null 表示永久角色 */
+  timeTemplateId?: number | null
+  /** 绑定的时间模板名称；null/空表示永久角色 */
+  timeTemplateName?: string | null
 }
 
 export interface RoleCreatePayload {
@@ -195,6 +242,8 @@ export interface RoleCreatePayload {
   status?: number
   sort?: number
   remark?: string
+  /** 可空；非空时模板必须存在且启用，admin 角色必须为空 */
+  timeTemplateId?: number | null
 }
 
 export interface RoleUpdatePayload {
@@ -202,6 +251,8 @@ export interface RoleUpdatePayload {
   status?: number
   sort?: number
   remark?: string
+  /** 可空；null 表示改为永久角色 */
+  timeTemplateId?: number | null
 }
 
 /* ------------------------------------------------------------------ */
@@ -245,11 +296,13 @@ export interface PermissionSavePayload {
 /* §3.5 角色-权限授权                                                   */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 角色已授权项（A21）：角色-权限为静态授权，授权/撤销即时生效，不再带时效。
+ * 时间语义上移到「用户-角色」（validFrom/validUntil 属于 UserRoleVO）。
+ */
 export interface PermissionGrant {
   permissionId: number
   code: string
-  validFrom: string | null
-  validUntil: string | null
   status: number
 }
 
@@ -260,8 +313,6 @@ export interface RolePermissionResult {
 
 export interface GrantPayload {
   permissionIds: number[]
-  validFrom?: string | null
-  validUntil?: string | null
   grantReason?: string
 }
 
@@ -291,8 +342,6 @@ export interface UserRoleCreatePayload {
   systemId: number
   externalUserId: string
   roleId: number
-  validFrom?: string | null
-  validUntil?: string | null
   grantReason?: string
 }
 
@@ -385,12 +434,18 @@ export interface AccessRolePermissionVO {
   type: PermissionType | number
 }
 
-/** 可申请角色：owned=true 表示申请人当前已有效持有，前端禁止勾选 */
+/** 可申请角色（A21）：只返回「启用 + 非 admin + 已绑定启用时间模板」的角色 */
 export interface AccessRoleOptionVO {
   roleId: number
   roleCode: string
   roleName: string
   owned: boolean
+  /** 申请角色的时间模板 ID */
+  timeTemplateId?: number | null
+  /** 时间模板名称 */
+  timeTemplateName?: string | null
+  /** 时间模板摘要（如「审批后当天 19:00 ~ 次日 07:00」） */
+  timeTemplateText?: string | null
   permissions: AccessRolePermissionVO[]
 }
 
@@ -403,16 +458,26 @@ export interface AccessApplicationOptionsVO {
   roles: AccessRoleOptionVO[]
 }
 
-/** 申请单中的角色快照（申请时的 roleCode/roleName） */
+/**
+ * 申请单中的角色快照（A21）：记录申请时的 roleCode/roleName 与角色时间模板，
+ * 审批通过后写入该角色自己的授权窗口（多角色窗口可以不同）。
+ */
 export interface AccessApplicationRoleVO {
   roleId: number
   roleCode: string
   roleName: string
+  /** 角色绑定的时间模板名称（申请时快照） */
+  timeTemplateName?: string | null
+  /** 该角色审批通过后的生效时间（ISO-8601 UTC，仅 APPROVED 后存在） */
+  approvedValidFrom?: string | null
+  /** 该角色审批通过后的失效时间（ISO-8601 UTC，仅 APPROVED 后存在） */
+  approvedValidUntil?: string | null
 }
 
 /**
  * 申请单视图：时间字段为 ISO-8601 UTC 字符串；
- * approvedValidFrom/approvedValidUntil 仅在审批通过后存在（统一授权窗口）。
+ * approvedValidFrom/approvedValidUntil 为所有角色窗口的包络（最早开始、最晚结束），
+ * 仅在审批通过后存在；逐角色窗口见 roles[].approvedValidFrom/Until。
  */
 export interface AccessApplicationVO {
   id: number

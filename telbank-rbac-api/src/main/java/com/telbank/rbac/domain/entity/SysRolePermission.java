@@ -1,10 +1,10 @@
 package com.telbank.rbac.domain.entity;
 
-import java.time.LocalDateTime;
-
 
 /**
  * 角色-权限关联（V1 {@code sys_role_permission}，{@code (role_id, permission_id)} 唯一）。
+ *
+ * <p>A21 起角色-权限不再带时效：权限授权永久有效（用户侧时效由 {@code sys_user_role} 承载）。</p>
  */
 import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -21,12 +21,6 @@ public class SysRolePermission extends BaseEntity {
 
     @TableField("permission_id")
     private Long permissionId;
-
-    @TableField(value = "valid_from", updateStrategy = FieldStrategy.ALWAYS)
-    private LocalDateTime validFrom;
-
-    @TableField(value = "valid_until", updateStrategy = FieldStrategy.ALWAYS)
-    private LocalDateTime validUntil;
 
     @TableField("auto_revoke")
     private Integer autoRevoke = 1;
@@ -62,22 +56,6 @@ public class SysRolePermission extends BaseEntity {
 
     public void setPermissionId(Long permissionId) {
         this.permissionId = permissionId;
-    }
-
-    public LocalDateTime getValidFrom() {
-        return validFrom;
-    }
-
-    public void setValidFrom(LocalDateTime validFrom) {
-        this.validFrom = validFrom;
-    }
-
-    public LocalDateTime getValidUntil() {
-        return validUntil;
-    }
-
-    public void setValidUntil(LocalDateTime validUntil) {
-        this.validUntil = validUntil;
     }
 
     public Integer getAutoRevoke() {

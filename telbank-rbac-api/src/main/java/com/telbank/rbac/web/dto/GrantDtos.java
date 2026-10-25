@@ -18,8 +18,6 @@ public final class GrantDtos {
 
     public record RolePermissionGrantVO(Long permissionId,
                                         String code,
-                                        Instant validFrom,
-                                        Instant validUntil,
                                         Integer status) {
     }
 
@@ -27,8 +25,6 @@ public final class GrantDtos {
     }
 
     public record RolePermissionGrantRequest(@NotEmpty List<Long> permissionIds,
-                                             Instant validFrom,
-                                             Instant validUntil,
                                              @Size(max = 255) String grantReason) {
     }
 
@@ -51,8 +47,6 @@ public final class GrantDtos {
     public record UserRoleCreateRequest(@NotNull Long systemId,
                                         @NotBlank @Size(max = 255) String externalUserId,
                                         @NotNull Long roleId,
-                                        Instant validFrom,
-                                        Instant validUntil,
                                         @Size(max = 255) String grantReason) {
     }
 }

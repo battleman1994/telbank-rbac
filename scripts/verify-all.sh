@@ -162,6 +162,27 @@ ok "系统接入凭据查看 + admin 授权保护产物存在"
 [ -x scripts/mock-access-approval.py ] \
   || die "缺少可执行的 mock-access-approval.py"
 ok "业务用户临时权限申请产物存在"
+# A21 角色时间模板产物
+[ -f "$SQL_DIR/11_time_template.sql" ] || die "缺少 11_time_template.sql"
+grep -q 'sys_time_template' "$SQL_DIR/11_time_template.sql" \
+  || die "11_time_template.sql 未创建 sys_time_template"
+grep -q 'time_template_id' "$SQL_DIR/11_time_template.sql" \
+  || die "11_time_template.sql 未给角色/申请快照增加 time_template_id"
+grep -rq '"/api/time-templates"' telbank-rbac-api/src/main/java \
+  || die "缺少 /api/time-templates 时间模板接口"
+grep -rq 'class RoleTimeWindowService' telbank-rbac-api/src/main/java \
+  || die "缺少 RoleTimeWindowService（角色时间窗口计算）"
+grep -rq 'time-templates' telbank-rbac-front/src/config/menu.ts \
+  || die "前端菜单缺少 time-templates（时间模板）"
+[ -f telbank-rbac-front/src/pages/TimeTemplatesPage.tsx ] \
+  || die "缺少时间模板管理页面"
+grep -q '角色权限' telbank-rbac-front/src/config/menu.ts \
+  || die "前端菜单未更名为「角色权限」"
+grep -q '用户角色' telbank-rbac-front/src/config/menu.ts \
+  || die "前端菜单未更名为「用户角色」"
+grep -q '版本：v3.0' docs/impl/contracts.md \
+  || die "contracts.md 未升级到 v3.0（A21 时间模板）"
+ok "A21 角色时间模板产物存在（11 迁移/模板接口与页面/菜单更名/契约 v3.0）"
 
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"

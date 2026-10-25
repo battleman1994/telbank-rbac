@@ -18,9 +18,10 @@ import {
   Space,
   Table,
   Tag,
+  Typography,
 } from 'antd'
 import type { TableProps } from 'antd'
-import { createRole, disableRole, listRoles, updateRole } from '../api'
+import { createRole, disableRole, listRoles, listTimeTemplates, updateRole } from '../api'
 import type { RoleCreatePayload, RoleUpdatePayload, RoleVO } from '../api/types'
 import { PageShell } from '../components/PageShell'
 import { StatusTag } from '../components/StatusTags'
@@ -28,6 +29,7 @@ import { SystemRequired } from '../components/SystemGate'
 import { useCurrentSystemId } from '../stores/app'
 import { STATUS_OPTIONS } from '../utils/labels'
 import { createPaginationConfig } from '../utils/pagination'
+import { describeTimeTemplate } from '../utils/format'
 
 interface RoleFormValues {
   code: string
@@ -35,6 +37,8 @@ interface RoleFormValues {
   status: number
   sort: number
   remark?: string
+  /** 绑定的时间模板；不绑定（undefined/null）表示永久角色 */
+  timeTemplateId?: number | null
 }
 
 /** 角色管理（契约 §3.3）：按当前系统隔离的角色 CRUD */
@@ -56,11 +60,23 @@ function RolesContent({ systemId }: { systemId: number }) {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<RoleVO | null>(null)
   const [form] = Form.useForm<RoleFormValues>()
+  const watchedCode = Form.useWatch('code', form)
+  const isAdminRole = (editing?.code ?? watchedCode) === 'admin'
 
   const rolesQuery = useQuery({
     queryKey: ['roles', systemId, { keyword, page, size }],
     queryFn: () => listRoles({ systemId, keyword: keyword || undefined, page, size }),
   })
+
+  const timeTemplatesQuery = useQuery({
+    queryKey: ['time-templates', 'enabled'],
+    queryFn: () => listTimeTemplates({ status: 1 }),
+  })
+
+  const timeTemplateOptions = (timeTemplatesQuery.data ?? []).map((template) => ({
+    value: template.id,
+    label: `${template.name}（${describeTimeTemplate(template)}）`,
+  }))
 
   const saveMutation = useMutation({
     mutationFn: (values: RoleFormValues) => {
@@ -70,6 +86,8 @@ function RolesContent({ systemId }: { systemId: number }) {
           status: values.status,
           sort: values.sort,
           remark: values.remark,
+          // 允许清空模板（null = 改为永久角色）；admin 角色不绑定模板
+          timeTemplateId: isAdminRole ? null : (values.timeTemplateId ?? null),
         }
         return updateRole(editing.id, payload)
       }
@@ -80,6 +98,7 @@ function RolesContent({ systemId }: { systemId: number }) {
         status: values.status,
         sort: values.sort,
         remark: values.remark,
+        timeTemplateId: isAdminRole ? null : (values.timeTemplateId ?? null),
       }
       return createRole(payload)
     },
@@ -101,7 +120,7 @@ function RolesContent({ systemId }: { systemId: number }) {
   function openCreateModal() {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ status: 1, sort: 0 })
+    form.setFieldsValue({ status: 1, sort: 0, timeTemplateId: null })
     setModalOpen(true)
   }
 
@@ -114,16 +133,17 @@ function RolesContent({ systemId }: { systemId: number }) {
       status: record.status,
       sort: record.sort,
       remark: record.remark ?? undefined,
+      timeTemplateId: record.timeTemplateId ?? null,
     })
     setModalOpen(true)
   }
 
   const columns: TableProps<RoleVO>['columns'] = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
+    { title: 'ID', dataIndex: 'id', width: 70 },
     {
       title: '角色编码',
       dataIndex: 'code',
-      width: 160,
+      width: 150,
       render: (value: string) => (
         <Space size={4}>
           <Tag color="blue">{value}</Tag>
@@ -131,19 +151,30 @@ function RolesContent({ systemId }: { systemId: number }) {
         </Space>
       ),
     },
-    { title: '角色名称', dataIndex: 'name', width: 180 },
+    { title: '角色名称', dataIndex: 'name', width: 150 },
+    {
+      title: '时间模板',
+      dataIndex: 'timeTemplateName',
+      width: 160,
+      render: (value: string | null | undefined) =>
+        value ? (
+          <Tag color="purple">{value}</Tag>
+        ) : (
+          <Typography.Text type="secondary">永久角色</Typography.Text>
+        ),
+    },
     {
       title: '所属系统 ID',
       dataIndex: 'systemId',
-      width: 120,
+      width: 100,
     },
-    { title: '状态', dataIndex: 'status', width: 90, render: (value: number) => <StatusTag status={value} /> },
-    { title: '排序', dataIndex: 'sort', width: 80 },
-    { title: '备注', dataIndex: 'remark', ellipsis: true, render: (value: string | null) => value || '-' },
+    { title: '状态', dataIndex: 'status', width: 80, render: (value: number) => <StatusTag status={value} /> },
+    { title: '排序', dataIndex: 'sort', width: 70 },
+    { title: '备注', dataIndex: 'remark', render: (value: string | null) => value || '-' },
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 140,
       render: (_, record) => (
         <Space size={4}>
           <Button type="link" size="small" onClick={() => openEditModal(record)}>
@@ -168,7 +199,7 @@ function RolesContent({ systemId }: { systemId: number }) {
   return (
     <PageShell
       title="角色管理"
-      description={`当前系统 ID：${systemId}。角色按系统隔离，同一系统内角色编码唯一；跨系统可出现同名角色编码。`}
+      description={`当前系统 ID：${systemId}。角色按系统隔离，同一系统内角色编码唯一；可绑定全局时间模板（不绑定为永久角色，权限窗口在用户角色分配/审批时按模板计算）。`}
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void rolesQuery.refetch()}>
@@ -266,6 +297,23 @@ function RolesContent({ systemId }: { systemId: number }) {
           </Form.Item>
           <Form.Item label="角色名称" name="name" rules={[{ required: true, message: '请输入角色名称' }]}>
             <Input placeholder="如 管理员" maxLength={100} />
+          </Form.Item>
+          <Form.Item
+            label="时间模板"
+            name="timeTemplateId"
+            tooltip="绑定后该角色的用户角色分配将按模板计算绝对窗口；不绑定或清空则为永久角色。admin 为内置全权角色，不绑定模板。"
+            extra={isAdminRole ? '内置 admin 角色默认拥有全部权限，不绑定时间模板。' : '可清空：清空后该角色变为永久角色。'}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={isAdminRole ? 'admin 角色不绑定模板' : '不绑定（永久角色）'}
+              disabled={isAdminRole}
+              loading={timeTemplatesQuery.isLoading}
+              options={timeTemplateOptions}
+              notFoundContent={timeTemplatesQuery.isError ? '模板加载失败，请稍后重试' : '暂无启用的时间模板'}
+            />
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>

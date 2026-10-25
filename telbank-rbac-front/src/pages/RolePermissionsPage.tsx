@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Dayjs } from 'dayjs'
 import {
   Alert,
   App as AntApp,
   Button,
   Card,
-  DatePicker,
   Divider,
   Empty,
   Flex,
@@ -34,11 +32,8 @@ import { PageShell } from '../components/PageShell'
 import { StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
 import { useCurrentSystemId } from '../stores/app'
-import { formatValidity, toDayjs, toIsoString } from '../utils/format'
 
 const { Text } = Typography
-
-type ValidityRange = [Dayjs | null, Dayjs | null] | null
 
 /**
  * 递归移除通配权限 `*` 节点（含其子树）：通配由系统默认规则管理，不参与逐项授权，
@@ -108,7 +103,7 @@ export default function RolePermissionsPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="角色授权"
+        title="角色权限"
         description="当前系统上下文未就绪，无法加载授权关系。"
       />
     )
@@ -121,9 +116,6 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
   const queryClient = useQueryClient()
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null)
   const [checkedKeys, setCheckedKeys] = useState<Key[]>([])
-  const [validityByPermission, setValidityByPermission] = useState<
-    Record<number, ValidityRange>
-  >({})
   const [grantReason, setGrantReason] = useState('')
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([])
 
@@ -131,7 +123,6 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
   useEffect(() => {
     setSelectedRoleId(null)
     setCheckedKeys([])
-    setValidityByPermission({})
     setGrantReason('')
   }, [systemId])
 
@@ -179,7 +170,6 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     if (selected?.code === 'admin') {
       setSelectedRoleId(null)
       setCheckedKeys([])
-      setValidityByPermission({})
       setGrantReason('')
     }
   }, [rolesQuery.data, selectedRoleId])
@@ -197,21 +187,16 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     setExpandedKeys(flattenTree(permissionTree).map((node) => String(node.id)))
   }, [permissionsQuery.data, permissionTree])
 
-  // 勾选态 = 已授权态；时效草稿从每条授权记录分别回填，避免「统一时效」覆盖单条时效。
+  // 勾选态 = 当前角色已授权且出现在可授权树中的权限（静态授权，无时间维度）。
   // 通配 `*` 不在过滤后的授权树中，其授权记录只读展示，不进入勾选态。
   useEffect(() => {
-    const grants = grantsQuery.data?.grants ?? []
-    const active = grants.filter((grant) => grant.status === 1)
+    const active = (grantsQuery.data?.grants ?? []).filter((grant) => grant.status === 1)
     const grantableIds = new Set(flatPermissions.map((node) => String(node.id)))
-    const checked = active.filter((grant) => grantableIds.has(String(grant.permissionId)))
-    setCheckedKeys(checked.map((grant) => String(grant.permissionId)))
-    const next: Record<number, ValidityRange> = {}
-    for (const grant of checked) {
-      const from = toDayjs(grant.validFrom)
-      const until = toDayjs(grant.validUntil)
-      next[grant.permissionId] = from || until ? [from, until] : null
-    }
-    setValidityByPermission(next)
+    setCheckedKeys(
+      active
+        .filter((grant) => grantableIds.has(String(grant.permissionId)))
+        .map((grant) => String(grant.permissionId)),
+    )
   }, [grantsQuery.data, flatPermissions])
 
   const checkedPermissions = useMemo(() => {
@@ -224,104 +209,45 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
   const hasWildcardGrant = activeGrants.some((grant) => grant.code === '*')
   const grantedIds = useMemo(() => new Set(activeGrants.map((grant) => grant.permissionId)), [activeGrants])
 
-  function updateValidity(permissionId: number, range: ValidityRange) {
-    setValidityByPermission((previous) => ({ ...previous, [permissionId]: range }))
-  }
-
   function removeChecked(permissionId: number) {
     setCheckedKeys((keys) => keys.filter((key) => String(key) !== String(permissionId)))
-    setValidityByPermission((previous) => {
-      const next = { ...previous }
-      delete next[permissionId]
-      return next
-    })
   }
 
   function handleCheck(checked: Key[] | { checked: Key[]; halfChecked: Key[] }) {
-    const keys = Array.isArray(checked) ? checked : checked.checked
-    setCheckedKeys(keys)
-    setValidityByPermission((previous) => {
-      const next = { ...previous }
-      const selected = new Set(keys.map((key) => String(key)))
-      for (const key of Object.keys(next)) {
-        if (!selected.has(String(key))) delete next[Number(key)]
-      }
-      for (const key of keys) {
-        const permissionId = Number(key)
-        if (Number.isFinite(permissionId) && next[permissionId] === undefined) {
-          next[permissionId] = null
-        }
-      }
-      return next
-    })
+    setCheckedKeys(Array.isArray(checked) ? checked : checked.checked)
   }
 
   function selectAll() {
-    const keys = flatPermissions
-      .filter((node) => node.status === 1)
-      .map((node) => String(node.id))
-    setCheckedKeys(keys)
-    setValidityByPermission((previous) => {
-      const next = { ...previous }
-      for (const key of keys) {
-        const permissionId = Number(key)
-        if (next[permissionId] === undefined) next[permissionId] = null
-      }
-      return next
-    })
+    setCheckedKeys(
+      flatPermissions.filter((node) => node.status === 1).map((node) => String(node.id)),
+    )
   }
 
   function clearAll() {
     setCheckedKeys([])
-    setValidityByPermission({})
   }
 
   function handleRoleChange(roleId: number | undefined) {
     setSelectedRoleId(roleId ?? null)
     setCheckedKeys([])
-    setValidityByPermission({})
     setGrantReason('')
   }
 
-  const grantMutation = useMutation<number, Error, void>({
+  const grantMutation = useMutation<void, Error, void>({
     mutationFn: async () => {
       if (!selectedRoleId) throw new Error('请先选择角色')
       const permissionIds = checkedKeys
         .map((key) => Number(key))
         .filter((id) => Number.isFinite(id))
       if (permissionIds.length === 0) throw new Error('请至少勾选一个权限')
-
-      // 后端 grant 接口一次请求只带一个时效；按「相同生效/失效时间」分组提交，
-      // 这样每个权限仍然保留自己的时效，同时减少请求数。
-      const groups = new Map<
-        string,
-        { permissionIds: number[]; validFrom: string | null; validUntil: string | null }
-      >()
-      for (const permissionId of permissionIds) {
-        const range = validityByPermission[permissionId] ?? null
-        const validFrom = toIsoString(range?.[0] ?? null)
-        const validUntil = toIsoString(range?.[1] ?? null)
-        if (validFrom && validUntil && new Date(validUntil).getTime() < new Date(validFrom).getTime()) {
-          throw new Error(`权限 #${permissionId} 的失效时间不能早于生效时间`)
-        }
-        const key = `${validFrom ?? ''}|${validUntil ?? ''}`
-        const group = groups.get(key) ?? { permissionIds: [], validFrom, validUntil }
-        group.permissionIds.push(permissionId)
-        groups.set(key, group)
-      }
-
-      for (const group of groups.values()) {
-        await grantRolePermissions(selectedRoleId, {
-          permissionIds: group.permissionIds,
-          validFrom: group.validFrom,
-          validUntil: group.validUntil,
-          grantReason: grantReason.trim() || undefined,
-        })
-      }
-      return groups.size
+      // A21：角色-权限为静态授权，一次请求提交全部勾选项；时间窗口在「用户角色」按角色时间模板计算
+      await grantRolePermissions(selectedRoleId, {
+        permissionIds,
+        grantReason: grantReason.trim() || undefined,
+      })
     },
-    onSuccess: (groupCount) => {
-      void message.success(`授权已提交（${groupCount} 组时效）`)
+    onSuccess: () => {
+      void message.success('授权已提交（静态授权，立即生效）')
       setGrantReason('')
       void queryClient.invalidateQueries({
         queryKey: ['role-permissions', systemId, selectedRoleId],
@@ -352,8 +278,8 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="角色授权"
-      description="左侧选择角色、勾选权限并逐项设置生效/失效时间；右侧查看该角色已授权项。提交为整体提交，但每条权限可独立设置时效。"
+      title="角色权限"
+      description="左侧选择角色、勾选权限后一次性提交静态授权（角色-权限不再带时效）；右侧查看该角色已授权项。授权即时生效，实际时间窗口在「用户角色」按角色绑定的时间模板计算。"
       extra={
         <Space>
           <Button
@@ -370,7 +296,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
         type="info"
         showIcon
         title="系统管理员角色（admin）默认拥有全部权限，无需授权"
-        description="系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息（backend 会拒绝对 admin 角色的 grant/revoke 操作）。"
+        description="系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息（后端会拒绝对 admin 角色的 grant/revoke 操作）。"
       />
 
       {hasWildcardGrant ? (
@@ -473,7 +399,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
 
                 <div className="grant-selected-list">
                   {checkedPermissions.length === 0 ? (
-                    <Text type="secondary">勾选权限树中的节点后，会在这里逐项设置时效</Text>
+                    <Text type="secondary">勾选权限树中的节点后，会在这里列出本次授权项；提交后即时生效</Text>
                   ) : (
                     checkedPermissions.map((node) => (
                       <div className="grant-selected-row" key={node.id}>
@@ -486,32 +412,15 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
                             {node.code}
                           </Tag>
                         </Space>
-                        <Space size={2} align="center">
-                          <DatePicker.RangePicker
-                            size="small"
-                            showTime={{ format: 'HH:mm' }}
-                            format="MM-DD HH:mm"
-                            style={{ width: 248 }}
-                            value={validityByPermission[node.id] ?? null}
-                            onChange={(dates) =>
-                              updateValidity(
-                                node.id,
-                                (dates as [Dayjs | null, Dayjs | null] | null) ?? null,
-                              )
-                            }
-                            placeholder={['生效时间', '失效时间']}
-                            allowEmpty={[true, true]}
-                          />
-                          <Button
-                            type="text"
-                            size="small"
-                            danger
-                            title="移出本次授权"
-                            onClick={() => removeChecked(node.id)}
-                          >
-                            移出
-                          </Button>
-                        </Space>
+                        <Button
+                          type="text"
+                          size="small"
+                          danger
+                          title="移出本次授权"
+                          onClick={() => removeChecked(node.id)}
+                        >
+                          移出
+                        </Button>
                       </div>
                     ))
                   )}
@@ -522,7 +431,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
                     <Text strong>授权原因</Text>
                     <Input
                       style={{ marginTop: 6 }}
-                      placeholder="选填，所有本次提交的权限共用"
+                      placeholder="选填，本次提交的权限共用"
                       value={grantReason}
                       onChange={(event) => setGrantReason(event.target.value)}
                       maxLength={255}
@@ -608,7 +517,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
                       </Space>
                       <div className="grant-grant-meta">
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          {formatValidity(grant.validFrom, grant.validUntil)}
+                          静态授权（即时生效，无时间窗口）
                         </Text>
                       </div>
                     </div>
@@ -634,10 +543,10 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
         </Card>
         <Card size="small" title="授权规则">
           <ul className="grant-rule-list">
-            <li>勾选权限树节点后点击「提交授权」；未设置时间的权限为永久授权。</li>
-            <li>每条权限可在左侧单独设置生效/失效时间，互不影响。</li>
+            <li>勾选权限树节点后点击「提交授权」，一次提交全部勾选项；角色-权限为静态授权，提交后即时生效。</li>
+            <li>本页不再设置生效/失效时间；用户的实际授权窗口由「用户角色」按角色绑定的时间模板在分配/审批通过时计算。</li>
             <li>取消勾选只移出本次提交，不会自动撤销；撤销请点右侧「撤销」或底部「撤销勾选」。</li>
-            <li>右侧「撤销」单条即时生效；到期后权限查询与 SDK 会即时判定无权限。</li>
+            <li>右侧「撤销」单条即时生效；到期判定发生在用户-角色维度，删除用户角色或窗口到期后权限查询与 SDK 会判定无权限。</li>
           </ul>
         </Card>
         </div>

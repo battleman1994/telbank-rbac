@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# 演示「权限时效」：给指定账号授予一条 N 分钟（默认 1 分钟）临时权限
+# 演示「权限时效（A21 用户-角色窗口）」：创建临时角色并给指定账号写入一条
+# N 分钟（默认 1 分钟）的「用户-角色」生效窗口；角色-权限为永久授权。
 #
-# 用途：管理前端登录后能看到对应菜单/按钮；过期后刷新页面即消失，
+# 用途：管理前端登录后能看到对应菜单/按钮；窗口过期后刷新页面即消失，
 #       直接访问对应路由显示「无权限」（后端 API 也会返回 403）。
 #
 # 用法:
@@ -75,16 +76,14 @@ q "INSERT INTO sys_role (system_id, code, name, status, sort, remark)
    ON DUPLICATE KEY UPDATE status=1, remark='demo-temp-permission.sh 使用';"
 ROLE_ID="$(q "SELECT id FROM sys_role WHERE system_id=${SYS_ID} AND code='${ROLE_CODE}';" | head -1)"
 
-# 2) 授权窗口：现在 ~ N 分钟后（数据库统一 UTC 时间）
+# 2) 角色-权限授权（A21 起永久有效，不再带逐项时效）
 q "DELETE FROM sys_role_permission WHERE role_id=${ROLE_ID};"
 q "INSERT INTO sys_role_permission
-     (system_id, role_id, permission_id, valid_from, valid_until, auto_revoke, grant_reason, status)
+     (system_id, role_id, permission_id, grant_reason, status)
    VALUES
-     (${SYS_ID}, ${ROLE_ID}, ${PERM_ID},
-      UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${MINUTES} MINUTE),
-      1, '时间权限演示（${MINUTES} 分钟）', 1);"
+     (${SYS_ID}, ${ROLE_ID}, ${PERM_ID}, '时间权限演示（${MINUTES} 分钟）', 1);"
 
-# 3) 临时角色授权（系统访问由有效角色推导，无需用户-系统开通表）
+# 3) 用户-角色窗口：现在 ~ N 分钟后自动失效（数据库统一 UTC 时间；系统访问由有效角色推导）
 q "DELETE FROM sys_user_role WHERE system_id=${SYS_ID} AND external_user_id='${ACCOUNT}' AND role_id=${ROLE_ID};"
 q "INSERT INTO sys_user_role
      (system_id, external_user_id, role_id, valid_from, valid_until, auto_revoke, grant_reason, status)

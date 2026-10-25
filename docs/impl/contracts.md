@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v2.7（2026-10-25）· 维护：Lead
-> 修订：v2.7 A20 业务用户临时权限申请（申请单/审批 decision 回调/统一连续有效期/我的申请）+ 角色授权 `*` 过滤与非 admin 通配授权后端拒绝；v2.6 A18 接入凭据查看（系统管理员/超管）+ admin 角色授权保护；A19 管理端表格内容优先（auto/wrap、不用省略号）；v2.5 A16 系统接入双通道（SDK onboarding 上报 + 超管审核单条最新状态，手动录入保留）+ A17 系统 appKey/appSecret 分配与展示；v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v3.0（2026-10-25）· 维护：Lead
+> 修订：v3.0 A21 角色时间模板（时间语义上移到「用户-角色」：全局 `sys_time_template`、角色可绑定模板、审批/分配时按模板计算绝对窗口、角色-权限永久；角色授权页去掉逐项时效，用户角色页与「我的申请」去掉日期选择；旧审批 `grant` 模板优先；契约 §3.3/§3.3.1/§3.5/§3.6/§4.3/§5/§5.1/§10 同步）；v2.7 A20 业务用户临时权限申请（申请单/审批 decision 回调/统一连续有效期/我的申请）+ 角色授权 `*` 过滤与非 admin 通配授权后端拒绝；v2.6 A18 接入凭据查看（系统管理员/超管）+ admin 角色授权保护；A19 管理端表格内容优先（auto/wrap、不用省略号）；v2.5 A16 系统接入双通道（SDK onboarding 上报 + 超管审核单条最新状态，手动录入保留）+ A17 系统 appKey/appSecret 分配与展示；v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -56,6 +56,8 @@
   - `01_schema.sql`：8 张表（v2.0 经 `04_system_isolation.sql` 删除 `sys_user_system` 后为 **7 张**；`system_id` 隔离以 §9.2 偏差为准）
   - `02_seed_data.sql`：CRM/ERP 示例系统、角色、权限码、演示用户
   - `03_rbac_self_onboarding.sql`：权限中心自接入（`rbac` 系统、`rbac-admin` 角色、演示管理员接入）
+- `10_access_application.sql`（A20）：`sys_access_application` / `sys_access_application_role`（申请单与角色快照）
+- `11_time_template.sql`（A21）：新增全局 `sys_time_template`（预置「夜间窗口」「全天窗口」两个演示模板，不自动绑定角色）；`sys_role` 增加 `time_template_id`；`sys_access_application_role` 增加模板快照与审批窗口字段；`sys_role_permission` 删除 `valid_from/valid_until` 与 `idx_valid_until`
 - 初始化入口：`scripts/init-db.sh`（建库 + 按序导入；库中已有 `sys_system` 表时自动跳过；`--drop` 删库重建）。平台一键脚本（`start-all-macos.sh` / `start-all-linux.sh` / `start-all-windows.ps1`）的 `--temp-db` 会在临时库启动后自动执行。
 - `05_wildcard_permissions.sql`（v2.1）：业务系统 admin 角色与平台超管各只授一条 `*` 权限（删除 6 条短码与 `platform:admin`）。
 - `09_system_appkey.sql`（A17）：`sys_system` 增加 `app_key/app_secret`，回填 crm/erp 凭据；系统接入时分配。
@@ -143,10 +145,23 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/roles?systemId=&keyword=&page=&size=` | items: `{id,systemId,code,name,status,sort,remark}` |
-| POST | `/api/roles` | `{systemId,code,name,status?,sort?,remark?}`，`(systemId,code)` 唯一 |
-| PUT | `/api/roles/{id}` | `{name,status?,sort?,remark?}` |
+| GET | `/api/roles?systemId=&keyword=&page=&size=` | items: `{id,systemId,code,name,status,sort,remark,timeTemplateId,timeTemplateName}` |
+| POST | `/api/roles` | `{systemId,code,name,status?,sort?,remark?,timeTemplateId?}`，`(systemId,code)` 唯一；`timeTemplateId` 非空时必须存在且启用（否则 400）；`admin` 角色必须不绑定模板（400） |
+| PUT | `/api/roles/{id}` | `{name,status?,sort?,remark?,timeTemplateId?}`；`timeTemplateId` 传 null 表示改为永久角色 |
 | DELETE | `/api/roles/{id}` | 停用 |
+
+### 3.3.1 时间模板（A21，全局，平台超管维护）
+
+> 时间语义：`用户 --(sys_user_role 绝对窗口)--> 角色 --(sys_role_permission 永久)--> 权限`。模板是全局配置（不按系统隔离），只决定「分配/审批通过那一刻」计算出的绝对窗口；一旦写入用户-角色，后续改/停用模板不影响已生效授权。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/time-templates?status=` | 列表，`role:manage` 或平台超管可读；items: `{id,name,timezone,startDayOffset,startTime,endDayOffset,endTime,status,remark,createdAt,updatedAt}`；`startTime/endTime` 为 `HH:mm` 字符串；按 id 倒序 |
+| POST | `/api/time-templates` | **仅平台超管**（普通系统管理员即使拥有 `*` 也 403）；`{name,timezone?=Asia/Shanghai,startDayOffset,startTime,endDayOffset,endTime,status?,remark?}` |
+| PUT | `/api/time-templates/{id}` | 仅平台超管，字段同上 |
+| DELETE | `/api/time-templates/{id}` | 仅平台超管，逻辑停用（`status=0`） |
+
+校验口径：`name` 1–100 字且全局唯一；`timezone` 必须是合法 IANA 时区；`startTime/endTime` 必须 `HH:mm`；`startDayOffset/endDayOffset` ∈ 0–3650；同一锚点日期下 `endLocal > startLocal`，否则 400。窗口计算见 §5.1。
 
 ### 3.4 权限资源管理（树形）
 
@@ -167,19 +182,22 @@
 ### 3.5 角色-权限授权
 
 > **A18**：`admin` 角色默认拥有全部权限（`*`），`grant/revoke` 返回 400「系统管理员角色默认拥有全部权限，无需授权」；前端角色授权下拉排除 admin。
+> **A21**：角色-权限为**永久静态绑定**，不再携带 `validFrom/validUntil`（迁移 11 删除对应列）；时间窗口只在「用户-角色」上体现。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/roles/{roleId}/permissions` | `{"roleId":1,"grants":[{"permissionId":10,"code":"order:delete","validFrom":null,"validUntil":"2027-12-31T23:59:59Z","status":1}]}` |
-| POST | `/api/roles/{roleId}/permissions/grant` | `{permissionIds:[...],validFrom?,validUntil?,grantReason?}`；已存在关系→更新时效（见 §9.1），否则插入 |
+| GET | `/api/roles/{roleId}/permissions` | `{"roleId":1,"grants":[{"permissionId":10,"code":"order:delete","status":1}]}` |
+| POST | `/api/roles/{roleId}/permissions/grant` | `{permissionIds:[...],grantReason?}`；已存在关系→更新 status=1，否则插入（无时效字段） |
 | POST | `/api/roles/{roleId}/permissions/revoke` | `{permissionIds:[...]}`；status=0 |
 
-### 3.6 用户-角色分配（含时效）
+### 3.6 用户-角色分配（窗口由角色时间模板计算）
+
+> **A21**：管理端不再手工选择日期。分配时服务端按角色绑定的模板计算绝对窗口并写入 `sys_user_role.valid_from/valid_until`；角色无模板 = 永久（两列为 null）；角色绑定的模板不存在/已停用 → 409。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/user-roles?systemId=&externalUserId=` | `[{"id":1,"systemId":1,"externalUserId":"13800138000","roleId":2,"roleCode":"admin","roleName":"管理员","validFrom":null,"validUntil":null,"status":1,"grantReason":null,"sourceApprovalId":null}]` |
-| POST | `/api/user-roles` | `{systemId,externalUserId,roleId,validFrom?,validUntil?,grantReason?}` |
+| POST | `/api/user-roles` | `{systemId,externalUserId,roleId,grantReason?}`；窗口由服务端计算（见 §5.1 计算规则） |
 | DELETE | `/api/user-roles/{id}` | 撤销（status=0） |
 
 ### 3.7 用户-系统开通（v2.0 已移除）
@@ -256,7 +274,7 @@ appKey + "\n" + timestamp + "\n" + nonce + "\n" + HTTP_METHOD + "\n" + path + "\
 
 ### 4.3 开放接口数据口径（实现补充，已与 api/sdk 对齐）
 
-- `user-permissions` 的每个 `code` 返回**有效窗口包络**：`validFrom` 取该码所有生效授权的 `valid_from` 最小值（任一为 null 则 null）；`validUntil` 取 `valid_until` 最大值，**任一授权为永久（null）则该码 `validUntil=null`**。窗口由 `user_role` 与 `role_permission` 两段时段的交集再聚合。
+- `user-permissions` 的每个 `code` 返回**有效窗口包络**：`validFrom` 取该码对应有效 `user_role` 的 `valid_from` 最小值（任一为 null 则 null）；`validUntil` 取 `valid_until` 最大值，**任一授权为永久（null）则该码 `validUntil=null`**。**A21 起窗口只来自 `user_role`**（角色-权限永久，不再参与窗口计算）。
 - `page-actions` 的 `config` 字段为 **JSON 字符串**（管理端创建/更新时接受字符串或对象）；`permission.meta` 为 JSON 对象。
 - `endpoints/sync` 对非法条目宽容跳过：`received` 为原始条数，`created/updated` 只统计有效条目。
 - `approval-grants?externalUserId=` 过滤时，`ROLE_PERMISSION` 类记录（无 external_user_id 列）不参与该条件下的结果，只返回 `USER_ROLE` 记录。
@@ -311,6 +329,7 @@ Content-Type: application/json
 3. `grantType="role"`（必填且当前唯一支持）：校验 role 存在且属于 systemCode 对应系统；按 §9.1 口径写 `sys_user_role`（同用户+角色已存在则更新时效，否则插入），写入 `source_approval_id`、`grant_reason`、`valid_from/valid_until`。
 4. `permissionCodes`：仅作为审批内容审计信息，必须全部是 `roleId` 已授权的权限码，否则 400（防止审批内容与角色不符）。`grantType="permission"` 返回 400：当前数据模型不支持绕过角色直接给用户授权（无 user_permission 表）。
 5. 发布 Redis 通知；返回成功。
+6. **A21 时间模板优先**：若 `roleId` 绑定了时间模板，忽略请求中的 `validFrom/validUntil`，由服务端按模板计算绝对窗口写入 `sys_user_role`；角色未绑定模板时继续使用请求窗口（可为空 = 永久）。模板不存在/已停用 → 409。
 
 ### 5.1 业务用户临时权限申请（A20）
 
@@ -320,12 +339,12 @@ Content-Type: application/json
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/options` | 返回当前系统可申请角色、权限预览、`approvalUrlTemplate`；排除 `admin`、已有效持有的角色和 `*` 通配权限 |
-| POST | `/` | 创建申请：`{"roleIds":[1,2],"reason":"..."}`，`roleIds` 1–20 个、`reason` 1–200 字；同一系统同一申请人最多一条 `PENDING`，重复提交 409 |
+| GET | `/options` | 返回当前系统可申请角色（**仅「启用 + 非 admin + 已绑定启用时间模板」**）、权限预览、`approvalUrlTemplate`；角色项含 `timeTemplateId/timeTemplateName/timeTemplateText`（如「审批后当天 19:00 ~ 次日 07:00」）；排除已有效持有的角色和 `*` 通配权限 |
+| POST | `/` | 创建申请：`{"roleIds":[1,2],"reason":"..."}`，`roleIds` 1–20 个、`reason` 1–200 字；角色无模板/模板停用 → 400；同一系统同一申请人最多一条 `PENDING`，重复提交 409 |
 | GET | `?status=PENDING\|APPROVED\|REJECTED&page=&size=` | 当前用户当前系统的申请分页，按创建时间倒序 |
 | GET | `/{applicationNo}` | 当前用户的申请详情；申请单号非本人/非当前系统 → 404 |
 
-申请单字段：`applicationNo`（`RA-yyyyMMdd-XXXXXX`）、`status`（PENDING/APPROVED/REJECTED）、`roleCount`、`roles`（申请时角色快照）、`reason`、`approvedValidFrom/Until`、`decisionComment`、`reviewedBy`、`reviewedAt`、`createdAt`、`approvalUrl`。审批通过后，`sys_user_role` 中的授权窗口即申请单的 `approvedValidFrom/Until`。
+申请单字段：`applicationNo`（`RA-yyyyMMdd-XXXXXX`）、`status`（PENDING/APPROVED/REJECTED）、`roleCount`、`roles`（申请时角色快照，含 `timeTemplateName` 与审批后逐角色 `approvedValidFrom/approvedValidUntil`）、`reason`、`approvedValidFrom/Until`（所有角色窗口的包络：最早开始、最晚结束）、`decisionComment`、`reviewedBy`、`reviewedAt`、`createdAt`、`approvalUrl`。申请单自身的 `approvedValidFrom/Until` 仅用于列表展示；实际授权以每个角色的 `sys_user_role` 窗口为准。
 
 审批决策回调（审批系统 → api）：
 
@@ -340,8 +359,6 @@ Content-Type: application/json
 {
   "applicationNo": "RA-20261025-A1B2C3",
   "decision": "APPROVED",
-  "validFrom": "2026-10-25T01:30:00Z",
-  "validUntil": "2026-10-26T01:30:00Z",
   "reviewer": "external-approval",
   "decisionComment": "同意，仅限本次"
 }
@@ -350,10 +367,12 @@ Content-Type: application/json
 处理规则：
 
 1. 使用 `rbac.approval` 独立 AppKey/AppSecret 验签；`applicationNo` 不存在 → 404。
-2. `decision` 仅接受 `APPROVED`/`REJECTED`（大小写不敏感）；`APPROVED` 必须同时给 `validFrom/validUntil`，且 `validUntil > validFrom`、`validUntil > now`。
-3. 只有 `PENDING` 申请单可决策；`REJECTED` 重放幂等返回 `idempotent=true`；已通过但同窗口重放也幂等；不同结果/窗口 → 409。
-4. 通过时逐角色复用 `ApprovalGrantService.grant(...)`，`approvalId = applicationNo + ":" + roleId`，写 `sys_user_role` 时效；任一角色失败整体回滚、申请保持 `PENDING`。已持有角色或 `admin` 角色 → 409。
+2. `decision` 仅接受 `APPROVED`/`REJECTED`（大小写不敏感）。**A21 起请求不再接收 `validFrom/validUntil`**（旧客户端传入也忽略），窗口由服务端按每个角色的时间模板分别计算，多角色可有不同窗口。
+3. 只有 `PENDING` 申请单可决策；`REJECTED` 重放幂等返回 `idempotent=true`；已通过再回调 `APPROVED` 幂等返回 `idempotent=true` 且窗口不回滚；不同结果 → 409。
+4. 通过时逐角色计算窗口并复用既有授权逻辑写 `sys_user_role`，`approvalId = applicationNo + ":" + roleId`；同时把模板快照（`time_template_id/time_template_name`）与逐角色窗口写入 `sys_access_application_role`，申请单级窗口写包络。任一角色失败整体回滚、申请保持 `PENDING`。已持有角色或 `admin` 角色 → 409；角色绑定的模板已停用/不存在 → 409。
 5. 驳回只回写状态与审批字段，不写授权；通过/驳回均发布 Redis 变更通知。
+
+**A21 窗口计算规则**（`startDayOffset/startTime`、`endDayOffset/endTime`，按模板时区）：以「当前时刻」为锚点转模板时区；`startLocal = 锚点日期 + startDayOffset 的 startTime`、`endLocal = 锚点日期 + endDayOffset 的 endTime`；要求 `endLocal > startLocal`；若 `endLocal <= now`（窗口已过期）→ 409/400 拒绝，不滚动到下一周期；通过时写 `validFrom = max(startInstant, now)`、`validUntil = endInstant`（UTC 落库）。角色无模板 = 永久（两列 null）。
 
 申请人看到的审批外链由 `rbac.access-approval.url-template` 生成，前端替换 `{applicationNo}`；权限中心不代理审批平台页面。演示时可用 `scripts/mock-access-approval.py` 模拟外部审批。
 
@@ -519,7 +538,7 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10；A16（系统接入双通道 + 审核）= §3.2.1/§4.5；A17（系统 appKey/appSecret）= §3.2/§4.1；A18（凭据查看 + admin 授权保护）= §3.2.2/§3.5/§10；A19（表格内容优先展示）= §10；A20（业务用户临时权限申请）= §5.1/§8.1/§10。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10；A16（系统接入双通道 + 审核）= §3.2.1/§4.5；A17（系统 appKey/appSecret）= §3.2/§4.1；A18（凭据查看 + admin 授权保护）= §3.2.2/§3.5/§10；A19（表格内容优先展示）= §10；A20（业务用户临时权限申请）= §5.1/§8.1/§10；A21（角色时间模板）= §3.3/§3.3.1/§3.5/§3.6/§4.3/§5/§5.1/§10。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -528,6 +547,7 @@ rbac:
 5. **权限中心二级缓存**：管理端高频查询用 Caffeine 一级缓存；Redis 用于 Pub/Sub、nonce 防重放与（可选）权限集缓存，不额外实现复杂二级缓存协议。
 6. **菜单结构**：权限中心不存储菜单/路由（需求 §2），管理前端的系统选择器/菜单由前端代码维护；不要给 `sys_permission` 加 path/component/icon 字段。
 7. **业务前端数据获取**：管理前端（telbank-rbac-front）只调权限中心 `/api/**`；SDK 的 `/rbac/me/*` 属于业务系统后端（starter），两者不要混用。
+8. **A21 时间模板口径**：时间语义从「角色-权限」上移到「用户-角色」。`sys_role_permission` 不再有时效（迁移 11 删列），旧审批 `grant` 的 `validFrom/validUntil` 仅在角色未绑定模板时生效；A20 决策回调不再接收窗口字段，收到也忽略。`sys_user_role.valid_from/valid_until` 保留，既有到期收回任务（§9.1 偏差 1）不变；已生效授权的窗口不因后续修改/停用模板而回滚。
 
 ---
 
@@ -537,8 +557,8 @@ rbac:
 - 环境变量：`VITE_API_BASE_URL`（默认 `http://localhost:8080`）。
 - 登录：`/login` 页面粘贴 JWT（外部认证系统签发；本地用 `scripts/gen-demo-jwt.sh` 生成），存 `localStorage["rbac.token"]`；请求头注入 `Authorization: Bearer`；当前系统存 `localStorage["rbac.systemCode"]`。
 - 系统上下文：登录后 GET `/api/me` → `/api/me/systems` → 选择 `currentSystemCode`（本地缓存命中否则第一条）→ 带 `X-System-Code` 拉 `/api/me/bootstrap`；所有管理端查询都带当前业务系统头；超管可切换所有业务系统并看到「系统接入」，系统管理员只能看到自己的系统。
-- 菜单 IA：`权限管理` 组（角色管理/角色授权/权限管理/资源管理/页面元素/用户授权/授权记录/接入凭据）+ 顶级「系统接入」（仅超管）+ 顶级「我的申请」（所有已登录用户，A20）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」与「到期提醒」菜单（接口仍保留）。
-- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管）：业务系统 Tab（手动录入 + AppKey/掩码密钥展示/查看密钥）与接入申请 Tab（SDK 上报待审核，审核/驳回，一次性返回新系统凭据）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效，admin 角色排除，**可授权树不再展示 `*` 通配**）、用户授权（含时效）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录、接入凭据（A18）；「我的申请」（A20）：业务用户选择当前系统角色（排除 admin/已持有/`*`），查看角色权限预览，填写原因提交；列表按状态筛选、显示申请单号/时效/审批外链，不提供审批操作。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
+- 菜单 IA：`权限管理` 组（角色管理/角色权限/权限管理/资源管理/页面元素/用户角色/授权记录/接入凭据）+ 顶级「系统接入」（仅超管）+ 顶级「时间模板」（仅平台超管，A21）+ 顶级「我的申请」（所有已登录用户，A20）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」与「到期提醒」菜单（接口仍保留）。「角色授权」「用户授权」菜单文案分别改为「角色权限」「用户角色」。
+- 页面（对应需求 §5.7，v3.0 IA）：系统接入（仅超管）：业务系统 Tab（手动录入 + AppKey/掩码密钥展示/查看密钥）与接入申请 Tab（SDK 上报待审核，审核/驳回，一次性返回新系统凭据）；时间模板（A21，仅平台超管）：列表 + 新建/编辑（名称/时区/开始天数偏移/开始时间/结束天数偏移/结束时间/备注/状态）+ 停用；权限管理组：角色管理（新增「时间模板」列与选择，绑定模板或留空=永久）、权限管理（树）、角色权限（只做静态勾选 + 一次 grant，**去掉逐项时效/RangePicker/分组提交**，admin 角色排除，可授权树不再展示 `*`）、用户角色（**去掉日期选择**，选中角色展示模板说明，窗口由服务端计算）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录、接入凭据（A18）；「我的申请」（A20/A21）：业务用户选择当前系统角色（排除 admin/已持有/`*`，只展示绑定启用模板的角色及其模板摘要），提交原因；列表按状态筛选、显示申请单号/审批外链/逐角色窗口，不提供审批操作。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
 - 自服务入口：业务用户即使没有任何管理权限码，也能看到「我的申请」并进入页面；`AdminLayout` 以「是否有任意可见菜单」判断是否空态，而非只看管理权限；首页 `HomeRedirect` 优先管理菜单，无管理菜单时落到「我的申请」。
 - 状态：TanStack Query 管理服务端状态；Zustand 管理当前用户/系统/权限码集合；不使用 Axios，使用封装的 `request()`（原生 fetch）。
 - 表格内容优先（A19）：`table-layout:auto`，宽度足够不换行、不够换行完整展示，不用省略号；时间列 `YYYY-MM-DD HH:mm`；表格 100% 宽度、无横向滚动。
@@ -548,7 +568,7 @@ rbac:
 
 ## 11. 验收与命令（已落地）
 
-- 一键验证：`./scripts/verify-all.sh`（后端 46 单测 + SDK 90 单测 + 前端类型检查/构建 + 产物核对）
+- 一键验证：`./scripts/verify-all.sh`（后端单测 + 两版 SDK 单测 + 前端类型检查/构建 + 产物核对，含 A21 迁移/时间模板页面检查；最新数字见 `docs/acceptance.md` 执行记录）
 - 权限中心：`./scripts/start-all-macos.sh`（Linux 用 `start-all-linux.sh`；需要 JDK 21+；demo profile）；验收 `python3 scripts/acceptance.py`
 - SDK（JDK 8）：`./scripts/build-sdk.sh`（JDK 17+ 工具链 → Java 8 字节码，校验 major=52）；CI 兼容性验证 `.github/workflows/sdk-jdk8-compat.yml`
 - SDK（JDK 21）：`mvn -pl telbank-rbac2-starter test`（JDK 21，字节码 major=65）

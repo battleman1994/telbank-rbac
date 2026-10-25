@@ -21,6 +21,7 @@ import com.telbank.rbac.domain.mapper.SysPermissionMapper;
 import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysTimeTemplateMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.service.ChangeNotifyService;
 import com.telbank.rbac.service.PageActionService;
@@ -28,6 +29,7 @@ import com.telbank.rbac.service.PermissionService;
 import com.telbank.rbac.service.PlatformAdminService;
 import com.telbank.rbac.service.RolePermissionService;
 import com.telbank.rbac.service.RoleService;
+import com.telbank.rbac.service.RoleTimeWindowService;
 import com.telbank.rbac.service.UserRoleService;
 import com.telbank.rbac.service.cache.LocalCacheManager;
 import com.telbank.rbac.testutil.SecurityTestSupport;
@@ -111,9 +113,11 @@ class CrossSystemByIdAccessTest {
     @Test
     void roleByIdInOtherSystemIsForbidden() {
         SysRoleMapper roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
-        RoleService service = new RoleService(roleRepository, systemRepository, guard);
+        RoleService service = new RoleService(roleRepository, systemRepository,
+                TestProxies.noop(SysTimeTemplateMapper.class), guard);
 
-        assertForbidden(() -> service.update(9L, new RoleUpdateRequest("hacked", 1, 0, null)));
+        assertForbidden(() -> service.update(9L,
+                new RoleUpdateRequest("hacked", 1, 0, null, null)));
     }
 
     @Test
@@ -128,7 +132,8 @@ class CrossSystemByIdAccessTest {
                     }
                     return TestProxies.defaultValue(method.getReturnType());
                 });
-        RoleService service = new RoleService(roleRepository, systemRepository, guard);
+        RoleService service = new RoleService(roleRepository, systemRepository,
+                TestProxies.noop(SysTimeTemplateMapper.class), guard);
 
         assertForbidden(() -> service.page(ERP_ID, null, PageQuery.of(null, null)));
 
@@ -184,7 +189,8 @@ class CrossSystemByIdAccessTest {
                 });
         SysRoleMapper roleRepository = roleRepository(role(9L, ERP_ID, "admin"));
         UserRoleService service = new UserRoleService(userRoleRepository, roleRepository,
-                systemRepository, changeNotifyService, guard);
+                systemRepository, changeNotifyService, guard,
+                new RoleTimeWindowService(TestProxies.noop(SysTimeTemplateMapper.class)));
 
         assertForbidden(() -> service.revoke(19L));
     }

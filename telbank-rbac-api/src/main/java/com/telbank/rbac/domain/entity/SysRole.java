@@ -31,6 +31,10 @@ public class SysRole extends BaseEntity {
     @TableField(value = "remark", updateStrategy = FieldStrategy.ALWAYS)
     private String remark;
 
+    /** 绑定的全局时间模板（A21）；为空表示永久角色。 */
+    @TableField("time_template_id")
+    private Long timeTemplateId;
+
     public Long getSystemId() {
         return systemId;
     }
@@ -77,5 +81,13 @@ public class SysRole extends BaseEntity {
 
     public void setRemark(String remark) {
         this.remark = remark;
+    }
+
+    public Long getTimeTemplateId() {
+        return timeTemplateId;
+    }
+
+    public void setTimeTemplateId(Long timeTemplateId) {
+        this.timeTemplateId = timeTemplateId;
     }
 }

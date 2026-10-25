@@ -1,8 +1,10 @@
 package com.telbank.rbac.service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -20,6 +22,7 @@ import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
+import com.telbank.rbac.service.RoleTimeWindowService.TimeWindow;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantRequest;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantResponse;
 
@@ -30,7 +33,9 @@ import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantResponse;
  *   <li>按 {@code approvalId} 幂等：已处理过直接返回 {@code idempotent=true}；</li>
  *   <li>仅支持 {@code grantType=role}；{@code grantType=permission} 返回 400（数据模型无 user_permission 表）；</li>
  *   <li>{@code permissionCodes} 仅作审批内容审计：必须全部是角色已授权权限码；</li>
- *   <li>落库口径契约 §9.1：同用户+角色关系已存在则更新时效，不新增行。</li>
+ *   <li>落库口径契约 §9.1：同用户+角色关系已存在则更新时效，不新增行；</li>
+ *   <li>A21：角色绑定时间模板时，以模板按当前时刻计算的窗口为准，忽略请求中的 validFrom/validUntil；
+ *       未绑定模板（永久角色）时沿用请求窗口（可为空 = 永久）。</li>
  * </ul>
  */
 @Service
@@ -46,17 +51,20 @@ public class ApprovalGrantService {
     private final SysUserRoleMapper userRoleRepository;
     private final SysRolePermissionMapper rolePermissionRepository;
     private final ChangeNotifyService changeNotifyService;
+    private final RoleTimeWindowService roleTimeWindowService;
 
     public ApprovalGrantService(SysSystemMapper systemRepository,
                                 SysRoleMapper roleRepository,
                                 SysUserRoleMapper userRoleRepository,
                                 SysRolePermissionMapper rolePermissionRepository,
-                                ChangeNotifyService changeNotifyService) {
+                                ChangeNotifyService changeNotifyService,
+                                RoleTimeWindowService roleTimeWindowService) {
         this.systemRepository = systemRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.rolePermissionRepository = rolePermissionRepository;
         this.changeNotifyService = changeNotifyService;
+        this.roleTimeWindowService = roleTimeWindowService;
     }
 
     @Transactional
@@ -86,7 +94,18 @@ public class ApprovalGrantService {
             throw ApiException.badRequest(
                     "role " + role.getId() + " does not belong to system " + systemCode);
         }
-        RolePermissionService.validateValidity(request.validFrom(), request.validUntil());
+        Instant validFrom;
+        Instant validUntil;
+        Optional<TimeWindow> templateWindow = roleTimeWindowService.windowFor(role);
+        if (templateWindow.isPresent()) {
+            // A21：角色绑定时间模板时以模板窗口为准，忽略请求中的 validFrom/validUntil
+            validFrom = templateWindow.get().from();
+            validUntil = templateWindow.get().until();
+        } else {
+            validateRequestWindow(request.validFrom(), request.validUntil());
+            validFrom = request.validFrom();
+            validUntil = request.validUntil();
+        }
 
         // 3. permissionCodes 审计：必须是该角色已授权的权限码，否则 400（契约 §5.4）
         validatePermissionCodes(request.permissionCodes(), role.getId());
@@ -99,8 +118,8 @@ public class ApprovalGrantService {
         relation.setSystemId(system.getId());
         relation.setExternalUserId(externalUserId);
         relation.setRoleId(role.getId());
-        relation.setValidFrom(TimeUtils.toUtcLocalDateTime(request.validFrom()));
-        relation.setValidUntil(TimeUtils.toUtcLocalDateTime(request.validUntil()));
+        relation.setValidFrom(TimeUtils.toUtcLocalDateTime(validFrom));
+        relation.setValidUntil(TimeUtils.toUtcLocalDateTime(validUntil));
         relation.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
         relation.setGrantReason(request.reason());
         relation.setSourceApprovalId(approvalId);
@@ -126,6 +145,15 @@ public class ApprovalGrantService {
         }
         if (!GRANT_TYPE_ROLE.equals(normalized)) {
             throw ApiException.badRequest("unsupported grantType: " + grantType + " (supported: role)");
+        }
+    }
+
+    /**
+     * 无时间模板的永久角色沿用请求窗口；两者都非空时要求 until 晚于 from。
+     */
+    private static void validateRequestWindow(Instant validFrom, Instant validUntil) {
+        if (validFrom != null && validUntil != null && !validUntil.isAfter(validFrom)) {
+            throw ApiException.badRequest("validUntil must be after validFrom");
         }
     }
 

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.security.SystemScopeGuard;
+import com.telbank.rbac.service.RoleTimeWindowService.TimeWindow;
 import com.telbank.rbac.web.dto.GrantDtos.UserRoleCreateRequest;
 import com.telbank.rbac.web.dto.GrantDtos.UserRoleVO;
 
@@ -25,6 +27,9 @@ import com.telbank.rbac.web.dto.GrantDtos.UserRoleVO;
  *
  * <p>落库口径按契约 §9.1：同一 {@code (system_id, external_user_id, role_id)} 关系已存在时
  * 更新原行的时效，不新增行。</p>
+ *
+ * <p>A21：分配不再接收请求时间窗口，而是按角色绑定的时间模板在当前时刻计算；
+ * 未绑定模板的角色为永久角色（valid_from/valid_until 为 null）。</p>
  */
 @Service
 public class UserRoleService {
@@ -34,17 +39,20 @@ public class UserRoleService {
     private final SysSystemMapper systemRepository;
     private final ChangeNotifyService changeNotifyService;
     private final SystemScopeGuard systemScopeGuard;
+    private final RoleTimeWindowService roleTimeWindowService;
 
     public UserRoleService(SysUserRoleMapper userRoleRepository,
                            SysRoleMapper roleRepository,
                            SysSystemMapper systemRepository,
                            ChangeNotifyService changeNotifyService,
-                           SystemScopeGuard systemScopeGuard) {
+                           SystemScopeGuard systemScopeGuard,
+                           RoleTimeWindowService roleTimeWindowService) {
         this.userRoleRepository = userRoleRepository;
         this.roleRepository = roleRepository;
         this.systemRepository = systemRepository;
         this.changeNotifyService = changeNotifyService;
         this.systemScopeGuard = systemScopeGuard;
+        this.roleTimeWindowService = roleTimeWindowService;
     }
 
     @Transactional(readOnly = true)
@@ -78,7 +86,7 @@ public class UserRoleService {
         SysRole role = roleRepository.findByIdAndSystemId(request.roleId(), request.systemId())
                 .orElseThrow(() -> ApiException.badRequest(
                         "role " + request.roleId() + " does not belong to system " + request.systemId()));
-        RolePermissionService.validateValidity(request.validFrom(), request.validUntil());
+        Optional<TimeWindow> window = roleTimeWindowService.windowFor(role);
         String externalUserId = request.externalUserId().trim();
         SysUserRole relation = userRoleRepository
                 .findBySystemIdAndExternalUserIdAndRoleId(request.systemId(), externalUserId, request.roleId())
@@ -86,8 +94,8 @@ public class UserRoleService {
         relation.setSystemId(request.systemId());
         relation.setExternalUserId(externalUserId);
         relation.setRoleId(request.roleId());
-        relation.setValidFrom(TimeUtils.toUtcLocalDateTime(request.validFrom()));
-        relation.setValidUntil(TimeUtils.toUtcLocalDateTime(request.validUntil()));
+        relation.setValidFrom(window.map(value -> TimeUtils.toUtcLocalDateTime(value.from())).orElse(null));
+        relation.setValidUntil(window.map(value -> TimeUtils.toUtcLocalDateTime(value.until())).orElse(null));
         relation.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
         relation.setGrantReason(request.grantReason());
         relation.setSourceApprovalId(null);

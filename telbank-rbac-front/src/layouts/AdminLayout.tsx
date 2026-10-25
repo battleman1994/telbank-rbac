@@ -4,6 +4,7 @@ import {
   ApiOutlined,
   AuditOutlined,
   BankOutlined,
+  ClockCircleOutlined,
   FileTextOutlined,
   FormOutlined,
   LogoutOutlined,
@@ -50,6 +51,7 @@ type MenuItemNode = NonNullable<MenuProps['items']>[number]
 const MENU_ICON_BY_PATH: Record<string, ReactNode> = {
   '/access-applications': <FormOutlined />,
   '/systems': <BankOutlined />,
+  '/time-templates': <ClockCircleOutlined />,
   '/system-credential': <FileTextOutlined />,
   '/roles': <TeamOutlined />,
   '/permissions': <ApartmentOutlined />,

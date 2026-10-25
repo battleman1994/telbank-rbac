@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import type { TimeTemplateVO } from '../api/types'
 
 /** 统一时间展示格式 */
 export const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss'
@@ -15,6 +16,23 @@ export function formatValidity(validFrom?: string | null, validUntil?: string | 
   const from = validFrom ? formatDateTime(validFrom) : '立即生效'
   const until = validUntil ? formatDateTime(validUntil) : '永久有效'
   return `${from} ~ ${until}`
+}
+
+/**
+ * 时间模板窗口摘要：如「当天 19:00 ~ 次日 07:00」。
+ * 仅描述模板规则本身，实际绝对窗口在授权写入时按当前时刻计算。
+ */
+export function describeTimeTemplate(
+  template: Pick<TimeTemplateVO, 'startDayOffset' | 'startTime' | 'endDayOffset' | 'endTime'>,
+): string {
+  const startDay = template.startDayOffset === 0 ? '当天' : `第${template.startDayOffset}天`
+  const endDay =
+    template.endDayOffset === 0
+      ? '当天'
+      : template.endDayOffset === 1
+        ? '次日'
+        : `第${template.endDayOffset}天`
+  return `${startDay} ${template.startTime} ~ ${endDay} ${template.endTime}`
 }
 
 /** dayjs 值转 ISO-8601 UTC 字符串（提交给后端） */

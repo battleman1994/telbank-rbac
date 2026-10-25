@@ -1,6 +1,7 @@
 package com.telbank.rbac.service;
 
 import java.time.Instant;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,12 +14,15 @@ import org.junit.jupiter.api.Test;
 
 import com.telbank.rbac.common.ApiException;
 import com.telbank.rbac.common.RbacConstants;
+import com.telbank.rbac.common.TimeUtils;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysTimeTemplate;
 import com.telbank.rbac.domain.entity.SysUserRole;
 import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysTimeTemplateMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantRequest;
@@ -34,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ApprovalGrantServiceTest {
 
     private static final String SYSTEM_CODE = "crm";
+    private static final Long TEMPLATE_ID = 9L;
 
     private final Map<String, SysUserRole> byApprovalId = new LinkedHashMap<>();
     private final Map<String, SysUserRole> byRelation = new LinkedHashMap<>();
@@ -42,6 +47,8 @@ class ApprovalGrantServiceTest {
     private final List<SysUserRole> saved = new ArrayList<>();
 
     private ApprovalGrantService service;
+    private SysRole role;
+    private SysTimeTemplateMapper templateRepository;
 
     @BeforeEach
     void setUp() {
@@ -53,10 +60,11 @@ class ApprovalGrantServiceTest {
         erp.setId(2L);
         erp.setCode("erp");
         erp.setStatus(1);
-        SysRole role = new SysRole();
-        role.setId(5L);
-        role.setSystemId(1L);
-        role.setCode("operator");
+        SysRole operatorRole = new SysRole();
+        operatorRole.setId(5L);
+        operatorRole.setSystemId(1L);
+        operatorRole.setCode("operator");
+        role = operatorRole;
 
         SysSystemMapper systemRepository = TestProxies.proxy(SysSystemMapper.class,
                 (proxy, method, args) -> {
@@ -114,6 +122,15 @@ class ApprovalGrantServiceTest {
                     return TestProxies.defaultValue(method.getReturnType());
                 });
 
+        templateRepository = TestProxies.proxy(SysTimeTemplateMapper.class,
+                (proxy, method, args) -> {
+                    if ("findById".equals(method.getName())
+                            && TEMPLATE_ID.equals(args[0])) {
+                        return Optional.of(template());
+                    }
+                    return TestProxies.defaultValue(method.getReturnType());
+                });
+
         ChangeNotifyService changeNotifyService = new ChangeNotifyService(null, null, null, null, null) {
             @Override
             public void publishAfterCommit(Long systemId, String changeType) {
@@ -122,7 +139,8 @@ class ApprovalGrantServiceTest {
         };
 
         service = new ApprovalGrantService(systemRepository, roleRepository, userRoleRepository,
-                rolePermissionRepository, changeNotifyService);
+                rolePermissionRepository, changeNotifyService,
+                new RoleTimeWindowService(templateRepository));
     }
 
     @Test
@@ -214,6 +232,26 @@ class ApprovalGrantServiceTest {
     }
 
     @Test
+    void roleWithTemplateUsesTemplateWindowAndIgnoresRequestWindow() {
+        role.setTimeTemplateId(TEMPLATE_ID);
+        SysTimeTemplate template = template();
+
+        ApprovalGrantResponse response = service.grant(request("APV-20261024-T01",
+                List.of("order:list")));
+
+        assertThat(response.success()).isTrue();
+        RoleTimeWindowService.TimeWindow expected =
+                new RoleTimeWindowService(templateRepository).compute(template);
+        SysUserRole relation = saved.get(0);
+        assertThat(relation.getValidFrom())
+                .isEqualTo(TimeUtils.toUtcLocalDateTime(expected.from()));
+        assertThat(relation.getValidUntil())
+                .isEqualTo(TimeUtils.toUtcLocalDateTime(expected.until()));
+        assertThat(relation.getValidFrom()).isNotEqualTo(
+                TimeUtils.toUtcLocalDateTime(Instant.parse("2026-10-24T00:00:00Z")));
+    }
+
+    @Test
     void invalidValidityWindowIsRejected() {
         ApprovalGrantRequest request = new ApprovalGrantRequest(SYSTEM_CODE, "13800138000", "role", 5L,
                 List.of(), Instant.parse("2026-10-31T00:00:00Z"), Instant.parse("2026-10-24T00:00:00Z"),
@@ -246,6 +284,19 @@ class ApprovalGrantServiceTest {
         assertThatThrownBy(() -> service.grant(request))
                 .isInstanceOfSatisfying(ApiException.class,
                         ex -> assertThat(ex.getStatus()).isEqualTo(400));
+    }
+
+    private static SysTimeTemplate template() {
+        SysTimeTemplate template = new SysTimeTemplate();
+        template.setId(TEMPLATE_ID);
+        template.setName("夜间窗口");
+        template.setTimezone("Asia/Shanghai");
+        template.setStartDayOffset(0);
+        template.setStartTime(LocalTime.of(19, 0));
+        template.setEndDayOffset(1);
+        template.setEndTime(LocalTime.of(7, 0));
+        template.setStatus(1);
+        return template;
     }
 
     private static ApprovalGrantRequest request(String approvalId, List<String> permissionCodes) {

@@ -1,6 +1,6 @@
 package com.telbank.rbac.service;
 
-import java.time.Instant;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -21,10 +21,13 @@ import com.telbank.rbac.domain.entity.SysAccessApplication;
 import com.telbank.rbac.domain.entity.SysAccessApplicationRole;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysTimeTemplate;
+import com.telbank.rbac.domain.entity.SysUserRole;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationMapper;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysTimeTemplateMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.DecisionRequest;
@@ -36,7 +39,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 审批决策回调：行锁读取、PENDING 校验、窗口校验、逐角色授权、幂等与冲突语义。
+ * 审批决策回调（A21）：行锁读取、PENDING 校验、按角色时间模板计算窗口、逐角色授权、
+ * 主单窗口包络、幂等与冲突语义。
  */
 class AccessDecisionServiceTest {
 
@@ -46,18 +50,22 @@ class AccessDecisionServiceTest {
     private static final Long OPERATOR_ROLE_ID = 11L;
     private static final Long AUDITOR_ROLE_ID = 12L;
     private static final Long INTERN_ROLE_ID = 13L;
+    private static final Long CONTRACTOR_ROLE_ID = 14L;
+    private static final Long TIME_TEMPLATE_ID = 21L;
+    private static final Long MISSING_TEMPLATE_ID = 99L;
+    private static final String TIME_TEMPLATE_NAME = "夜间窗口";
     private static final Long APPLICATION_ID = 100L;
     private static final String APP_NO = "RA-20261025-A1B2C3";
     private static final String USER = "u-crm-001";
     private static final String REASON = "季度末批量导出订单";
-    private static final Instant FROM = Instant.parse("2026-10-26T01:00:00Z");
-    private static final Instant UNTIL = Instant.parse("2026-10-27T01:00:00Z");
 
     private final Map<String, SysAccessApplication> applications = new ConcurrentHashMap<>();
     private final Map<Long, SysRole> roles = new ConcurrentHashMap<>();
     private final Map<Long, SysSystem> systems = new ConcurrentHashMap<>();
+    private final Map<Long, SysTimeTemplate> templates = new ConcurrentHashMap<>();
     private final List<SysAccessApplicationRole> snapshots = new ArrayList<>();
     private final List<Long> activeRoleIds = new ArrayList<>();
+    private final Map<String, SysUserRole> userRoles = new ConcurrentHashMap<>();
     private final List<ApprovalGrantRequest> grantCalls = new ArrayList<>();
     private final List<SysAccessApplication> updatedApplications = new ArrayList<>();
     private final List<String> lockCalls = new ArrayList<>();
@@ -69,6 +77,8 @@ class AccessDecisionServiceTest {
     private SysRoleMapper roleRepository;
     private SysUserRoleMapper userRoleRepository;
     private SysSystemMapper systemRepository;
+    private SysTimeTemplateMapper templateRepository;
+    private RoleTimeWindowService roleTimeWindowService;
     private ApprovalGrantService approvalGrantService;
     private AccessDecisionService service;
 
@@ -78,8 +88,10 @@ class AccessDecisionServiceTest {
         applications.clear();
         roles.clear();
         systems.clear();
+        templates.clear();
         snapshots.clear();
         activeRoleIds.clear();
+        userRoles.clear();
         grantCalls.clear();
         updatedApplications.clear();
         lockCalls.clear();
@@ -96,6 +108,12 @@ class AccessDecisionServiceTest {
         roles.put(AUDITOR_ROLE_ID, role(AUDITOR_ROLE_ID, "auditor", "审计员",
                 RbacConstants.STATUS_ENABLED));
         roles.put(INTERN_ROLE_ID, role(INTERN_ROLE_ID, "intern", "实习生", 0));
+        roles.put(CONTRACTOR_ROLE_ID, role(CONTRACTOR_ROLE_ID, "contractor", "外包",
+                RbacConstants.STATUS_ENABLED));
+        roles.get(OPERATOR_ROLE_ID).setTimeTemplateId(TIME_TEMPLATE_ID);
+        roles.get(AUDITOR_ROLE_ID).setTimeTemplateId(TIME_TEMPLATE_ID);
+        templates.put(TIME_TEMPLATE_ID, timeTemplate(TIME_TEMPLATE_ID, TIME_TEMPLATE_NAME,
+                0, LocalTime.of(19, 0), 1, LocalTime.of(7, 0)));
 
         applicationRepository = TestProxies.proxy(SysAccessApplicationMapper.class,
                 (proxy, method, args) -> {
@@ -139,6 +157,12 @@ class AccessDecisionServiceTest {
             if ("findActiveRoleIds".equals(method.getName())) {
                 return List.copyOf(activeRoleIds);
             }
+            if ("findBySystemIdAndExternalUserIdAndRoleId".equals(method.getName())) {
+                Long systemId = (Long) args[0];
+                String externalUserId = (String) args[1];
+                Long roleId = (Long) args[2];
+                return Optional.ofNullable(userRoles.get(relationKey(systemId, externalUserId, roleId)));
+            }
             return TestProxies.defaultValue(method.getReturnType());
         });
         systemRepository = TestProxies.proxy(SysSystemMapper.class, (proxy, method, args) -> {
@@ -147,20 +171,36 @@ class AccessDecisionServiceTest {
             }
             return TestProxies.defaultValue(method.getReturnType());
         });
+        templateRepository = TestProxies.proxy(SysTimeTemplateMapper.class, (proxy, method, args) -> {
+            if ("findById".equals(method.getName())) {
+                return Optional.ofNullable(templates.get((Long) args[0]));
+            }
+            return TestProxies.defaultValue(method.getReturnType());
+        });
+        roleTimeWindowService = new RoleTimeWindowService(templateRepository);
         // 授权服务只验证调用参数与返回契约，落库细节由 ApprovalGrantServiceTest 覆盖。
-        approvalGrantService = new ApprovalGrantService(null, null, null, null, null) {
+        approvalGrantService = new ApprovalGrantService(null, null, null, null, null, null) {
             @Override
             public ApprovalGrantResponse grant(ApprovalGrantRequest request) {
                 grantCalls.add(request);
                 if (failingGrantRoleIds.contains(request.roleId())) {
                     throw ApiException.conflict("grant failed");
                 }
-                return new ApprovalGrantResponse(true, grantIds.getAndIncrement(), false);
+                SysUserRole relation = new SysUserRole();
+                relation.setId(grantIds.getAndIncrement());
+                relation.setSystemId(CRM_ID);
+                relation.setExternalUserId(request.externalUserId());
+                relation.setRoleId(request.roleId());
+                relation.setValidFrom(TimeUtils.toUtcLocalDateTime(request.validFrom()));
+                relation.setValidUntil(TimeUtils.toUtcLocalDateTime(request.validUntil()));
+                userRoles.put(relationKey(CRM_ID, request.externalUserId(), request.roleId()), relation);
+                return new ApprovalGrantResponse(true, relation.getId(), false);
             }
         };
 
         service = new AccessDecisionService(applicationRepository, applicationRoleRepository,
-                roleRepository, userRoleRepository, systemRepository, approvalGrantService);
+                roleRepository, userRoleRepository, systemRepository, approvalGrantService,
+                roleTimeWindowService);
     }
 
     @AfterEach
@@ -176,14 +216,15 @@ class AccessDecisionServiceTest {
         givenSnapshot(AUDITOR_ROLE_ID, "auditor", "审计员");
 
         DecisionResponse response = service.decide(new DecisionRequest(APP_NO, " approved ",
-                FROM, UNTIL, " 审批人 ", "同意"));
+                " 审批人 ", "同意"));
 
+        RoleTimeWindowService.TimeWindow window = expectedWindow();
         assertThat(response.applicationNo()).isEqualTo(APP_NO);
         assertThat(response.status()).isEqualTo("APPROVED");
         assertThat(response.idempotent()).isFalse();
         assertThat(response.grantedRoleIds()).containsExactly(OPERATOR_ROLE_ID, AUDITOR_ROLE_ID);
-        assertThat(response.approvedValidFrom()).isEqualTo(FROM);
-        assertThat(response.approvedValidUntil()).isEqualTo(UNTIL);
+        assertThat(response.approvedValidFrom()).isEqualTo(window.from());
+        assertThat(response.approvedValidUntil()).isEqualTo(window.until());
 
         assertThat(lockCalls).containsExactly(APP_NO);
         assertThat(grantCalls).hasSize(2);
@@ -194,8 +235,8 @@ class AccessDecisionServiceTest {
             assertThat(grant.externalUserId()).isEqualTo(USER);
             assertThat(grant.grantType()).isEqualTo("role");
             assertThat(grant.permissionCodes()).isNull();
-            assertThat(grant.validFrom()).isEqualTo(FROM);
-            assertThat(grant.validUntil()).isEqualTo(UNTIL);
+            assertThat(grant.validFrom()).isEqualTo(window.from());
+            assertThat(grant.validUntil()).isEqualTo(window.until());
             assertThat(grant.reason()).isEqualTo("申请单 " + APP_NO + "：" + REASON);
         });
         assertThat(grantCalls).extracting(ApprovalGrantRequest::approvalId)
@@ -204,48 +245,62 @@ class AccessDecisionServiceTest {
         assertThat(updatedApplications).singleElement().satisfies(application -> {
             assertThat(application.getStatus()).isEqualTo(RbacConstants.ACCESS_APPLICATION_STATUS_APPROVED);
             assertThat(application.getApprovedValidFrom())
-                    .isEqualTo(TimeUtils.toUtcLocalDateTime(FROM));
+                    .isEqualTo(TimeUtils.toUtcLocalDateTime(window.from()));
             assertThat(application.getApprovedValidUntil())
-                    .isEqualTo(TimeUtils.toUtcLocalDateTime(UNTIL));
+                    .isEqualTo(TimeUtils.toUtcLocalDateTime(window.until()));
             assertThat(application.getDecisionComment()).isEqualTo("同意");
             assertThat(application.getReviewedBy()).isEqualTo("审批人");
             assertThat(application.getReviewedAt()).isNotNull();
         });
+        // 每角色快照记录模板与各自窗口
+        assertThat(snapshots).allSatisfy(snapshot -> {
+            assertThat(snapshot.getTimeTemplateId()).isEqualTo(TIME_TEMPLATE_ID);
+            assertThat(snapshot.getTimeTemplateName()).isEqualTo(TIME_TEMPLATE_NAME);
+            assertThat(snapshot.getApprovedValidFrom())
+                    .isEqualTo(TimeUtils.toUtcLocalDateTime(window.from()));
+            assertThat(snapshot.getApprovedValidUntil())
+                    .isEqualTo(TimeUtils.toUtcLocalDateTime(window.until()));
+        });
     }
 
     @Test
-    void approveIsIdempotentForSameWindowWithoutRegranting() {
+    void approveIsIdempotentWhenAlreadyApprovedWithoutRegranting() {
         SysAccessApplication approved = application(APPLICATION_ID, APP_NO, CRM_ID, USER,
                 RbacConstants.ACCESS_APPLICATION_STATUS_APPROVED);
-        approved.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(FROM));
-        approved.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(UNTIL));
+        approved.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(expectedWindow().from()));
+        approved.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(expectedWindow().until()));
         givenApplication(approved);
         givenSnapshot(OPERATOR_ROLE_ID, "operator", "CRM运营");
 
         DecisionResponse response = service.decide(new DecisionRequest(APP_NO, "APPROVED",
-                FROM, UNTIL, "审批人", "同意"));
+                "审批人", "同意"));
 
         assertThat(response.idempotent()).isTrue();
         assertThat(response.status()).isEqualTo("APPROVED");
         assertThat(response.grantedRoleIds()).containsExactly(OPERATOR_ROLE_ID);
+        assertThat(response.approvedValidFrom()).isEqualTo(approved.getApprovedValidFrom()
+                .toInstant(java.time.ZoneOffset.UTC));
         assertThat(grantCalls).isEmpty();
         assertThat(updatedApplications).isEmpty();
     }
 
     @Test
-    void approveConflictsWhenAlreadyApprovedWithDifferentWindow() {
+    void approveIsIdempotentEvenIfWindowWouldDifferNow() {
         SysAccessApplication approved = application(APPLICATION_ID, APP_NO, CRM_ID, USER,
                 RbacConstants.ACCESS_APPLICATION_STATUS_APPROVED);
-        approved.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(FROM));
-        approved.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(UNTIL));
+        approved.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(
+                InstantHolder.OLD_FROM));
+        approved.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(
+                InstantHolder.OLD_UNTIL));
         givenApplication(approved);
+        givenSnapshot(OPERATOR_ROLE_ID, "operator", "CRM运营");
 
-        assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, "APPROVED",
-                FROM.plusSeconds(3600), UNTIL.plusSeconds(3600), null, null)))
-                .isInstanceOfSatisfying(ApiException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(409);
-                    assertThat(exception.getMessage()).isEqualTo("申请单已审批，不能重复决策");
-                });
+        DecisionResponse response = service.decide(new DecisionRequest(APP_NO, "APPROVED",
+                null, null));
+
+        assertThat(response.idempotent()).isTrue();
+        assertThat(response.approvedValidFrom()).isEqualTo(InstantHolder.OLD_FROM);
+        assertThat(response.approvedValidUntil()).isEqualTo(InstantHolder.OLD_UNTIL);
         assertThat(grantCalls).isEmpty();
         assertThat(updatedApplications).isEmpty();
     }
@@ -256,7 +311,7 @@ class AccessDecisionServiceTest {
                 RbacConstants.ACCESS_APPLICATION_STATUS_REJECTED));
 
         assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, "APPROVED",
-                FROM, UNTIL, null, null)))
+                null, null)))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(409);
                     assertThat(exception.getMessage()).isEqualTo("申请单已审批，不能重复决策");
@@ -271,7 +326,7 @@ class AccessDecisionServiceTest {
 
         for (String decision : List.of("MAYBE", "", "  ")) {
             assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, decision,
-                    FROM, UNTIL, null, null)))
+                    null, null)))
                     .as(decision)
                     .isInstanceOfSatisfying(ApiException.class, exception -> {
                         assertThat(exception.getStatus()).isEqualTo(400);
@@ -280,7 +335,7 @@ class AccessDecisionServiceTest {
                     });
         }
         assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, null,
-                FROM, UNTIL, null, null)))
+                null, null)))
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getStatus()).isEqualTo(400));
         assertThat(lockCalls).isEmpty();
@@ -289,42 +344,44 @@ class AccessDecisionServiceTest {
     @Test
     void returnsNotFoundForUnknownOrBlankApplicationNo() {
         assertThatThrownBy(() -> service.decide(new DecisionRequest("RA-20261025-MISSING",
-                "APPROVED", FROM, UNTIL, null, null)))
+                "APPROVED", null, null)))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(404);
                     assertThat(exception.getMessage()).isEqualTo("申请单不存在");
                 });
         assertThatThrownBy(() -> service.decide(new DecisionRequest("  ", "APPROVED",
-                FROM, UNTIL, null, null)))
+                null, null)))
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getStatus()).isEqualTo(404));
         assertThat(lockCalls).containsExactly("RA-20261025-MISSING");
     }
 
     @Test
-    void approveRequiresAValidFutureWindow() {
+    void approveRejectsRoleWithoutTimeTemplate() {
+        givenApplication(application(APPLICATION_ID, APP_NO, CRM_ID, USER,
+                RbacConstants.ACCESS_APPLICATION_STATUS_PENDING));
+        givenSnapshot(CONTRACTOR_ROLE_ID, "contractor", "外包");
+
+        assertThatThrownBy(() -> service.decide(approvedRequest()))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(409);
+                    assertThat(exception.getMessage()).isEqualTo("申请角色未绑定时间模板，无法审批");
+                });
+        assertThat(grantCalls).isEmpty();
+        assertThat(updatedApplications).isEmpty();
+    }
+
+    @Test
+    void approveRejectsRoleBoundToMissingOrDisabledTemplate() {
+        roles.get(OPERATOR_ROLE_ID).setTimeTemplateId(MISSING_TEMPLATE_ID);
         givenApplication(application(APPLICATION_ID, APP_NO, CRM_ID, USER,
                 RbacConstants.ACCESS_APPLICATION_STATUS_PENDING));
         givenSnapshot(OPERATOR_ROLE_ID, "operator", "CRM运营");
 
-        assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, "APPROVED",
-                null, UNTIL, null, null)))
+        assertThatThrownBy(() -> service.decide(approvedRequest()))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(400);
-                    assertThat(exception.getMessage()).isEqualTo("validFrom 和 validUntil 不能为空");
-                });
-        assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, "APPROVED",
-                UNTIL, UNTIL, null, null)))
-                .isInstanceOfSatisfying(ApiException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(400);
-                    assertThat(exception.getMessage()).isEqualTo("validUntil 必须晚于 validFrom");
-                });
-        assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, "APPROVED",
-                Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600),
-                null, null)))
-                .isInstanceOfSatisfying(ApiException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(400);
-                    assertThat(exception.getMessage()).isEqualTo("validUntil 必须晚于当前时间");
+                    assertThat(exception.getStatus()).isEqualTo(409);
+                    assertThat(exception.getMessage()).isEqualTo("时间模板不存在或已停用");
                 });
         assertThat(grantCalls).isEmpty();
         assertThat(updatedApplications).isEmpty();
@@ -436,7 +493,7 @@ class AccessDecisionServiceTest {
         givenSnapshot(OPERATOR_ROLE_ID, "operator", "CRM运营");
 
         DecisionResponse response = service.decide(new DecisionRequest(APP_NO, "rejected",
-                null, null, "  ", "材料不完整"));
+                "  ", "材料不完整"));
 
         assertThat(response.status()).isEqualTo("REJECTED");
         assertThat(response.idempotent()).isFalse();
@@ -460,7 +517,7 @@ class AccessDecisionServiceTest {
                 RbacConstants.ACCESS_APPLICATION_STATUS_REJECTED));
 
         DecisionResponse response = service.decide(new DecisionRequest(APP_NO, "REJECTED",
-                null, null, null, null));
+                null, null));
 
         assertThat(response.status()).isEqualTo("REJECTED");
         assertThat(response.idempotent()).isTrue();
@@ -474,7 +531,7 @@ class AccessDecisionServiceTest {
                 RbacConstants.ACCESS_APPLICATION_STATUS_APPROVED));
 
         assertThatThrownBy(() -> service.decide(new DecisionRequest(APP_NO, "REJECTED",
-                null, null, null, null)))
+                null, null)))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(409);
                     assertThat(exception.getMessage()).isEqualTo("申请单已审批，不能重复决策");
@@ -483,7 +540,15 @@ class AccessDecisionServiceTest {
     }
 
     private DecisionRequest approvedRequest() {
-        return new DecisionRequest(APP_NO, "APPROVED", FROM, UNTIL, "审批人", "同意");
+        return new DecisionRequest(APP_NO, "APPROVED", "审批人", "同意");
+    }
+
+    private RoleTimeWindowService.TimeWindow expectedWindow() {
+        return roleTimeWindowService.compute(templates.get(TIME_TEMPLATE_ID));
+    }
+
+    private static String relationKey(Long systemId, String externalUserId, Long roleId) {
+        return systemId + "|" + externalUserId + "|" + roleId;
     }
 
     private void givenApplication(SysAccessApplication application) {
@@ -528,5 +593,26 @@ class AccessDecisionServiceTest {
         role.setName(name);
         role.setStatus(status);
         return role;
+    }
+
+    private static SysTimeTemplate timeTemplate(Long id, String name, int startDayOffset,
+                                                 LocalTime startTime, int endDayOffset,
+                                                 LocalTime endTime) {
+        SysTimeTemplate template = new SysTimeTemplate();
+        template.setId(id);
+        template.setName(name);
+        template.setTimezone("Asia/Shanghai");
+        template.setStartDayOffset(startDayOffset);
+        template.setStartTime(startTime);
+        template.setEndDayOffset(endDayOffset);
+        template.setEndTime(endTime);
+        template.setStatus(RbacConstants.STATUS_ENABLED);
+        return template;
+    }
+
+    /** 与当前时间无关的旧审批窗口，用于验证幂等时不回滚。 */
+    private static final class InstantHolder {
+        private static final java.time.Instant OLD_FROM = java.time.Instant.parse("2026-10-20T01:00:00Z");
+        private static final java.time.Instant OLD_UNTIL = java.time.Instant.parse("2026-10-21T01:00:00Z");
     }
 }

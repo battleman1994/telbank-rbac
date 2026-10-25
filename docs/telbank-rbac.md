@@ -1099,10 +1099,11 @@ interface AppState {
 | A14 | §5.7 管理端菜单与页面布局 | 前端移除「到期提醒」菜单/路由/页面（后端 `/api/expiring-grants` 接口保留）；管理台布局改为占满 100% 视口、内容区独立滚动，表格宽度自适应，去除页面/表格横向滚动条 | 用户要求；README §11、前端 README |
 | A13 | §3.1/§4 持久层技术选型 | **JPA/Hibernate → MyBatis-Plus 3.5.17**（Boot4 starter + jsqlparser）：实体改 `@TableName/@TableId`、删除 Spring Data Repository、改 `BaseMapper` + 注解 SQL、MP `Page` 分页；数据库表结构/REST 契约不变 | 用户要求；契约 v2.2 §2、README §11 |
 | A20 | §5 权限申请与审批 | **业务用户临时权限申请**：新增顶级「我的申请」（所有登录用户，不占管理权限），仅能申请当前系统内已有有效角色之外的非 `admin` 角色；申请单 `RA-...` + PENDING/APPROVED/REJECTED，点击单号跳外部审批 URL；新增 `sys_access_application` / `sys_access_application_role`（迁移 10），自助 API 不要求管理权限；外部审批通过/驳回走 `POST /openapi/approval/access-applications/decision`（审批 AppKey、行锁、多角色原子、同窗口幂等），批准按统一连续有效期写 `sys_user_role`，不新增用户-权限表；权限中心不实现审批流，提供 `scripts/mock-access-approval.py` 模拟；角色授权树过滤 `*`，非 admin 手工授 `*` 后端 400 | 用户确认；契约 v2.7 §5.1/§8.1/§10、README §11 |
+| A21 | §5 权限时效模型 | **角色时间模板**：时间语义从「角色-权限」上移到「用户-角色」。新增全局 `sys_time_template`（迁移 11，预置「夜间窗口」「全天窗口」演示模板，不自动绑定），`sys_role` 增加 `time_template_id`（空=永久角色）；审批通过/管理员直接分配时按角色模板计算绝对窗口写入 `sys_user_role`（多角色可不同，申请单级取包络），角色-权限改为永久（删除 `sys_role_permission.valid_from/valid_until`）；自助申请与审批 decision 不再接收/回传窗口字段，旧审批 `grant` 对绑定模板的角色以模板为准；新增平台超管专属「时间模板」页，菜单「角色授权→角色权限」「用户授权→用户角色」，角色权限页去掉逐项时效、用户角色/我的申请去掉日期选择 | 用户确认；契约 v3.0 §3.3.1/§3.5/§3.6/§4.3/§5/§5.1/§10、README §11 |
 | A12 | §2/§5 权限粒度与管理上下文 | **A 方案通配权限**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再逐条短码；**严格上下文**：`06` 清理 admin 角色残留业务授权（角色授权只剩一条 `*`，公共权限除外）；所有权限/角色/资源查询限定当前 `X-System-Code` 系统，列表缺省 systemId 收敛上下文、by-id 校验实体 systemId，平台超管也禁止单请求跨系统 | 用户确认；契约 v2.1 §1.5/§3/§10、README §1.1 |
 | A11 | §2/§5 权限管理模型：系统隔离、超管定义、用户-系统开通未明确 | **系统作为隔离边界**：系统管理员只管理本系统角色/权限，跨系统 403；平台超管改为**数据驱动**（平台系统 `platform` + `super-admin` + `platform:admin`，种子账号 `superadmin`），删除配置文件；**删除 `sys_user_system` 与用户-系统开通**，系统访问由有效角色推导；管理上下文 `X-System-Code=当前业务系统`；管理权限码改为系统内短码（`role:manage` 等）；**系统接入仅超管**且必须录入系统管理员，服务端自动创建默认 `admin` 角色 + 6 个短权限码并授权；菜单重构为「权限管理」组 + 顶级「系统接入」 | 用户确认的新设计（v2.0，取代 A8）；契约 v2.0 §1.5/§3/§10、README §1.1 |
 
-> 补充验证：真实 Redis Pub/Sub 联调、JDK 8 运行时 CI、JDK 21 SDK 单测、**v2.0 系统隔离验收（API 81/81，含两个 SDK e2e 各 4/4）** 的记录见 `docs/acceptance.md`。
+> 补充验证：真实 Redis Pub/Sub 联调、JDK 8 运行时 CI、JDK 21 SDK 单测、**v2.0 系统隔离验收（API 81/81，含两个 SDK e2e 各 4/4）** 的记录见 `docs/acceptance.md`。**A21（角色时间模板）**已完成并通过：全新库 01→11 全量验收 **159/159**、后端 **219** 单测、`verify-all.sh` **17** 项；详见 `docs/acceptance.md` §9.17/§9.18 与执行记录。
 
 ---
 

@@ -161,20 +161,38 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 2 | 前端隐藏按钮后直接调接口 403 | 单元测试（filter） | 成立 | ✅ |
 | 3 | 无有效 JWT / JWT 过期 401 | API 脚本 | 成立 | ✅ |
 
-## 9.17 业务用户临时权限申请（A20）
+## 9.17 业务用户临时权限申请（A21：按角色时间模板计算窗口）
+
+> A21 起：申请/审批不再由外部审批平台回传统一窗口，窗口由**每个角色绑定的时间模板**在审批通过时计算（多角色可不同，申请级为包络）；角色必须「绑定启用模板」才能被自助申请。验证脚本 `python3 scripts/acceptance.py --only 9.17`。
 
 | # | 场景 | 验证方式 | 预期 | 状态 |
 |---|---|---|---|---|
-| 1 | 业务用户无管理权限也能看到「我的申请」并进入 | 前端代码审查 + headless 联调（13600136000） | 菜单仅「我的申请」，首页重定向到 `/access-applications`，不再出现「无管理权限」整页空态 | ✅ |
-| 2 | 可申请角色只含当前系统非 admin 角色，附权限预览 | API 脚本 §9.17 `options` + 前端联调 | 仅当前系统、排除 `admin`/`*`，返回每个角色的权限码 | ✅ |
+| 1 | 业务用户无管理权限也能看到「我的申请」并进入 | 前端代码审查 + headless 联调（13600136000） | 菜单仅「我的申请」，首页重定向到 `/access-applications`，不再出现「无管理权限」整页空态 | ✅ headless 联调（业务用户，无管理权限） |
+| 2 | 可申请角色只含当前系统非 admin、且已绑定启用模板的角色；附权限预览与模板摘要 | API 脚本 §9.17 `options` | 角色项含 `timeTemplateId/timeTemplateName/timeTemplateText`；无模板角色不出现 | ✅ |
 | 3 | 创建申请：PENDING、单号/时间/审批链接；重复提交 409 | API 脚本 §9.17 | 申请单号 `RA-...`，`createdAt` 非空；同一用户同系统最多一条 PENDING | ✅ |
-| 4 | 申请 admin 角色被拒绝 | API 脚本 §9.17 | 400 | ✅ |
-| 5 | 审批通过：APPROVED、按统一连续窗口写 `sys_user_role` | API 脚本 §9.17 + bootstrap 复验 | 新权限出现；`grantedRoleIds` 与申请角色一致 | ✅ |
-| 6 | 审批回调错误 AppKey / 重复同窗口回调 | API 脚本 §9.17 | 错误 401；重复 `idempotent=true` 不重复授权 | ✅ |
-| 7 | 驳回：REJECTED 且不授权；驳回后再通过 409 | API 脚本 §9.17 | 权限集不含申请角色权限；状态冲突 409 | ✅ |
-| 8 | 跨系统查询本人申请单 | API 脚本 §9.17 | ERP 上下文查 CRM 申请单 404 | ✅ |
-| 9 | 角色授权页不再可授予 `*`；后端拒绝非 admin 角色手工授通配 | 前端代码审查 + 后端单测/API + headless | 授权树无通配节点；`grant` 传 `*` 400；admin 默认通配不受影响 | ✅ |
-| 10 | 模拟外部审批脚本 | `scripts/mock-access-approval.py list/show/approve/reject` | 可在无审批平台环境完成通过/驳回闭环 | ✅ |
+| 4 | 申请 admin 角色 / 无模板角色被拒绝 | API 脚本 §9.17 | 400 | ✅ |
+| 5 | 审批通过：不再传 `validFrom/validUntil`，服务端按各角色模板写 `sys_user_role`，申请单窗口为包络 | API 脚本 §9.17 + bootstrap 复验 | 逐角色 `approvedValidFrom/Until` 有效；新权限出现；`grantedRoleIds` 与申请一致 | ✅ |
+| 6 | 多角色不同模板 → 逐角色窗口不同，申请级窗口=最早开始/最晚结束 | API 脚本 §9.17 | 窗口差异成立、包络正确 | ✅ |
+| 7 | 审批回调错误 AppKey / 重复审批 | API 脚本 §9.17 | 错误 401；重复 `idempotent=true` 且窗口不回滚 | ✅ |
+| 8 | 驳回：REJECTED 且不授权；驳回后再通过 409 | API 脚本 §9.17 | 权限集不含申请角色权限；状态冲突 409 | ✅ |
+| 9 | 跨系统查询本人申请单 | API 脚本 §9.17 | ERP 上下文查 CRM 申请单 404 | ✅ |
+| 10 | 角色-权限静态永久（无逐项时效）；非 admin 手工授 `*` 仍拒绝 | API 脚本 §9.2/§9.17 + 后端单测 | 授权记录无 `validFrom/validUntil`；`grant` 传 `*` 400 | ✅ |
+| 11 | 模拟外部审批脚本（不再传有效期） | `scripts/mock-access-approval.py list/show/approve/reject` | 无审批平台环境可完成通过/驳回闭环 | ✅ `list` 实读 4 张申请单；脚本参数自检通过；approve/reject HTTP 决策路径由 API 验收覆盖 |
+
+## 9.18 角色时间模板（A21）
+
+> 模板为全局配置，平台超管维护（系统管理员即使拥有 `*` 也只能读）；角色绑定模板后，分配/审批按模板计算绝对窗口。验证脚本 `python3 scripts/acceptance.py --only 9.18`。
+
+| # | 场景 | 验证方式 | 预期 | 状态 |
+|---|---|---|---|---|
+| 1 | 系统管理员可读模板列表，预置「夜间窗口」「全天窗口」 | API 脚本 §9.18 | 200，列表含两个预置模板 | ✅ |
+| 2 | 非平台超管创建/修改/停用模板 | API 脚本 §9.18 | 403（不受 `*` 影响） | ✅ |
+| 3 | 平台超管模板 CRUD + 参数校验 | API 脚本 §9.18 | 非法时区/结束早于开始/重名 → 400；DELETE=逻辑停用且 `status=0` 可查 | ✅ |
+| 4 | 角色创建/更新绑定模板、改绑、解绑 | API 脚本 §9.18 | `RoleVO.timeTemplateId/Name` 正确；解绑=永久角色 | ✅ |
+| 5 | admin 角色绑定时间模板 | API 脚本 §9.18 | 400 | ✅ |
+| 6 | 管理员直接分配用户角色 → 按模板写窗口；无模板角色 → 永久 | API 脚本 §9.18 | `UserRoleVO.validFrom/validUntil` 有效/为空 | ✅ |
+| 7 | 可申请角色过滤：只含绑定启用模板的角色；申请无模板角色 400 | API 脚本 §9.18 | 成立 | ✅ |
+| 8 | 模板停用后：新分配 409；已提交申请审批通过 409 | API 脚本 §9.18 | 409，不写入授权 | ✅ |
 
 ---
 
@@ -183,6 +201,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 - ✅ **实测通过**：本机跑通 API 脚本 / 示例业务系统 / 构建命令，结果见下表。
 - 🧪 **单元测试覆盖**：无独立 E2E 环境的场景，由模块单元测试覆盖（测试类位置见括注）。
 - 🔶 **未在本机 E2E**：因本机缺少 Redis 或不属于本仓库交付物（业务系统自有前端），仅做到代码级/单测级 + 说明。
+- A21 已执行完毕；后续新增验收项仍以 `⏳` 表示待执行。
 
 | 需求条目 | 证据级别 | 说明 |
 |---|---|---|
@@ -199,6 +218,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + **一条 `*` 权限** + 授权；新管理员凭 `*` 可管理本系统（权限树仅一条 `*`）；非超管 403；PUT status=0 停用后移除 |
 | A19 表格内容优先展示（v2.6） | ✅ | 表格 auto 布局；宽度足够不换行、不够换行完整展示，不使用省略号；时间列短格式；headless 1440×900 验证所有页面表格无横向滚动、字段完整展示 |
 | A20 业务用户临时权限申请（v2.7） | ✅ | 新增 `sys_access_application` / `sys_access_application_role`（迁移 10）；自助申请 API 不要求管理权限；审批回调按申请单行锁、多角色事务、同窗口幂等；`13600136000` 申请→通过→权限出现→驳回→跨系统隔离闭环 22/22；前端「我的申请」入口/角色预览/审批外链；角色授权树过滤 `*`，后端拒绝非 admin 通配授权 |
+| A21 角色时间模板（v3.0） | ✅ | 新增全局 `sys_time_template`（迁移 11，预置夜间/全天模板）、`sys_role.time_template_id`；审批/直接分配按模板计算绝对窗口（多角色可不同，申请级包络）；角色-权限改为永久（删逐项时效）；Python 验收 §9.17 35 项 + §9.18 24 项全过；后端 219 单测；verify-all 17 项；headless Chrome 验证时间模板页（仅平台超管）、角色权限页去逐项时效、用户角色/我的申请模板窗口展示 |
 | A18 凭据查看 + admin 授权保护（v2.6） | ✅ | 「接入凭据」页（system:credential）系统管理员可看本系统完整 AppKey/AppSecret、默认隐藏；平台超管可查看任意系统；角色授权排除 admin，后端 grant/revoke 400；验收 7 项 + 单测 151 |
 | A17 系统接入凭据（v2.5） | ✅ | `sys_system` 增加 appKey/appSecret（09 回填 crm/erp）；手动/审核创建均分配 appKey=code + 32 位 secret；列表返回 AppKey/掩码、创建/审批响应一次性返回完整 secret；开放接口 DB 凭据优先仍可正常验签 | 
 | A16 系统接入双通道 + 审核（v2.5） | ✅ | 手动录入保留；SDK 上报 `POST /openapi/onboarding/systems`（onboarding AppKey/HMAC）→ PENDING 申请；超管 GET/approve/reject；approve 自动创建系统/`admin` 角色/`*`/管理员授权并返回凭据；单 system_code 最新状态、驳回可重报；真实 SDK 启动上报验证通过；全量验收 101/101 |
@@ -208,7 +228,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | A12 通配权限 + 严格上下文（v2.1） | ✅ | admin/超管均一条 `*`（`06` 清理后 admin 角色授权记录 = 1 条 `*`；公共权限 `common:profile` 除外）；`*`/`前缀:*`/精确匹配在后端、前端、SDK 单测与 e2e 验证；所有权限/角色/资源列表按当前系统收敛，超管跨系统 systemId 403；全量验收 88/88 |
 | JDK 21 版 SDK 端到端 | ✅ | `telbank-rbac2-starter`（Boot 4.1.2/JDK21）**98 单测** + 示例业务系统 CRM/ERP 真实拦截 **4/4 PASS**（CRM 200 / ERP 403 / health 200），无 Redis 自动降级轮询；真实 Redis 联调：订阅 `rbac:change:region_a:crm`（NUMSUB=1），变更后收到 `PAGE_ACTION_CHANGED` 并刷新页面元数据 5→6 |
 | Flyway 移除（需求附录 A10） | ✅ | 删除 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `db/manual/01_schema.sql`、`02_seed_data.sql`、`03_rbac_self_onboarding.sql` 手动初始化。全新库导入后 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入 8 表并启动成功 |
-| 管理前端 ↔ 真实后端联调 | 🔶 | 前端已通过 `tsc` 类型检查、生产构建、mock 后端 + headless Chrome 10 页面冒烟；**尚未在真实 `telbank-rbac-api` 上做浏览器人工联调**（启动方式见 README §4） |
+| 管理前端 ↔ 真实后端联调 | ✅ | 前端已通过 `tsc` 类型检查与生产构建；headless Chrome 在真实 `telbank-rbac-api` 上完成多轮联调（A19/A20/A21），覆盖角色权限、时间模板、用户角色、我的申请等关键页面；未做人工视觉走查 |
 
 ## 已完成的补验（原限制项，保留记录）
 
@@ -228,18 +248,24 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 2. **approval-grants 按 externalUserId 过滤**：`ROLE_PERMISSION` 类记录没有 `external_user_id` 列，该过滤条件下只返回 `USER_ROLE` 记录。
 3. **MySQL 版本**：本机临时 MySQL 26.7 实测通过；生产建议 MySQL 8.0+（本项目已移除 Flyway，无迁移工具版本告警）。
 4. **前端包体**：未做路由级 code splitting（单 chunk 1.4 MB / gzip 443 kB），可后续优化。
-5. **管理前端真实后端联调（待补）**：前端已通过类型检查、构建与 mock 冒烟（v2.0 菜单/上下文/系统接入表单），尚未在真实权限中心后端上做浏览器人工联调（启动方式见 README §4，验收时可逐页操作并观察 `/api/**` 请求）。
+5. **管理前端真实后端联调**：已用 headless Chrome 在真实权限中心后端（API 28090 + 前端 5181/5173）完成多轮联调，覆盖 A19/A20/A21 页面与角色权限/时间模板/我的申请关键路径；未做人工视觉走查。
 6. **系统接入无删除**：v2.0 仅支持 PUT `status=0` 停用（需求未定义删除）；测试脚本会留下唯一编码的停用系统。
 7. **超管必须按上下文操作**：v2.1 起超管也不能在单请求中跨系统查询（需先切换 X-System-Code），`/api/systems/**` 仍为超管专属例外。
 8. **审批平台无拉取申请单的开放 API**：A20 只提供权限中心 → 外部审批平台的决策回调；`scripts/mock-access-approval.py list/show` 直接读本地 demo 库模拟待办箱，生产需由外部审批平台自行保存申请单号/链接。
-9. **审批窗口由审批平台决定**：A20 申请阶段不接受期望时效；通过时外部审批必须回传统一连续的 `validFrom/validUntil`，权限中心按此窗口逐角色写 `sys_user_role`，不提供按日重复窗口。
+9. **审批窗口由角色时间模板决定（A21）**：申请/审批不再接收 `validFrom/validUntil`；审批通过时按每个角色绑定的模板计算绝对窗口（多角色可不同，申请单级取最早开始/最晚结束），角色停用/模板过期 → 409；已生效窗口不随模板后续修改或停用回滚。角色-权限不再有逐项时效（迁移 11 删除相关列）。
 
 ## 执行记录
+
+> **A21 已执行**：全新临时库（01→11）上完成 §9.17（35 项）+ §9.18（24 项），全量验收 159/159 PASS；`verify-all.sh` 17 项全过。A21 页面已做 headless Chrome 联调（时间模板页、角色管理/角色权限/用户角色、业务用户「我的申请」）。
 
 > 验证机：macOS arm64（`hellokitty`）· MySQL 26.7（127.0.0.1:3306；v2.0 使用独立库 `telbank_rbac_v2` 按 01→04 初始化）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；JDK 8 运行时由 GitHub Actions 验证；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-25 16:27 | `./scripts/verify-all.sh`（A21 后） | **17 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、3 平台脚本 |
+| 2026-10-25 16:26 | 前端 `npm run build`（A21 页面与服务端窗口展示） | `tsc -b` 0 error；3261 modules；JS 1,469.08 kB / gzip 462.50 kB |
+| 2026-10-25 16:20 | `python3 scripts/acceptance.py --base-url http://localhost:28090`（临时 MySQL 3308 + 全新库 01→11 + API 28090 + 前端 5181） | **159/159 PASS，0 FAIL**：含 A21 §9.17 **35/35**、§9.18 **24/24**；多角色模板窗口/包络、模板停用 409、角色权限静态化、admin 绑定模板 400 全过 |
+| 2026-10-25 16:17 | headless Chrome（1440×900，真实 A21 后端） | 平台超管见「时间模板」页并可查看预置夜间/全天模板；crm-admin 角色权限页无逐项时效、用户角色页无日期选择；业务用户「我的申请」仅见该入口、表单展示角色模板摘要；角色管理表格内容完整无省略 |
 | 2026-10-25 13:02 | `./scripts/verify-all.sh`（A20 后） | **16 项检查全过**：api **192** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09/10 迁移、凭据/admin 保护、A20 申请产物、3 平台脚本 |
 | 2026-10-25 12:59 | 前端 `npm run build`（A20 我的申请页/角色授权过滤） | `tsc -b` 0 error；3259 modules；JS 1,456.05 kB / gzip 459.13 kB |
 | 2026-10-25 12:58 | headless Chrome（1440×900，API 28090 + 前端 5173） | 13600136000 仅见「我的申请」入口、无管理菜单，可打开新建弹窗；crm-admin-001 选择 operator 后权限预览 3 项；角色授权页 operator 授权树无 `*`、admin 不在角色下拉 |

@@ -2,14 +2,14 @@
  * 权限管理菜单 / 路由权限配置（系统隔离模型）。
  *
  * 管理权限码为「当前系统内」的短码，菜单 / 路由守卫共用：
- * - role:manage        → 角色管理、角色授权
+ * - role:manage        → 角色管理、角色权限
  * - permission:manage  → 权限管理
  * - resource:manage    → 资源管理（SDK 端点资源）
  * - page:manage        → 页面元素
- * - user:manage        → 用户授权
+ * - user:manage        → 用户角色
  * - audit:view         → 授权记录
  * - system:credential  → 接入凭据（admin 角色由 `*` 通配通过）
- * 顶级「系统接入」（/systems）仅平台超管可见，无权限码；
+ * 顶级「系统接入」（/systems）与「时间模板」（/time-templates）仅平台超管可见，无权限码；
  * 「接入凭据」（/system-credential）在权限管理组内，对拥有 system:credential（含 `*`）的系统管理员/超管可见。
  */
 
@@ -63,6 +63,11 @@ export const MANAGEMENT_MENU_ITEMS: readonly ManagementMenuItem[] = [
     platformAdminOnly: true,
   },
   {
+    path: '/time-templates',
+    label: '时间模板',
+    platformAdminOnly: true,
+  },
+  {
     path: '/roles',
     label: '角色管理',
     permission: MANAGEMENT_PERMISSIONS.role,
@@ -76,13 +81,13 @@ export const MANAGEMENT_MENU_ITEMS: readonly ManagementMenuItem[] = [
   },
   {
     path: '/role-permissions',
-    label: '角色授权',
+    label: '角色权限',
     permission: MANAGEMENT_PERMISSIONS.role,
     group: MENU_GROUP_NAME,
   },
   {
     path: '/user-roles',
-    label: '用户授权',
+    label: '用户角色',
     permission: MANAGEMENT_PERMISSIONS.user,
     group: MENU_GROUP_NAME,
   },

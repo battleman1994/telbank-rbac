@@ -112,19 +112,21 @@ cd telbank-rbac-front && npm run dev
 | 菜单 | 路由 | 所需权限码（当前系统内短码） | 页面说明 |
 |---|---|---|---|
 | 系统接入（顶级，仅平台超管） | `/systems` | 无 | 系统接入管理：编码、名称、区域、系统管理员账号/姓名、状态 |
+| 时间模板（顶级，仅平台超管） | `/time-templates` | 无（PlatformAdminGuard） | 全局时间模板 CRUD（名称/时区/开始日偏移与时刻/结束日偏移与时刻/状态），删除=逻辑停用 |
 | 我的申请（顶级，无需权限码） | `/access-applications` | 无（alwaysVisible） | 业务用户自助提交临时角色权限申请、查看本人申请单与审批链接 |
 | 接入凭据（权限管理组内） | `/system-credential` | `system:credential` | 查看当前系统 AppKey / AppSecret（默认隐藏，可显示/复制）；admin 角色经通配 `*` 通过 |
-| 角色管理 | `/roles` | `role:manage` | 当前系统角色 CRUD |
+| 角色管理 | `/roles` | `role:manage` | 当前系统角色 CRUD（含绑定时间模板） |
 | 权限管理 | `/permissions` | `permission:manage` | 权限码树（type/is_public/method/api_pattern） |
-| 角色授权 | `/role-permissions` | `role:manage` | 左右工作区：左侧选角色/勾权限/逐项时效/提交，右侧已授权列表与撤销 |
-| 用户授权 | `/user-roles` | `user:manage` | 用户-角色分配（含时效） |
+| 角色权限 | `/role-permissions` | `role:manage` | 左右工作区：左侧选角色/勾权限/提交（角色-权限永久），右侧已授权列表与撤销 |
+| 用户角色 | `/user-roles` | `user:manage` | 用户-角色分配：窗口由角色绑定的时间模板计算，无模板角色直接分配为永久 |
 | 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点上报与权限码关联；未关联端点显式标记「未生效」 |
 | 页面元素 | `/page-actions` | `page:manage` | 页面元素标识：pageCode/code/text/type（语义类型） |
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。
-- `/systems` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页。
-- **通配权限（A 方案）**：`permissions` 支持 `*` 与 `前缀:*` 两种通配。权限集合含 `*` 时 `hasPerm` 恒 true（admin / superadmin 角色只授一条 `*`，因此全部菜单可见）；含 `前缀:*`（如 `role:*`）时，请求码以 `前缀:` 开头即 true；否则精确匹配。**角色授权页的授权树/可授权列表会递归过滤 `code='*'` 节点**（通配由系统默认规则管理，不参与逐项授权），已存在的通配授权仍在右侧「已授权列表」只读展示，并在选择该角色时显示「已拥有通配权限」提示。
+- `/systems`、`/time-templates` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页；「时间模板」为全局配置，不随系统上下文变化。
+- **角色权限（A21）**：角色-权限永久有效；角色的生效窗口由角色绑定的「时间模板」决定，在角色管理页配置、在用户角色/审批分配时由服务端计算。
+- **通配权限（A 方案）**：`permissions` 支持 `*` 与 `前缀:*` 两种通配。权限集合含 `*` 时 `hasPerm` 恒 true（admin / superadmin 角色只授一条 `*`，因此全部菜单可见）；含 `前缀:*`（如 `role:*`）时，请求码以 `前缀:` 开头即 true；否则精确匹配。**角色权限页的授权树/可授权列表会递归过滤 `code='*'` 节点**（通配由系统默认规则管理，不参与逐项授权），已存在的通配授权仍在右侧「已授权列表」只读展示，并在选择该角色时显示「已拥有通配权限」提示。
 - 无任何管理权限：布局菜单仍保留「我的申请」（`alwaysVisible`），不显示「无管理权限」空态；连「我的申请」之外的页面均无权限时，路由守卫渲染 403 无权限页。
 - **已移除「用户-系统开通」**：删除路由 `/user-systems`、页面、API 封装、菜单项与类型；系统访问权限完全由「用户-角色（有效角色）」推导。
 
@@ -179,27 +181,42 @@ cd telbank-rbac-front && npm run dev
 - 首页重定向 `HomeRedirect`：有管理页时优先第一个有权限的管理页；无管理页时回退到 `/access-applications`（普通运营账号登录后直接进入「我的申请」）。
 - 页面结构：
   - 顶部只读展示当前系统（`currentSystem.name/code`），状态筛选（全部 / 待审批 / 已通过 / 已驳回）+ 刷新 + 新建申请。
-  - 列表列：申请单号 / 状态 / 申请角色 / 授权有效期 / 申请原因 / 申请时间 / 操作；待审批单号可点击跳转 `approvalUrl`（外部审批平台，新窗口），详情抽屉复用列表数据并拉取单条详情。
+  - 列表列：申请单号 / 状态 / 申请角色 / 授权窗口（申请级为各角色窗口包络）/ 申请原因 / 申请时间 / 操作；待审批单号可点击跳转 `approvalUrl`（外部审批平台，新窗口），详情抽屉复用列表数据并拉取单条详情（展开逐角色模板名与窗口）。
   - 空态、加载态、错误 `Alert` + 重试齐全；列表 `table-layout:auto` 无横向滚动。
 - 新建申请弹窗：
   - 当前系统只读；**角色多选**只展示当前系统非 `admin` 角色，已拥有的角色置灰并标注「已拥有」；
-  - 选择角色后实时展示「角色权限预览」（角色名/角色编码/权限码，按角色分组）；
+  - 选择角色后实时展示「角色权限预览」（角色名/角色编码/权限码，按角色分组）与角色的**时间模板摘要**（如「审批后当天 19:00 至次日 07:00」；无模板角色不可申请，不在选项中）；
   - 申请原因必填（≤200 字），前端校验并提交 `POST /api/access-applications`（当前系统通过 `X-System-Code` 头传递，不放在 body）；成功后 toast 展示申请单号、列表回第 1 页并刷新；失败保留已选角色与原因可重试。
 - 接口（契约 §5.1，`src/api/accessApplications.ts`）：
-  - `GET /api/access-applications/options` → `{systemId,systemCode,systemName,approvalUrlTemplate?,roles[{roleId,roleCode,roleName,owned,permissions[{id,code,name,type}]}]}`
-  - `GET /api/access-applications?status=&page=&size=` → `{items[],total,page,size}`，`items[]` 字段：`id,applicationNo,systemId,systemCode,status(PENDING/APPROVED/REJECTED),roleCount,roles[{roleId,roleCode,roleName}],reason,approvedValidFrom?,approvedValidUntil?,decisionComment?,reviewedBy?,reviewedAt?,createdAt,approvalUrl?`
+  - `GET /api/access-applications/options` → `{systemId,systemCode,systemName,approvalUrlTemplate?,roles[{roleId,roleCode,roleName,owned,timeTemplateId?,timeTemplateName?,timeTemplateText?,permissions[{id,code,name,type}]}]}`
+  - `GET /api/access-applications?status=&page=&size=` → `{items[],total,page,size}`，`items[]` 字段：`id,applicationNo,systemId,systemCode,status(PENDING/APPROVED/REJECTED),roleCount,roles[{roleId,roleCode,roleName,timeTemplateName?}],reason,approvedValidFrom?,approvedValidUntil?,decisionComment?,reviewedBy?,reviewedAt?,createdAt,approvalUrl?`；详情接口的 `roles[]` 额外含 `timeTemplateName,approvedValidFrom,approvedValidUntil`（逐角色窗口）
   - `POST /api/access-applications`：`{roleIds[],reason}`
   - `GET /api/access-applications/{applicationNo}`：申请详情
   - 状态映射：`PENDING` 待审批 / `APPROVED` 已通过 / `REJECTED` 已驳回。
-- 前端不提供审批操作（审批在外部审批平台完成，展示审批链接跳转）；审批通过后由后端按统一连续有效期授予角色，过期自动失效。
+- 前端不提供审批操作（审批在外部审批平台完成，展示审批链接跳转）；审批通过后由后端**按各角色绑定的时间模板分别计算窗口**写入 `sys_user_role`，多角色取包络，过期自动失效。
 
-## 角色授权页（交互重构）
+## 角色权限页（A21 简化）
 
-- **左右工作区**：左侧「授权操作」完成角色选择、权限树勾选、逐条时效、授权原因与提交；右侧「已授权列表」展示该角色全部授权（状态、起止时间、单条撤销）及授权规则。避免把宽表格拉满后字段空旷、操作区与列表一左一右割裂。
-- **逐项时效**：勾选权限树后进入「本次授权清单」，每条权限独立 `RangePicker`；未设置时间 = 永久授权；取消勾选只移出本次提交，不会自动撤销。
-- **分组提交**：提交时前端按「生效时间 + 失效时间」完全相同的权限分组调用 `grant` API，成功后提示「授权已提交（N 组时效）」；同一批选择可以混合永久与临时授权。
-- **右栏闭环**：已授权项按状态展示「启用/停用」，单条「撤销」即时生效；已过期项保留展示但不可撤销。admin 角色不出现在下拉，后端 400 双保险。
+- **左右工作区**：左侧「授权操作」完成角色选择、权限树勾选、授权原因与提交；右侧「已授权列表」展示该角色全部授权（状态、单条撤销）。避免把宽表格拉满后字段空旷、操作区与列表一左一右割裂。
+- **无逐项时效（A21）**：角色-权限为**永久授权**，页面不再提供 `RangePicker` / 时效分组；勾选后一次提交即生效，取消勾选只移出本次提交，不会自动撤销。
+- **角色时间模板**：角色的生效窗口由其绑定的「时间模板」决定（在角色管理页配置），不在角色权限页设置；申请/分配时由服务端按模板计算绝对窗口。
+- **右栏闭环**：已授权项按状态展示「启用/停用」，单条「撤销」即时生效；已过期/停用项不可撤销。admin 角色不出现在下拉，后端 400 双保险。
 - **空间控制**：权限树限高滚动，选中清单限高滚动；授权原因与「提交授权/撤销勾选」同排，保证主操作在首屏可见。
+
+## 用户角色页（A21：模板窗口）
+
+- 路由 `/user-roles`，权限码 `user:manage`；用户-角色分配**不再填写日期**，窗口由所选角色绑定的时间模板在服务端计算并写入 `sys_user_role`，页面只读展示生效/失效时间。
+- 无模板（永久）角色：仅管理员可直接分配，窗口为空即永久有效；无模板角色不会出现在「我的申请」选项中。
+- 提交 `POST /api/user-roles {systemId, externalUserId, roleId, grantReason?}`；后端校验角色属于当前系统、非 admin、模板启用（模板停用返回 409）。
+- 列表展示 externalUserId / 角色 / 生效窗口 / 状态，支持撤销；表格 `table-layout:auto` 无横向滚动。
+
+## 时间模板页（平台超管，A21）
+
+- 顶级菜单「时间模板」，路由 `/time-templates`，`PlatformAdminGuard` 守卫；**全局配置**（不属于任何业务系统，不随系统上下文变化）。
+- 列表列：模板名 / 时区 / 开始（第 N 天 HH:mm）/ 结束（第 N 天 HH:mm）/ 状态 / 备注 / 操作；删除为逻辑停用（`status=0`），不物理删除。
+- 表单字段：名称（≤100，全局唯一）、时区（IANA，默认 `Asia/Shanghai`）、开始日偏移（0–3650）+ 开始时刻、结束日偏移 + 结束时刻、状态、备注；校验结束本地时刻必须晚于开始（支持跨天窗口，如 19:00 → 次日 07:00）。
+- 新建/编辑/删除仅平台超管可操作（后端 403 兜底）；停用模板不影响已写入的历史用户-角色窗口，但不可再绑定到角色或用于新审批/分配。
+- **角色管理页**：增加「时间模板」列与下拉选择（无模板=永久角色）；admin 角色绑定模板由后端返回 400（admin 默认拥有全部权限、不受窗口限制）。
 
 ## 只查当前系统数据（前端审计）
 
@@ -207,16 +224,17 @@ cd telbank-rbac-front && npm run dev
 
 | 查询 | systemId 来源 | 页面 |
 |---|---|---|
-| 权限树 `GET /api/permissions?systemId=` | 当前 `currentSystemId` | 权限管理、角色授权、资源管理（关联权限弹窗） |
-| 角色列表 `GET /api/roles?systemId=` | 当前 `currentSystemId` | 角色管理、角色授权、用户授权 |
-| 角色授权 `GET/POST /api/roles/{roleId}/permissions[/grant|/revoke]` | 当前系统的角色 id | 角色授权 |
-| 用户授权 `GET/POST /api/user-roles` | 查询参数 / 请求体 `systemId` | 用户授权 |
+| 权限树 `GET /api/permissions?systemId=` | 当前 `currentSystemId` | 权限管理、角色权限、资源管理（关联权限弹窗） |
+| 角色列表 `GET /api/roles?systemId=` | 当前 `currentSystemId` | 角色管理、角色权限、用户角色 |
+| 角色权限 `GET/POST /api/roles/{roleId}/permissions[/grant|/revoke]` | 当前系统的角色 id | 角色权限 |
+| 用户角色 `GET/POST /api/user-roles` | 查询参数 / 请求体 `systemId` | 用户角色 |
+| 时间模板 `GET/POST/PUT/DELETE /api/time-templates` | 全局（平台超管），不按 `systemId` | 时间模板、角色表单模板下拉 |
 | 页面元素 `GET/POST /api/page-actions` | 查询参数 / 请求体 `systemId` | 页面元素 |
 | 资源管理 `GET /api/sdk-endpoints`、`link/unlink` | 查询参数 `systemId` + 当前系统端点 | 资源管理 |
 | 授权记录 `GET /api/approval-grants` | 查询参数 `systemId` | 授权记录（`/api/expiring-grants` 后端接口保留，前端不再展示） |
 
 - `/api/me`、`/api/me/systems` 仅要求认证，不带 `X-System-Code`；其余 `/api/**` 均带 `X-System-Code: <currentSystemCode>`。
-- 切换系统（含平台超管）：更新 `currentSystemCode` + `localStorage` → 失效并重拉 `admin-session`（bootstrap 带新系统头）→ 所有数据查询按新 `systemId` 重取；角色授权页清空上一系统所选角色、资源管理页关闭关联弹窗，且授权关系查询仅在「所选角色属于当前系统角色列表」时才发起，杜绝切换瞬间用旧 roleId 跨系统查询。
+- 切换系统（含平台超管）：更新 `currentSystemCode` + `localStorage` → 失效并重拉 `admin-session`（bootstrap 带新系统头）→ 所有数据查询按新 `systemId` 重取；角色权限页清空上一系统所选角色、资源管理页关闭关联弹窗，且授权关系查询仅在「所选角色属于当前系统角色列表」时才发起，杜绝切换瞬间用旧 roleId 跨系统查询。
 - mock 冒烟日志审计：CRM 阶段所有业务查询均为 `systemId=1` + `X-System-Code=crm`，无 `systemId=2`；superadmin 切到 ERP 后仅出现 `systemId=2` + `erp` 请求，权限树/角色/授权记录均为 ERP 数据，无 CRM 残留。
 
 ## 弹窗表单规范
@@ -234,7 +252,7 @@ cd telbank-rbac-front && npm run dev
 
 - **TanStack Query** 管理服务端状态：
   - `['admin-session']`：`/api/me` → `/api/me/systems` →（选当前系统）→ `/api/me/bootstrap` 串联结果；切换系统时失效重取
-  - `['permissions', systemId]`、`['roles', systemId, {...}]`、`['role-permissions', systemId, roleId]`、`['user-roles', systemId, externalUserId]`、`['page-actions', systemId, {...}]`、`['sdk-endpoints', systemId, {...}]`、`['approval-grants', systemId, {...}]`、`['access-applications', systemId, {status,page,size}]`、`['access-application-options', systemId]`、`['access-application', systemId, applicationNo]`
+  - `['permissions', systemId]`、`['roles', systemId, {...}]`、`['role-permissions', systemId, roleId]`、`['user-roles', systemId, externalUserId]`、`['page-actions', systemId, {...}]`、`['sdk-endpoints', systemId, {...}]`、`['approval-grants', systemId, {...}]`、`['time-templates']`、`['access-applications', systemId, {status,page,size}]`、`['access-application-options', systemId]`、`['access-application', systemId, applicationNo]`
   - 切换系统时**只 refetch `admin-session`**，不全局 invalidate 旧 systemId 查询；页面 queryKey 含 systemId，系统上下文变化后自动按新 key 重取（避免「旧 systemId + 新系统头」的跨系统 403）
 - **Zustand**（`src/stores/app.ts`）：`token`、`currentUser`、`systems`、`currentSystemCode`、`platformAdmin`、`permissions: Set<string>`、`hasPerm(code)`（平台超管恒 true）、`setBootstrap`、`logout`
   - 持久化：`rbac.token`（JWT）、`rbac.currentSystemCode`（当前业务系统上下文）
@@ -250,20 +268,21 @@ telbank-rbac-front/
 ├── public/favicon.svg
 └── src/
     ├── main.tsx                 # Provider 装配：ConfigProvider + antd App + QueryClient + Router
-    ├── router.tsx               # 登录页 + 受保护布局 + 9 个权限管理页 + 系统接入（超管守卫）+ 我的申请（无需权限）
-    ├── config/menu.ts           # 菜单/路由/权限短码映射（role:manage 等）+ 系统接入（仅超管）+ 我的申请（alwaysVisible）
+    ├── router.tsx               # 登录页 + 受保护布局 + 权限管理页 + 系统接入/时间模板（超管守卫）+ 我的申请（无需权限）
+    ├── config/menu.ts           # 菜单/路由/权限短码映射（role:manage 等）+ 系统接入/时间模板（仅超管）+ 我的申请（alwaysVisible）
     ├── api/
     │   ├── request.ts           # 原生 fetch：JWT / X-System-Code=当前系统 / 信封解析 / 401
-    │   ├── types.ts             # 契约类型（含 bootstrap / 系统接入管理员字段 / 权限申请）
+    │   ├── types.ts             # 契约类型（含 bootstrap / 系统接入管理员字段 / 时间模板 / 权限申请）
     │   ├── me.ts                # getMe / getMySystems / getBootstrap / loadAdminSession
     │   ├── systems.ts roles.ts permissions.ts rolePermissions.ts
     │   ├── userRoles.ts pageActions.ts sdkEndpoints.ts grants.ts
     │   ├── systemCredentials.ts systemApplications.ts accessApplications.ts
+    │   ├── timeTemplates.ts     # 时间模板 CRUD（平台超管）
     │   └── index.ts
     ├── stores/app.ts            # Zustand：token/systems/currentSystemCode/permissions/hasPerm
     ├── layouts/AdminLayout.tsx  # 权限菜单 + 系统切换器 + 会话引导 + 我的申请入口
     ├── components/              # PageShell/SystemGate/StatusTags/AppNotifier/错误边界/PermissionGuard/NoPermission
-    ├── pages/                   # LoginPage + 9 个管理页面 + AccessApplicationsPage + NotFoundPage
+    ├── pages/                   # LoginPage + 管理页面（含 TimeTemplatePage 时间模板）+ AccessApplicationsPage + NotFoundPage
     ├── utils/                   # 时间格式、Ant 路径校验、分页配置、文案常量
     └── styles/global.css
 ```
@@ -295,11 +314,13 @@ dist/assets/index-DQn7UXyr.js   1,456.05 kB │ gzip: 459.13 kB
 
 ## 已知限制 / 后续
 
+- 角色权限（A21）已取消逐项时效：一次提交即永久授权；时效统一由「用户-角色」窗口承担（角色绑定时间模板），角色权限页不再按时间分组提交。
+- 时间模板窗口由服务端按模板时区计算，前端只读展示；跨天窗口（如 19:00→次日 07:00）无需前端特殊处理。
 - 后端新契约（系统隔离、`platform:admin` 数据驱动超管、系统接入管理员字段）由 api-dev 并行改造；联调阶段若字段名有差异需要对齐。
 - 未做路由级 code splitting：生产包单 chunk 约 1.46 MB（gzip 约 459 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
 - 授权记录按契约仅提供查询（只读）；「到期提醒」菜单/路由已移除（后端 `/api/expiring-grants` 接口保留）。
 - 资源管理：未关联权限码的端点显示「未生效/未关联」并有当前页提示，行背景高亮；关联后才进入 SDK mappings 生效。
-- 角色授权提交按「相同时效」分组调用 grant：后端当前只有单组时效接口，因此多组提交不是数据库事务；任一组失败时前端提示错误，已成功组会保留，可重试。
+- 角色权限提交按「相同时效」分组调用 grant：A21 起已取消逐项时效，此历史说明不再适用（保留供对照）。
 - 全局 `.ant-message*` 设置 `pointer-events:none`，避免切换系统 toast 覆盖顶部系统下拉框、导致下拉框点不开。
 - 表格按 A19 内容优先：`table-layout:auto`，宽度足够不换行，不够时换行完整展示；时间列用 `YYYY-MM-DD HH:mm`。
 
@@ -341,3 +362,4 @@ dist/assets/index-DQn7UXyr.js   1,456.05 kB │ gzip: 459.13 kB
   - 详情抽屉展示单号/状态/所属系统/申请角色/原因/提交时间/有效期/审批信息，与列表一致。
   - 角色授权页（`permissions=["*"]` 管理员）：选择「订单运营（operator）」后，授权树内**不含**「全部权限（通配）」节点（仅订单管理 2 个子节点），顶部展示通配提示 Alert，右栏已授权列表仍只读展示通配记录，已勾选数仅统计非通配权限（1 项）。
   - 表格 `scrollWidth === clientWidth`（我的申请列表无横向滚动）。
+- **A21（角色时间模板）已联调**：headless Chrome 在真实 A21 后端（API 28090 + 前端 5181，1440×900）验证：平台超管可见 `/time-templates` 并查看夜间/全天预置模板；crm-admin 角色权限页无逐项时效，用户角色页无日期选择；业务用户「我的申请」仅见该入口，表单展示角色模板摘要；角色管理表格内容完整无省略。前端 `npm run build` 3261 modules / JS 1,469.08 kB（gzip 462.50 kB）。

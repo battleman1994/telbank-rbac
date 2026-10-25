@@ -13,16 +13,18 @@ import RolesPage from './pages/RolesPage'
 import SdkEndpointsPage from './pages/SdkEndpointsPage'
 import SystemCredentialPage from './pages/SystemCredentialPage'
 import SystemsPage from './pages/SystemsPage'
+import TimeTemplatesPage from './pages/TimeTemplatesPage'
 import UserRolesPage from './pages/UserRolesPage'
 
 /**
  * 管理端路由（系统隔离模型）：
- * - 登录页 + 受保护布局 + 7 个权限管理页面 + 平台超管专属「系统接入」
+ * - 登录页 + 受保护布局 + 8 个权限管理页面 + 平台超管专属「系统接入」「时间模板」
  * - 权限管理页面绑定当前系统内的短码权限（role:manage / permission:manage /
  *   resource:manage / page:manage / user:manage / audit:view），
  *   由 PermissionGuard 做路由级权限守卫（无权限渲染 403 页）
- * - /systems（系统接入）仅平台超管可访问（PlatformAdminGuard）
+ * - /systems（系统接入）、/time-templates（时间模板）仅平台超管可访问（PlatformAdminGuard）
  * - /system-credential（接入凭据）需 system:credential（admin 角色由 `*` 通配通过）
+ * - /role-permissions（角色权限）只做静态授权；/user-roles（用户角色）按角色时间模板计算窗口
  * - /access-applications（我的申请）为自助入口，不包管理权限守卫，所有登录用户可访问
  */
 export const router = createBrowserRouter([
@@ -45,6 +47,15 @@ export const router = createBrowserRouter([
         element: (
           <PlatformAdminGuard>
             <SystemsPage />
+          </PlatformAdminGuard>
+        ),
+      },
+      {
+        // 时间模板（A21）：全局模板，仅平台超管维护；角色绑定模板后按模板计算授权窗口
+        path: 'time-templates',
+        element: (
+          <PlatformAdminGuard>
+            <TimeTemplatesPage />
           </PlatformAdminGuard>
         ),
       },

@@ -78,9 +78,10 @@ class PlatformAdminServiceTest {
                 .contains("rp.status = 1")
                 .contains("p.status = 1")
                 .contains("ur.valid_from IS NULL OR ur.valid_from <= NOW()")
-                .contains("ur.valid_until IS NULL OR ur.valid_until > NOW()")
-                .contains("rp.valid_from IS NULL OR rp.valid_from <= NOW()")
-                .contains("rp.valid_until IS NULL OR rp.valid_until > NOW()");
+                .contains("ur.valid_until IS NULL OR ur.valid_until > NOW()");
+        // A21：角色-权限不再带时效，平台超管判定只看用户-角色窗口
+        assertThat(String.join(" ", select.value())).doesNotContain("rp.valid_from")
+                .doesNotContain("rp.valid_until");
     }
 
     private static SysSystem system(Long id, String code, int status, int isPlatform) {

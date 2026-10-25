@@ -17,6 +17,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.telbank.rbac.domain.entity.BaseEntity;
+import com.telbank.rbac.domain.entity.SysAccessApplication;
+import com.telbank.rbac.domain.entity.SysAccessApplicationRole;
 import com.telbank.rbac.domain.entity.SysPageAction;
 import com.telbank.rbac.domain.entity.SysPermission;
 import com.telbank.rbac.domain.entity.SysRole;
@@ -24,7 +26,10 @@ import com.telbank.rbac.domain.entity.SysRolePermission;
 import com.telbank.rbac.domain.entity.SysSdkEndpoint;
 import com.telbank.rbac.domain.entity.SysSystemApplication;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysTimeTemplate;
 import com.telbank.rbac.domain.entity.SysUserRole;
+import com.telbank.rbac.domain.mapper.SysAccessApplicationMapper;
+import com.telbank.rbac.domain.mapper.SysAccessApplicationRoleMapper;
 import com.telbank.rbac.domain.mapper.SysPageActionMapper;
 import com.telbank.rbac.domain.mapper.SysPermissionMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
@@ -32,6 +37,7 @@ import com.telbank.rbac.domain.mapper.SysRolePermissionMapper;
 import com.telbank.rbac.domain.mapper.SysSdkEndpointMapper;
 import com.telbank.rbac.domain.mapper.SysSystemApplicationMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
+import com.telbank.rbac.domain.mapper.SysTimeTemplateMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +57,9 @@ class MapperContractTest {
         assertTableName(SysPageAction.class, "sys_page_action");
         assertTableName(SysSdkEndpoint.class, "sys_sdk_endpoint");
         assertTableName(SysSystemApplication.class, "sys_system_application");
+        assertTableName(SysAccessApplication.class, "sys_access_application");
+        assertTableName(SysAccessApplicationRole.class, "sys_access_application_role");
+        assertTableName(SysTimeTemplate.class, "sys_time_template");
     }
 
     @Test
@@ -69,6 +78,9 @@ class MapperContractTest {
         assertNoJakartaPersistence(SysPageAction.class);
         assertNoJakartaPersistence(SysSdkEndpoint.class);
         assertNoJakartaPersistence(SysSystemApplication.class);
+        assertNoJakartaPersistence(SysAccessApplication.class);
+        assertNoJakartaPersistence(SysAccessApplicationRole.class);
+        assertNoJakartaPersistence(SysTimeTemplate.class);
     }
 
     @Test
@@ -88,7 +100,8 @@ class MapperContractTest {
         Stream.of(SysSystemMapper.class, SysRoleMapper.class, SysPermissionMapper.class,
                         SysUserRoleMapper.class, SysRolePermissionMapper.class,
                         SysPageActionMapper.class, SysSdkEndpointMapper.class,
-                        SysSystemApplicationMapper.class)
+                        SysSystemApplicationMapper.class, SysAccessApplicationMapper.class,
+                        SysAccessApplicationRoleMapper.class, SysTimeTemplateMapper.class)
                 .forEach(mapper -> assertThat(BaseMapper.class)
                         .as(mapper.getSimpleName() + " extends BaseMapper")
                         .isAssignableFrom(mapper));
@@ -109,15 +122,16 @@ class MapperContractTest {
         assertThat(effectiveValidity)
                 .contains("ur.valid_from IS NULL OR ur.valid_from <= NOW()")
                 .contains("ur.valid_until IS NULL OR ur.valid_until > NOW()")
-                .contains("rp.valid_from IS NULL OR rp.valid_from <= NOW()")
-                .contains("rp.valid_until IS NULL OR rp.valid_until > NOW()")
                 .contains("ur.status = 1")
                 .contains("rp.status = 1")
                 .contains("r.status = 1")
                 .contains("p.status = 1")
                 .contains("UNION ALL")
                 .contains("is_public = 1")
-                .contains("DATE_FORMAT");
+                .contains("DATE_FORMAT")
+                // A21：角色-权限不再带时效，生效窗口只取用户-角色关系
+                .doesNotContain("rp.valid_from")
+                .doesNotContain("rp.valid_until");
 
         assertThat(selectSql(SysUserRoleMapper.class, "countEffectiveRoles", Long.class, String.class))
                 .contains("ur.status = 1", "r.status = 1", "NOW()");
@@ -131,8 +145,6 @@ class MapperContractTest {
                 .contains("rp.status = 1", "p.status = 1");
 
         assertThat(updateSql(SysUserRoleMapper.class, "revokeExpired"))
-                .contains("status = 0", "valid_until <= NOW()", "auto_revoke = 1");
-        assertThat(updateSql(SysRolePermissionMapper.class, "revokeExpired"))
                 .contains("status = 0", "valid_until <= NOW()", "auto_revoke = 1");
     }
 

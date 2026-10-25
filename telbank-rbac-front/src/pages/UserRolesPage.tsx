@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Dayjs } from 'dayjs'
 import {
   Alert,
   App as AntApp,
   Button,
   Card,
-  DatePicker,
   Flex,
   Form,
   Input,
@@ -26,16 +24,13 @@ import { PageShell } from '../components/PageShell'
 import { StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
 import { useCurrentSystemId } from '../stores/app'
-import { formatValidity, toIsoString } from '../utils/format'
+import { formatValidity } from '../utils/format'
 
 const { Text } = Typography
-
-type RangeValue = [Dayjs | null, Dayjs | null] | null
 
 interface UserRoleFormValues {
   externalUserId: string
   roleId: number
-  validRange?: RangeValue
   grantReason?: string
 }
 
@@ -45,8 +40,8 @@ export default function UserRolesPage() {
   if (!systemId) {
     return (
       <SystemRequired
-        title="用户授权"
-        description="当前系统上下文未就绪，无法加载用户授权关系。"
+        title="用户角色"
+        description="当前系统上下文未就绪，无法加载用户角色关系。"
       />
     )
   }
@@ -60,6 +55,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
   const [externalUserId, setExternalUserId] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [form] = Form.useForm<UserRoleFormValues>()
+  const watchedRoleId = Form.useWatch('roleId', form)
 
   const userRolesQuery = useQuery({
     queryKey: ['user-roles', systemId, externalUserId],
@@ -75,19 +71,17 @@ function UserRolesContent({ systemId }: { systemId: number }) {
 
   const createMutation = useMutation({
     mutationFn: (values: UserRoleFormValues) => {
-      const range = values.validRange ?? null
+      // A21：管理端不再手工选择时间，窗口由所选角色的时间模板在分配时计算
       const payload: UserRoleCreatePayload = {
         systemId,
         externalUserId: values.externalUserId.trim(),
         roleId: values.roleId,
-        validFrom: range ? toIsoString(range[0]) : null,
-        validUntil: range ? toIsoString(range[1]) : null,
         grantReason: values.grantReason?.trim() || undefined,
       }
       return createUserRole(payload)
     },
     onSuccess: () => {
-      void message.success('用户授权已添加')
+      void message.success('用户角色已添加')
       setModalOpen(false)
       void queryClient.invalidateQueries({ queryKey: ['user-roles', systemId] })
     },
@@ -96,7 +90,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
   const revokeMutation = useMutation({
     mutationFn: (id: number) => revokeUserRole(id),
     onSuccess: () => {
-      void message.success('用户授权已撤销')
+      void message.success('用户角色已撤销')
       void queryClient.invalidateQueries({ queryKey: ['user-roles', systemId] })
     },
   })
@@ -114,14 +108,18 @@ function UserRolesContent({ systemId }: { systemId: number }) {
     form.resetFields()
     form.setFieldsValue({
       externalUserId: externalUserId || searchInput.trim(),
-      validRange: null,
     })
     setModalOpen(true)
   }
 
   const roleOptions = (rolesQuery.data?.items ?? [])
     .filter((role: RoleVO) => role.status === 1)
-    .map((role: RoleVO) => ({ value: role.id, label: `${role.name}（${role.code}）` }))
+    .map((role: RoleVO) => ({
+      value: role.id,
+      label: `${role.name}（${role.code}）· ${role.timeTemplateName || '永久角色'}`,
+    }))
+
+  const selectedRole = (rolesQuery.data?.items ?? []).find((role) => role.id === watchedRoleId)
 
   const columns: TableProps<UserRoleVO>['columns'] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
@@ -177,8 +175,8 @@ function UserRolesContent({ systemId }: { systemId: number }) {
 
   return (
     <PageShell
-      title="用户授权"
-      description="在当前系统内为外部用户（无用户主数据）分配角色：通过 external_user_id 精确查询，支持设置授权时效。"
+      title="用户角色"
+      description="在当前系统内为外部用户（无用户主数据）分配角色：通过 external_user_id 精确查询；分配后按角色绑定的时间模板计算授权窗口（未绑定模板为永久角色）。"
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void userRolesQuery.refetch()} disabled={!externalUserId}>
@@ -212,7 +210,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
             <Alert
               type="error"
               showIcon
-              title="用户授权列表加载失败"
+              title="用户角色列表加载失败"
               description={userRolesQuery.error.message}
               action={
                 <Button size="small" onClick={() => void userRolesQuery.refetch()}>
@@ -243,7 +241,7 @@ function UserRolesContent({ systemId }: { systemId: number }) {
       </Card>
 
       <Modal
-        title="新增用户授权"
+        title="新增用户角色"
         open={modalOpen}
         forceRender
         onCancel={() => setModalOpen(false)}
@@ -281,17 +279,23 @@ function UserRolesContent({ systemId }: { systemId: number }) {
               notFoundContent="当前系统暂无启用角色"
             />
           </Form.Item>
-          <Form.Item
-            label="授权时效"
-            name="validRange"
-            tooltip="不设置时间表示永久有效；到期后自动视为无权限"
-          >
-            <DatePicker.RangePicker
-              showTime
-              style={{ width: '100%' }}
-              placeholder={['生效时间（空=立即生效）', '失效时间（空=永久有效）']}
+          {selectedRole ? (
+            <Alert
+              showIcon
+              style={{ marginBottom: 16 }}
+              type={selectedRole.timeTemplateName ? 'info' : 'success'}
+              title={
+                selectedRole.timeTemplateName
+                  ? `时间模板：${selectedRole.timeTemplateName}`
+                  : '永久角色（窗口为空）'
+              }
+              description={
+                selectedRole.timeTemplateName
+                  ? '实际生效/失效时间在分配时按模板规则计算（锚点为分配时刻），到期后权限查询与 SDK 自动判定无权限。'
+                  : '该角色未绑定时间模板，分配后权限永久有效，不再需要手工设置有效期。'
+              }
             />
-          </Form.Item>
+          ) : null}
           <Form.Item label="授权原因" name="grantReason">
             <Input.TextArea rows={3} maxLength={255} placeholder="选填" />
           </Form.Item>

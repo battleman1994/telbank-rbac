@@ -3,8 +3,10 @@ package com.telbank.rbac.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.stereotype.Service;
@@ -17,11 +19,14 @@ import com.telbank.rbac.domain.entity.SysAccessApplication;
 import com.telbank.rbac.domain.entity.SysAccessApplicationRole;
 import com.telbank.rbac.domain.entity.SysRole;
 import com.telbank.rbac.domain.entity.SysSystem;
+import com.telbank.rbac.domain.entity.SysTimeTemplate;
+import com.telbank.rbac.domain.entity.SysUserRole;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationMapper;
 import com.telbank.rbac.domain.mapper.SysAccessApplicationRoleMapper;
 import com.telbank.rbac.domain.mapper.SysRoleMapper;
 import com.telbank.rbac.domain.mapper.SysSystemMapper;
 import com.telbank.rbac.domain.mapper.SysUserRoleMapper;
+import com.telbank.rbac.service.RoleTimeWindowService.TimeWindow;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.DecisionRequest;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.DecisionResponse;
 import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantRequest;
@@ -31,9 +36,10 @@ import com.telbank.rbac.web.dto.ApprovalDtos.ApprovalGrantResponse;
  * 业务用户临时权限申请的审批决策回调（外部审批平台 → 权限中心）。
  *
  * <p>按申请单号加行锁串行处理；只有 {@code PENDING} 申请单可决策。
- * {@code APPROVED} 在同一审批窗口重复回调时幂等返回，不重复授权；
- * 通过时逐角色复用 {@link ApprovalGrantService#grant(ApprovalGrantRequest)} 写
- * {@code sys_user_role}，任一角色失败则整体事务回滚、申请单保持 {@code PENDING}。
+ * {@code APPROVED} 重复回调幂等返回、窗口不回滚；通过时逐角色按绑定时间模板计算窗口，
+ * 复用 {@link ApprovalGrantService#grant(ApprovalGrantRequest)} 写 {@code sys_user_role}，
+ * 并把每个角色的模板与窗口回写快照；主单保存所有角色窗口的包络（最早开始 / 最晚结束）。
+ * 任一角色失败则整体事务回滚、申请单保持 {@code PENDING}。
  * {@code REJECTED} 只回写申请状态与审批字段，不写授权。</p>
  */
 @Service
@@ -54,19 +60,22 @@ public class AccessDecisionService {
     private final SysUserRoleMapper userRoleRepository;
     private final SysSystemMapper systemRepository;
     private final ApprovalGrantService approvalGrantService;
+    private final RoleTimeWindowService roleTimeWindowService;
 
     public AccessDecisionService(SysAccessApplicationMapper applicationRepository,
                                  SysAccessApplicationRoleMapper applicationRoleRepository,
                                  SysRoleMapper roleRepository,
                                  SysUserRoleMapper userRoleRepository,
                                  SysSystemMapper systemRepository,
-                                 ApprovalGrantService approvalGrantService) {
+                                 ApprovalGrantService approvalGrantService,
+                                 RoleTimeWindowService roleTimeWindowService) {
         this.applicationRepository = applicationRepository;
         this.applicationRoleRepository = applicationRoleRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.systemRepository = systemRepository;
         this.approvalGrantService = approvalGrantService;
+        this.roleTimeWindowService = roleTimeWindowService;
     }
 
     /**
@@ -81,14 +90,13 @@ public class AccessDecisionService {
                 request == null ? null : request.applicationNo());
 
         if (DECISION_APPROVED.equals(decision)) {
-            Window window = requireWindow(request.validFrom(), request.validUntil());
-            if (isApproved(application) && sameWindow(application, window)) {
+            if (isApproved(application)) {
                 return response(application, snapshotRoleIds(application.getId()), true);
             }
             if (!isPending(application)) {
                 throw ApiException.conflict("申请单已审批，不能重复决策");
             }
-            List<Long> grantedRoleIds = approve(application, window, request);
+            List<Long> grantedRoleIds = approve(application, request);
             return response(application, grantedRoleIds, false);
         }
 
@@ -110,8 +118,7 @@ public class AccessDecisionService {
                 .orElseThrow(() -> ApiException.notFound("申请单不存在"));
     }
 
-    private List<Long> approve(SysAccessApplication application, Window window,
-                               DecisionRequest request) {
+    private List<Long> approve(SysAccessApplication application, DecisionRequest request) {
         SysSystem system = systemRepository.findById(application.getSystemId())
                 .orElseThrow(() -> ApiException.conflict("申请单所属系统不存在或已停用"));
         if (!Integer.valueOf(RbacConstants.STATUS_ENABLED).equals(system.getStatus())) {
@@ -123,6 +130,7 @@ public class AccessDecisionService {
         if (snapshots.isEmpty()) {
             throw ApiException.conflict("申请单缺少角色信息，无法审批");
         }
+        Map<Long, SysRole> roleById = new LinkedHashMap<>();
         for (SysAccessApplicationRole snapshot : snapshots) {
             SysRole role = roleRepository
                     .findByIdAndSystemId(snapshot.getRoleId(), application.getSystemId())
@@ -133,6 +141,7 @@ public class AccessDecisionService {
             if (ADMIN_ROLE_CODE.equals(role.getCode())) {
                 throw ApiException.conflict("系统管理员角色不可审批授权");
             }
+            roleById.put(role.getId(), role);
         }
 
         Set<Long> activeRoleIds = new HashSet<>(userRoleRepository.findActiveRoleIds(
@@ -144,8 +153,16 @@ public class AccessDecisionService {
         }
 
         List<Long> grantedRoleIds = new ArrayList<>(snapshots.size());
+        Instant envelopeFrom = null;
+        Instant envelopeUntil = null;
         for (SysAccessApplicationRole snapshot : snapshots) {
-            Long roleId = snapshot.getRoleId();
+            SysRole role = roleById.get(snapshot.getRoleId());
+            if (role.getTimeTemplateId() == null) {
+                throw ApiException.conflict("申请角色未绑定时间模板，无法审批");
+            }
+            SysTimeTemplate template = roleTimeWindowService.requireEnabled(role.getTimeTemplateId());
+            TimeWindow window = roleTimeWindowService.compute(template);
+            Long roleId = role.getId();
             ApprovalGrantResponse granted = approvalGrantService.grant(new ApprovalGrantRequest(
                     system.getCode(), application.getExternalUserId(), GRANT_TYPE_ROLE, roleId,
                     null, window.from(), window.until(),
@@ -156,11 +173,30 @@ public class AccessDecisionService {
                 throw ApiException.conflict("授权失败，请重试");
             }
             grantedRoleIds.add(roleId);
+            // 以落库后的实际用户-角色窗口为准，避免审批时模板二次计算在边界时刻产生偏差
+            SysUserRole grantedRelation = userRoleRepository
+                    .findBySystemIdAndExternalUserIdAndRoleId(
+                            application.getSystemId(), application.getExternalUserId(), roleId)
+                    .orElseThrow(() -> ApiException.conflict("授权关系写入失败，请重试"));
+            Instant grantedFrom = TimeUtils.toInstant(grantedRelation.getValidFrom());
+            Instant grantedUntil = TimeUtils.toInstant(grantedRelation.getValidUntil());
+            if (grantedFrom == null || grantedUntil == null) {
+                throw ApiException.conflict("授权窗口写入失败，请重试");
+            }
+            snapshot.setTimeTemplateId(template.getId());
+            snapshot.setTimeTemplateName(template.getName());
+            snapshot.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(grantedFrom));
+            snapshot.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(grantedUntil));
+            applicationRoleRepository.save(snapshot);
+            envelopeFrom = envelopeFrom == null || grantedFrom.isBefore(envelopeFrom)
+                    ? grantedFrom : envelopeFrom;
+            envelopeUntil = envelopeUntil == null || grantedUntil.isAfter(envelopeUntil)
+                    ? grantedUntil : envelopeUntil;
         }
 
         application.setStatus(RbacConstants.ACCESS_APPLICATION_STATUS_APPROVED);
-        application.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(window.from()));
-        application.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(window.until()));
+        application.setApprovedValidFrom(TimeUtils.toUtcLocalDateTime(envelopeFrom));
+        application.setApprovedValidUntil(TimeUtils.toUtcLocalDateTime(envelopeUntil));
         application.setDecisionComment(
                 truncate(request.decisionComment(), MAX_DECISION_COMMENT_LENGTH));
         application.setReviewedBy(reviewer(request.reviewer()));
@@ -187,24 +223,6 @@ public class AccessDecisionService {
             throw ApiException.badRequest("decision 只能是 APPROVED 或 REJECTED");
         }
         return normalized;
-    }
-
-    private static Window requireWindow(Instant from, Instant until) {
-        if (from == null || until == null) {
-            throw ApiException.badRequest("validFrom 和 validUntil 不能为空");
-        }
-        if (!until.isAfter(from)) {
-            throw ApiException.badRequest("validUntil 必须晚于 validFrom");
-        }
-        if (!until.isAfter(Instant.now())) {
-            throw ApiException.badRequest("validUntil 必须晚于当前时间");
-        }
-        return new Window(from, until);
-    }
-
-    private static boolean sameWindow(SysAccessApplication application, Window window) {
-        return window.from().equals(TimeUtils.toInstant(application.getApprovedValidFrom()))
-                && window.until().equals(TimeUtils.toInstant(application.getApprovedValidUntil()));
     }
 
     private List<Long> snapshotRoleIds(Long applicationId) {
@@ -249,8 +267,5 @@ public class AccessDecisionService {
                 grantedRoleIds,
                 TimeUtils.toInstant(application.getApprovedValidFrom()),
                 TimeUtils.toInstant(application.getApprovedValidUntil()));
-    }
-
-    private record Window(Instant from, Instant until) {
     }
 }

@@ -17,7 +17,7 @@
 |---|---|---|---|
 | 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
 | **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway）、MyBatis-Plus 3.5.17（Boot4 starter）、Caffeine + Redis |
-| **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（带时效 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
+| **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（用户-角色窗口 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
 | **JDK 21 业务系统 SDK** | `telbank-rbac2-starter/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
 
@@ -43,17 +43,18 @@ telbank-rbac/
 
 ### 1.1 系统隔离模型与数据驱动超管（v2.0）
 
-- **系统是隔离边界**：角色、权限码、角色授权、用户授权、页面元素、资源映射都归属具体业务系统；系统管理员登录后只看到/只能管理自己系统内的数据，完全看不到其他系统，也看不到「系统接入」。
+- **系统是隔离边界**：角色、权限码、角色权限、用户角色、页面元素、资源映射都归属具体业务系统；系统管理员登录后只看到/只能管理自己系统内的数据，完全看不到其他系统，也看不到「系统接入」。
 - **平台超管是数据驱动的**：平台系统 `platform`（`sys_system.is_platform=1`）内的 `super-admin` 角色持有 `platform:admin` 权限；种子超管账号 **`superadmin`**。后端不再读取 `rbac.platform-admin-ids` 等配置文件。
 - **管理上下文**：所有管理端 `/api/**` 带 `X-System-Code=<当前业务系统>`；普通用户必须在该系统有有效角色，且查询/写入的 `systemId` 必须等于上下文；平台超管可切换任意业务系统、可跨系统查询。
-- **用户可访问系统由有效角色推导**：不再有「用户-系统开通」表和接口；用户在某系统有有效角色（`sys_user_role` status=1 且时效内）即视为可访问。
+- **用户可访问系统由有效角色推导**：不再有「用户-系统开通」表和接口；用户在某系统有有效角色（`sys_user_role` status=1 且在分配的生效窗口内）即视为可访问。
 - **系统接入（仅超管，双通道）**：支持手动录入，也支持 SDK 启动自动上报（onboarding AppKey/HMAC）生成待审核申请；审核通过后自动创建系统、默认 `admin` 角色 + **一条 `*` 通配权限**并授权给管理员。
 - **系统凭据**：每个业务系统接入时自动分配 `appKey/appSecret`；系统接入页展示 AppKey/掩码，创建/审批通过时一次性返回完整 Secret；系统管理员可在「接入凭据」页查看本系统完整密钥，平台超管可查看任意系统。
-- **业务用户临时权限申请**：无管理权限的业务用户可从顶级「我的申请」选择当前系统角色并查看权限预览，提交后生成带 `RA-...` 单号与状态的申请；点击单号跳转外部审批平台，审批通过后按统一连续有效期写 `sys_user_role`，过期自动失效；权限中心不实现审批流。
-- **角色授权**：`admin` 角色默认拥有全部权限，角色授权页不再列出 admin，后端也拒绝对其 grant/revoke。
-- **通配权限（A 方案）**：管理员只授一条 `*`；匹配规则 `*` > `前缀:*` > 精确，后端 `@perm`、前端 `hasPerm`、SDK 拦截器一致；角色授权页可授权树不展示 `*`，非 admin 角色手工授 `*` 由后端拒绝。
+- **业务用户临时权限申请（A20）**：无管理权限的业务用户可从顶级「我的申请」选择当前系统角色并查看权限预览，提交后生成带 `RA-...` 单号与状态的申请；点击单号跳转外部审批平台，审批通过后由后端按所申请角色绑定的时间模板分别计算绝对窗口写入 `sys_user_role`，多角色取最早开始/最晚结束的包络，过期自动失效；权限中心不实现审批流。
+- **角色时间模板（A21）**：模板为全局配置（名称 / IANA 时区 / 开始日的日偏移与时刻 / 结束日的日偏移与时刻），角色可绑定一个模板；未绑定模板 = 永久角色，仅管理员可直接分配、不参与自助申请。审批通过或管理员直接分配时按模板计算本轮窗口，**角色-权限授权本身不再带时效**；新增平台超管专属「时间模板」页。
+- **角色权限**：`admin` 角色默认拥有全部权限，角色权限页不再列出 admin，后端也拒绝对其 grant/revoke。
+- **通配权限（A 方案）**：管理员只授一条 `*`；匹配规则 `*` > `前缀:*` > 精确，后端 `@perm`、前端 `hasPerm`、SDK 拦截器一致；角色权限页可授权树不展示 `*`，非 admin 角色手工授 `*` 由后端拒绝。
 - **严格系统隔离**：每次请求只查/只写 `X-System-Code` 当前系统数据；**超管也必须切换系统上下文**，禁止单请求跨系统（否则 403）。
-- **菜单 IA**：`权限管理` 组（角色管理、角色授权、权限管理、资源管理、页面元素（元素标识/名称/类型）、用户授权、授权记录）+ 顶级「系统接入」（仅超管）+ 顶级「我的申请」（所有登录用户）；已移除「用户-系统开通」与「到期提醒」菜单（`/api/expiring-grants` 接口保留）。
+- **菜单 IA**：`权限管理` 组（角色管理、角色权限、权限管理、资源管理、页面元素（元素标识/名称/类型）、用户角色、授权记录）+ 顶级「系统接入」（仅超管）+ 顶级「时间模板」（仅超管）+ 顶级「我的申请」（所有登录用户）；已移除「用户-系统开通」与「到期提醒」菜单（`/api/expiring-grants` 接口保留）。
 
 ---
 
@@ -63,7 +64,7 @@ telbank-rbac/
 - **认证外部化**：外部系统签发 JWT（`sub` = `external_user_id`），权限中心作为 OAuth2 Resource Server 只校验、不签发、无登录页；不建用户表。
 - **一个权限码前后端共用**：`sys_permission.method/api_pattern` 非空才进入 SDK 接口映射表做后端拦截；为空只做前端展示控制。
 - **页面操作元数据（模式 B）**：标准 CRUD 操作区按钮由 `sys_page_action` 驱动，增删授权即可控制按钮，无需改前端代码；复杂页面特殊按钮用 `hasPerm(code)`（模式 A）。
-- **权限时效**：授权支持 `valid_from`/`valid_until`，审批通过后授予，到期即视为无权限（查询层过滤 + 定时任务收回 + 通知刷新）。
+- **权限时效**：有效期落在「用户-角色」上：角色可绑定时间模板（全局模板，支持跨天窗口与 IANA 时区），审批通过/管理员直接分配时计算绝对窗口写入 `sys_user_role`；角色-权限授权为永久。到期即视为无权限（查询层过滤 + 定时任务收回 + 通知刷新）。
 - **SDK 零侵入**：加依赖 + 两行配置；`rbac-sdk.enabled` 总开关整套启停；自动注册拦截器与 `/rbac/me/*`；全量端点扫描上报；默认 public、映射未命中直接放行，可用 `unmatched-strategy: deny` 收紧。
 - **安全链路**：管理端 JWT + `X-System-Code`；SDK/审批系统 → 权限中心用 AppKey + HMAC-SHA256 签名（时间戳窗口 + Nonce 防重放）；强制 HTTPS（生产）。
 
@@ -158,13 +159,13 @@ cd telbank-rbac-front && npm run dev
 | `crm-admin-001` | CRM 系统管理员 | 仅 CRM；持有通配 `*`（一条记录覆盖全部管理权限），看不到 ERP/系统接入 |
 | `erp-admin-001` | ERP 系统管理员 | 仅 ERP；同上 |
 | `13800138000` | CRM 管理员 + ERP 管理员 | 两个系统都有 admin 角色（非平台超管），用于验证双系统切换与隔离 |
-| `13900139000` | CRM 运营 | 临时授权（`order:delete`/`order:export` 到 2027-06-30），仅 CRM |
-| `13600136000` | CRM 运营 + ERP 采购员 | 跨系统隔离验收：CRM 有临时 `order:delete`，ERP 没有 |
-| `13700137000` | 已过期用户 | 角色授权已过期 → 无可访问系统、无有效权限 |
+| `13900139000` | CRM 运营 | 直接分配临时角色窗口（`order:delete`/`order:export` 至 2027-06-30 前），仅 CRM |
+| `13600136000` | CRM 运营 + ERP 采购员 | 跨系统隔离验收：CRM 有临时角色窗口（`order:delete`），ERP 没有 |
+| `13700137000` | 已过期用户 | 角色分配窗口已过期 → 无可访问系统、无有效权限 |
 
 ### 4.4 时间权限演示（1 分钟过期）
 
-`demo-temp-permission.sh` 给指定账号授予一条 N 分钟（默认 1 分钟）的临时权限，用于验证「刷新后权限消失、点击提示无权限」：
+`demo-temp-permission.sh` 给指定账号创建一个临时角色，并写入一条 N 分钟（默认 1 分钟）的**用户-角色窗口**（A21 模型：时效在用户-角色上，角色-权限为永久），用于验证「刷新后权限消失、点击提示无权限」：
 
 ```bash
 # 默认：demo-1min 账号 + 通配 * + CRM 系统 + 1 分钟
@@ -282,17 +283,21 @@ JDK 21 + Spring Boot 4.x 业务系统使用 **JDK 21 版 SDK**（协议、配置
 
 ## 6. 审批系统接入
 
-审批系统在审批通过后回调权限中心（AppKey + HMAC-SHA256 签名，与 SDK 同一套算法，见契约 §4.1）：
+权限中心不实现审批流，提供两个回调入口（AppKey + HMAC-SHA256 签名，与 SDK 同一套算法，见契约 §4.1）：
+
+1. **业务用户临时权限申请（A20/A21）**：`POST /openapi/approval/access-applications/decision`，body 形如 `{"applicationNo":"RA-20261025-A1B2C3","decision":"APPROVED","reviewer":"external-approval","decisionComment":"同意"}`；批准后按申请单内各角色绑定的**时间模板**分别计算绝对窗口并写入 `sys_user_role`（不再由审批方传 `validFrom/validUntil`），多角色窗口取包络；重复通过幂等（窗口不回滚）。
+2. **旧版直接授权回调（兼容）**：`POST /openapi/approval/grant`；角色未绑定模板时使用请求中的 `validFrom/validUntil`，绑定模板时以模板计算为准。
+
+本地模拟外部审批（读取 MySQL 待办箱 + HMAC 回调，仅用于 demo/验收）：
 
 ```bash
-# 生成签名并发起回调（scripts/sign-request.py 可打印可直接执行的 curl）
-python3 scripts/sign-request.py \
-  --app-key approval-system --app-secret "${RBAC_APPROVAL_SECRET}" \
-  --method POST --path /openapi/approval/grant \
-  --body '{"systemCode":"crm","externalUserId":"13900139000","grantType":"role","roleId":2,"validFrom":"2026-10-24T00:00:00Z","validUntil":"2027-06-30T23:59:59Z","approvalId":"APV-20261024-100","reason":"临时运营权限申请"}'
+python3 scripts/mock-access-approval.py list --status PENDING
+python3 scripts/mock-access-approval.py show --application-no RA-20261025-A1B2C3
+python3 scripts/mock-access-approval.py approve --application-no RA-20261025-A1B2C3 --comment "同意，仅限本次"
+python3 scripts/mock-access-approval.py reject --application-no RA-20261025-A1B2C3 --comment "不符合规定"
 ```
 
-响应：`{"code":0,"data":{"success":true,"grantId":...,"idempotent":false}}`。相同 `approvalId` 重复回调幂等返回（`idempotent=true`）。授权写入后权限中心按系统 `region` 发布 Redis 通知，SDK 刷新缓存；到期后查询层立即失效，定时任务再标记 `status=0` 并通知。
+响应：`{"code":0,"data":{"success":true,"idempotent":false,...}}`。授权写入后权限中心按系统 `region` 发布 Redis 通知，SDK 刷新缓存；到期后查询层立即失效，定时任务再标记 `status=0` 并通知。
 
 ---
 
@@ -390,6 +395,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 17. **A17 · 系统接入凭据**：`sys_system` 新增 `app_key/app_secret`，手动/审核创建时自动分配（appKey=system code、secret 随机 32 位）；页面展示 AppKey 与掩码，创建/审批响应一次性返回完整 secret；开放接口验签 DB 优先，YAML 仅兼容回退；`09` 回填 crm/erp。
 15. **A15 · 页面元素管理简化**：页面元素只维护 `pageCode/code/text/type`（类型为 button/link/menu/icon/input 语义类型），不再在管理页维护样式/action/config；`action/config` 仍保留在 API 与 SDK 契约中；`07` 迁移把历史样式 type 归一为语义类型。
 14. **A14 · 前端菜单/布局优化**：移除「到期提醒」菜单、路由与页面（后端 `/api/expiring-grants` 接口保留）；管理台布局改为占满 100% 视口、内容区独立滚动，表格宽度自适应，去除页面/表格横向滚动条。
+21. **A21 · 角色时间模板**：时间语义从「角色-权限」上移到「用户-角色」。新增全局 `sys_time_template`（迁移 11，预置夜间/全天演示模板，不自动绑定）与 `sys_role.time_template_id`（空=永久角色）；审批通过/管理员直接分配时按模板计算绝对窗口写入 `sys_user_role`（多角色可不同、申请级取包络），角色-权限改为永久并删除 `sys_role_permission.valid_from/valid_until`；自助申请与审批 decision 不再接收/回传窗口字段；旧 `grant` 对绑定模板的角色以模板为准；前端新增平台超管专属「时间模板」页，「角色授权」更名「角色权限」、「用户授权」更名「用户角色」，角色权限页移除逐项时效、用户角色/我的申请移除日期选择。
 
 其他实现说明（非偏差，需求本身已明确）：
 
@@ -407,7 +413,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - **JDK 版本不对**：权限中心需要 **JDK 21+**（`java -version` 校验；平台启动脚本会自动寻找 JDK 21+/SDKMAN/Homebrew 路径）；SDK 用 **JDK 17+ 构建**（产物 Java 8 字节码），业务系统运行时 **JDK 8+** 即可。
 - **没有 Redis**：demo profile 已关闭 Redis（`RBAC_REDIS_ENABLED` 也可控制）；SDK 侧在真实环境会自动降级为短轮询。
 - **前端 401**：JWT 过期（默认 24h）或 `iss`/签名不匹配，重新生成 `TOKEN`；demo 密钥需与 `application-demo.yml` 一致。
-- **切系统后接口 403**：用户在该系统没有有效角色（`sys_user_role`），或调用了与 `X-System-Code` 不一致的 `systemId`；系统管理员只能操作自己系统；到「用户授权」给用户分配系统内角色即可。
+- **切系统后接口 403**：用户在该系统没有有效角色（`sys_user_role`），或调用了与 `X-System-Code` 不一致的 `systemId`；系统管理员只能操作自己系统；到「用户角色」给用户分配系统内角色即可。
 - **管理端接口 403**：确认当前用户在 `X-System-Code` 对应系统内拥有管理权限（admin 角色一条 `*` 即可），且 `systemId` 与上下文一致；**超管同样不能单请求跨系统**（先切系统）；平台超管由 `platform` 系统内的 `*` 判定（种子账号 `superadmin`）。
 - **SDK 接口未被拦截**：确认权限中心该系统的「权限码」已填写 `method + api_pattern`（SDK 只下发非空记录），且业务系统 `system-code` 与 `rbac.clients` 一致。
 
@@ -415,21 +421,22 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 ## 11. 本次交付验证记录（摘要）
 
-- 权限中心后端：`clean test` **192/192 PASS**（JDK 21.0.13，含 A16/A17/A18/A20）。
-- **A16/A17/A18/A20**：SDK 上报→待审核→审批创建系统/分配 appKey/secret、凭据查看、admin 授权保护；业务用户「我的申请」→外部审批 decision→临时角色→过期回收全链路；真实 SDK 启动上报验证通过；全量验收 **124/124 PASS**（含两版 SDK e2e 8/8、A20 §9.17 22/22）。
+- 权限中心后端：`clean test` **219/219 PASS**（JDK 21.0.13，含 A16/A17/A18/A20/A21）。
+- **A16/A17/A18/A20**：SDK 上报→待审核→审批创建系统/分配 appKey/secret、凭据查看、admin 授权保护；业务用户「我的申请」→外部审批 decision→临时角色→过期回收全链路；真实 SDK 启动上报验证通过；全量验收 **159/159 PASS**（含两版 SDK e2e 8/8、A21 §9.17 35/35 + §9.18 24/24）。
 - **持久层（A13）**：JPA/Hibernate 全部移除，改用 MyBatis-Plus 3.5.17（Boot4 starter + `mybatis-plus-jsqlparser`）；实体 `@TableName/@TableId`、7 个 `BaseMapper`、复杂时效 SQL 注解化、MP 分页；真库 v4 验收 **88/88 PASS**（含两版 SDK e2e 8/8）。
 - **系统隔离重构（A11）**：当前业务表 7 张（含平台系统共 3 个系统：crm/erp/platform）；全量 API 验收 **81/81 PASS**（含 JDK8/JDK21 两个 SDK e2e 各 4/4）；覆盖系统由有效角色推导、数据驱动超管、bootstrap `currentSystemCode`、跨系统 403/超管跨系统、系统接入自动创建管理员角色、用户-系统开通接口 404。
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **121/121 PASS**，产物字节码 **major=52（Java 8）**。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **122/122 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过。
-- **一键验证**：`./scripts/verify-all.sh` → **16 项检查全过**（api 192、SDK v1 121、SDK v2 122、前端构建、MyBatis-Plus/无 JPA、08/09/10 迁移、凭据/admin 保护、A20 申请产物、3 平台启动脚本）。
+- **一键验证**：`./scripts/verify-all.sh` → **17 项检查全过**（api 219、SDK v1 121、SDK v2 122、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、3 平台启动脚本）。
 - **GitHub Actions（6 job 全绿）**：权限中心（JDK21 88 单测）/ SDK v1（JDK17 97 单测）/ SDK v2（JDK21 98 单测）/ 前端（Node22）/ Windows 启动脚本语法 / JDK 8 运行时冒烟全部 success（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)）。
 - **v1 自接入（已被 A11 取代）**：旧的 `rbac` 系统自接入已移除；现由平台系统 `platform` + `superadmin` 数据驱动超管。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
-- 第 9 节全量验收（当前）：**124/124 PASS**（含 JDK8/JDK21 两个 SDK 端到端各 4/4、A20 §9.17 22/22；v10 全新库 01→10）。
+- 第 9 节全量验收（当前）：**159/159 PASS**（含 JDK8/JDK21 两个 SDK 端到端各 4/4、A21 §9.17 35/35 + §9.18 24/24；v11 全新库 01→11）。
 - **权限时效演示（本机验证，A12 后）**：`demo-temp-permission.sh` 给 `demo-1min` 在 CRM 临时授予通配 `*`（1 分钟），有效期内可访问管理接口，过期后 `permissions=[]`、接口 403。
 - 管理前端：`tsc -b && vite build` 通过（3259 modules），dist 1.4 MB（JS 1,456.05 kB / gzip 459.13 kB）；headless Chrome 对真实后端联调通过（136 仅见「我的申请」、admin 角色权限预览、角色授权树无 `*`），见验收文档。
 - 一键验证：`./scripts/verify-all.sh` → **14 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
+- **A21（角色时间模板）已完成**：`scripts/acceptance.py` §9.17 已按模板窗口改写并新增 §9.18、`scripts/mock-access-approval.py` 已移除 `--valid-from/--valid-until`、`scripts/verify-all.sh` 已增加 11 迁移 / 时间模板页面 / 菜单检查；全新临时库上全量验收 **159/159 PASS**，`verify-all.sh` **17 项全过**。
 
 ---
 

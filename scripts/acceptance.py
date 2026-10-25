@@ -13,10 +13,14 @@
 
 说明：SDK/前端行为（§9.3/§9.4/§9.6/§9.9 的拦截器判定、模式 A/B 渲染）以
 starter/front 单元测试与示例业务系统联调为证据，本脚本覆盖其中可在 API 层验证的部分。
+
+A21 起授权窗口由角色时间模板计算：§9.17 验证模板化审批（决策请求不再携带窗口），
+§9.18 验证时间模板 CRUD、角色绑定、模板窗口分配与停用拒绝。
 """
 
 import argparse
 import base64
+import datetime as dt
 import hashlib
 import hmac
 import json
@@ -53,6 +57,9 @@ USER_CROSS = "13600136000"        # CRM 运营 + ERP 采购员（跨系统隔离
 USER_EXPIRED = "13700137000"      # 授权全部过期
 USER_NEW = "13500135000"          # 审批授权验收（初始无数据）
 SUPER_ADMIN = "superadmin"        # 平台超管（数据驱动：platform 系统 super-admin → platform:admin）
+DIRECT_USER = "13400134000"       # A21 管理员直接分配窗口验收（初始无数据）
+DIRECT_USER2 = "13300133000"      # A21 模板停用后审批拒绝验收（初始无数据）
+DIRECT_USER3 = "13200132000"      # A21 模板停用后分配拒绝验收（初始无数据）
 CRM_ADMIN = "crm-admin-001"       # CRM 系统管理员（仅本系统）
 ERP_ADMIN = "erp-admin-001"       # ERP 系统管理员（仅本系统）
 CRM = "crm"                       # 管理上下文：当前业务系统
@@ -192,6 +199,60 @@ def http_abs(method, url, token=None):
 
 def token_of(user):
     return make_jwt(user)
+
+
+# --------------------------------------------------------------------------
+# 时间模板 / 时间窗口工具（A21）
+# --------------------------------------------------------------------------
+def flatten_permissions(nodes):
+    """展平权限树，返回节点列表。"""
+    result = []
+    for node in nodes or []:
+        result.append(node)
+        result.extend(flatten_permissions(node.get("children")))
+    return result
+
+
+def parse_iso(ts):
+    """解析后端返回的 ISO-8601（Z / 带偏移 / 可含毫秒），返回 epoch 秒；非法返回 None。"""
+    if not ts:
+        return None
+    text = str(ts).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        moment = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    return moment.timestamp()
+
+
+def window_of(item):
+    """取授权窗口，兼容 approvedValidFrom/Until 与 validFrom/Until 两种字段名。"""
+    if not isinstance(item, dict):
+        return (None, None)
+    return (item.get("approvedValidFrom") or item.get("validFrom"),
+            item.get("approvedValidUntil") or item.get("validUntil"))
+
+
+def window_sane(from_ts, until_ts):
+    """窗口合理性：可解析、结束晚于开始、开始不早于现在 5 分钟、结束不晚于 3 天后。"""
+    start = parse_iso(from_ts)
+    end = parse_iso(until_ts)
+    now = time.time()
+    return (start is not None and end is not None
+            and end > start
+            and start >= now - 300
+            and end <= now + 3 * 86400)
+
+
+def time_templates(token, system=CRM):
+    """GET /api/time-templates，返回 (status, list)。"""
+    status, body = http("GET", "/api/time-templates", token=token, system=system)
+    data = data_of((status, body))
+    return status, (data if isinstance(data, list) else [])
 
 
 # --------------------------------------------------------------------------
@@ -402,8 +463,10 @@ def test_permission_model():
     status, body = openapi("GET", "/openapi/sdk/user-permissions",
                            "systemCode=crm&externalUserId=" + USER_CROSS, system="crm")
     perms = {p.get("code"): p for p in (data_of((status, body)) or {}).get("permissions", [])}
-    check("权限码 order:delete 返回时效 validUntil=2027-06-30",
-          perms.get("order:delete", {}).get("validUntil", "").startswith("2027-06-30"),
+    check("权限码 order:delete 由用户-角色授权且无逐项时效（A21）",
+          "order:delete" in perms
+          and not perms.get("order:delete", {}).get("validFrom")
+          and not perms.get("order:delete", {}).get("validUntil"),
           perms.get("order:delete"))
     check("is_public=1 的 common:profile 对所有用户默认拥有", "common:profile" in perms)
 
@@ -806,91 +869,104 @@ def test_sdk_onboarding():
           and created.get("appSecretMasked"), created)
 
 
-def utc_iso(offset_seconds=0):
-    """UTC ISO-8601 秒级时间，供申请/审批窗口使用。"""
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + offset_seconds))
-
-
 def test_access_application():
-    """§9.17 业务用户临时权限申请：申请页 API + 审批决策回调 + 权限生效。"""
-    section("§9.17 业务用户临时权限申请（自助申请 + 审批回调）")
+    """§9.17 模板化审批：options 模板摘要、创建/审批/幂等/驳回、逐角色窗口。"""
+    section("§9.17 业务用户临时权限申请（A21 模板化审批窗口）")
     admin = token_of(CRM_ADMIN)
     user = token_of(USER_CROSS)
     suffix = secrets.token_hex(3)
 
-    def flatten(nodes):
-        result = []
-        for node in nodes or []:
-            result.append(node)
-            result.extend(flatten(node.get("children")))
-        return result
-
     status, body = http("GET", "/api/permissions?systemId=1", token=admin, system=CRM)
-    tree = data_of((status, body)) or []
-    permission_by_code = {node.get("code"): node for node in flatten(tree)}
-    approve_permission = permission_by_code.get("order:approve") or permission_by_code.get("order:delete")
-    secondary_permission = permission_by_code.get("order:detail") or permission_by_code.get("order:view:amount")
-    check("§9.17 前置：CRM 权限树包含 order:approve 与一个可验收业务权限",
-          status == 200 and approve_permission and secondary_permission,
+    permission_by_code = {node.get("code"): node
+                          for node in flatten_permissions(data_of((status, body)) or [])}
+    candidate_codes = ["order:approve", "order:delete", "order:detail",
+                       "order:view:amount", "order:menu", "order:list",
+                       "order:view", "order:create"]
+    candidates = []
+    for code in candidate_codes:
+        node = permission_by_code.get(code)
+        if node is not None and node.get("id") not in {item.get("id") for item in candidates}:
+            candidates.append(node)
+    check("§9.17 前置：CRM 权限树至少含 4 个业务权限",
+          status == 200 and len(candidates) >= 4,
           (status, sorted(permission_by_code)))
 
     status, body = http("GET", "/api/roles?systemId=1&page=1&size=100",
                         token=admin, system=CRM)
     roles = (data_of((status, body)) or {}).get("items", [])
     admin_role = next((role for role in roles if role.get("code") == "admin"), None)
-    check("§9.17 前置：CRM 存在 admin 角色", status == 200 and admin_role is not None,
-          roles)
+    check("§9.17 前置：CRM 存在 admin 角色", status == 200 and admin_role is not None, roles)
 
-    if not approve_permission or not secondary_permission or not admin_role:
+    status, templates = time_templates(admin)
+    night = next((item for item in templates if "夜" in (item.get("name") or "")), None)
+    all_day = next((item for item in templates if "全天" in (item.get("name") or "")), None)
+    if night is None and templates:
+        night = templates[0]
+    if all_day is None and len(templates) >= 2:
+        all_day = templates[1]
+    check("§9.17 前置：存在预置时间模板（夜间/全天）",
+          status == 200 and night is not None and all_day is not None
+          and night.get("id") != all_day.get("id"),
+          (status, [item.get("name") for item in templates]))
+    if (len(candidates) < 4 or admin_role is None or night is None
+            or all_day is None or night.get("id") == all_day.get("id")):
         return
+    approve_permission, secondary_permission, third_permission, reject_permission = candidates[:4]
 
-    def create_role(code, permission_id):
+    def create_role(code, permission_id, template_id):
         status, body = http("POST", "/api/roles", token=admin, system=CRM, body={
             "systemId": 1, "code": code, "name": "验收临时角色" + code[-4:],
             "status": 1, "sort": 99, "remark": "§9.17 acceptance",
+            "timeTemplateId": template_id,
         })
         role = data_of((status, body)) or {}
         role_id = role.get("id")
-        check("§9.17 crm-admin 创建临时测试角色 %s" % code,
-              status == 200 and role_id is not None, (status, body))
+        check("§9.17 创建绑定模板的角色 %s" % code,
+              status == 200 and role_id is not None
+              and role.get("timeTemplateId") == template_id, (status, body))
         if role_id is None:
             return None
         status, body = http("POST", "/api/roles/%s/permissions/grant" % role_id,
                             token=admin, system=CRM, body={
                                 "permissionIds": [permission_id],
-                                "validFrom": utc_iso(-3600),
-                                "validUntil": utc_iso(365 * 86400),
                                 "grantReason": "§9.17 acceptance",
                             })
         grants = (data_of((status, body)) or {}).get("grants", [])
-        check("§9.17 临时角色 %s 授予业务权限" % code,
-              status == 200 and any(g.get("permissionId") == permission_id for g in grants),
+        granted = next((item for item in grants
+                        if item.get("permissionId") == permission_id), None)
+        check("§9.17 角色 %s 授予权限且无逐项时效" % code,
+              status == 200 and granted is not None
+              and granted.get("validFrom") is None and granted.get("validUntil") is None,
               (status, body))
         return role_id
 
-    role_a = create_role("apply-auditor-" + suffix, approve_permission["id"])
-    role_b = create_role("apply-reviewer-" + suffix, secondary_permission["id"])
-    if role_a is None or role_b is None:
+    role_a = create_role("apply-auditor-" + suffix, approve_permission["id"], night.get("id"))
+    role_b = create_role("apply-approver-" + suffix, secondary_permission["id"], night.get("id"))
+    role_c = create_role("apply-allday-" + suffix, third_permission["id"], all_day.get("id"))
+    role_d = create_role("apply-reject-" + suffix, reject_permission["id"], night.get("id"))
+    if not all([role_a, role_b, role_c, role_d]):
         return
 
     status, body = http("GET", "/api/access-applications/options", token=user, system=CRM)
     options = data_of((status, body)) or {}
     option_by_code = {role.get("roleCode"): role for role in options.get("roles", [])}
+    option_a = option_by_code.get("apply-auditor-" + suffix, {})
     check("§9.17 options 返回当前系统且包含未拥有的临时角色",
           status == 200 and options.get("systemCode") == CRM
-          and option_by_code.get("apply-auditor-" + suffix, {}).get("owned") is False,
-          (status, options))
+          and option_a.get("owned") is False, (status, options))
     check("§9.17 options 角色权限预览包含业务权限",
-          approve_permission["code"] in {
-              p.get("code") for p in
-              option_by_code.get("apply-auditor-" + suffix, {}).get("permissions", [])
-          }, option_by_code.get("apply-auditor-" + suffix))
+          approve_permission["code"] in
+          {item.get("code") for item in option_a.get("permissions", [])}, option_a)
+    check("§9.17 options 角色带时间模板摘要",
+          option_a.get("timeTemplateId") == night.get("id")
+          and option_a.get("timeTemplateName") == night.get("name")
+          and bool(option_a.get("timeTemplateText")), option_a)
     check("§9.17 options 审批链接模板含 {applicationNo}",
           "{applicationNo}" in (options.get("approvalUrlTemplate") or ""),
           options.get("approvalUrlTemplate"))
 
     status, body = http("POST", "/api/access-applications", token=user, system=CRM,
-                        body={"roleIds": [role_a], "reason": "§9.17 临时审批验收"})
+                        body={"roleIds": [role_a], "reason": "§9.17 模板化审批验收"})
     application = data_of((status, body)) or {}
     application_no = application.get("applicationNo")
     check("§9.17 创建申请 → PENDING 且有单号/时间/审批链接",
@@ -910,10 +986,8 @@ def test_access_application():
     decision_body = {
         "applicationNo": application_no,
         "decision": "APPROVED",
-        "validFrom": utc_iso(-60),
-        "validUntil": utc_iso(3600),
         "reviewer": "acceptance",
-        "decisionComment": "§9.17 通过",
+        "decisionComment": "§9.17 通过（窗口由角色模板计算）",
     }
     status, body = openapi("POST", "/openapi/approval/access-applications/decision",
                            body=decision_body, app_key=APPROVAL_APP_KEY,
@@ -925,6 +999,24 @@ def test_access_application():
           and role_a in (decided.get("grantedRoleIds") or []),
           (status, decided))
 
+    status, body = http("GET", "/api/access-applications/" + application_no,
+                        token=user, system=CRM)
+    detail = data_of((status, body)) or {}
+    detail_roles = {item.get("roleId"): item for item in (detail.get("roles") or [])}
+    detail_a = detail_roles.get(role_a, {})
+    role_a_from, role_a_until = window_of(detail_a)
+    check("§9.17 申请详情逐角色返回模板名与计算窗口",
+          status == 200
+          and detail_a.get("timeTemplateName") == night.get("name")
+          and window_sane(role_a_from, role_a_until),
+          (status, detail))
+    envelope_from, envelope_until = window_of(detail)
+    check("§9.17 申请级窗口为角色窗口包络",
+          window_sane(envelope_from, envelope_until)
+          and abs(parse_iso(envelope_from) - parse_iso(role_a_from)) <= 1
+          and abs(parse_iso(envelope_until) - parse_iso(role_a_until)) <= 1,
+          (envelope_from, envelope_until, role_a_from, role_a_until))
+
     status, _ = openapi("POST", "/openapi/approval/access-applications/decision",
                         body=decision_body, app_key="wrong-app-key", secret="wrong-secret")
     check("§9.17 审批回调错误 AppKey → 401", status == 401, status)
@@ -933,7 +1025,7 @@ def test_access_application():
                            body=decision_body, app_key=APPROVAL_APP_KEY,
                            secret=APPROVAL_SECRET)
     repeated = data_of((status, body)) or {}
-    check("§9.17 同窗口重复审批 → idempotent=true 且不重复授权",
+    check("§9.17 重复审批 → idempotent=true 且窗口不回滚",
           status == 200 and repeated.get("idempotent") is True, (status, repeated))
 
     status, body = http("GET", "/api/me/bootstrap", token=user, system=CRM)
@@ -946,8 +1038,43 @@ def test_access_application():
                      token=user, system=ERP)
     check("§9.17 用 ERP 上下文查询 CRM 申请单 → 404", status == 404, status)
 
+    # 多角色：不同模板 → 逐角色窗口不同，申请级窗口取包络
     status, body = http("POST", "/api/access-applications", token=user, system=CRM,
-                        body={"roleIds": [role_b], "reason": "§9.17 驳回验收"})
+                        body={"roleIds": [role_b, role_c], "reason": "§9.17 多角色模板窗口"})
+    multi = data_of((status, body)) or {}
+    multi_no = multi.get("applicationNo")
+    check("§9.17 可创建多角色申请（不同时间模板）",
+          status == 200 and multi_no is not None, (status, multi))
+    if multi_no is not None:
+        status, body = openapi("POST", "/openapi/approval/access-applications/decision",
+                               body={"applicationNo": multi_no, "decision": "APPROVED",
+                                     "reviewer": "acceptance",
+                                     "decisionComment": "§9.17 多角色通过"},
+                               app_key=APPROVAL_APP_KEY, secret=APPROVAL_SECRET)
+        multi_decided = data_of((status, body)) or {}
+        check("§9.17 多角色审批通过 → APPROVED 且逐角色授权",
+              status == 200 and multi_decided.get("status") == "APPROVED"
+              and {role_b, role_c} <= set(multi_decided.get("grantedRoleIds") or []),
+              (status, multi_decided))
+        status, body = http("GET", "/api/access-applications/" + multi_no,
+                            token=user, system=CRM)
+        multi_detail = data_of((status, body)) or {}
+        multi_roles = {item.get("roleId"): item for item in (multi_detail.get("roles") or [])}
+        windows = [window_of(multi_roles.get(role_id, {})) for role_id in (role_b, role_c)]
+        starts = [parse_iso(item[0]) for item in windows]
+        ends = [parse_iso(item[1]) for item in windows]
+        envelope_from, envelope_until = window_of(multi_detail)
+        check("§9.17 多角色窗口均有效且按模板不同",
+              all(window_sane(item[0], item[1]) for item in windows)
+              and windows[0] != windows[1], windows)
+        check("§9.17 多角色申请级窗口为最早开始/最晚结束包络",
+              window_sane(envelope_from, envelope_until)
+              and abs(parse_iso(envelope_from) - min(starts)) <= 1
+              and abs(parse_iso(envelope_until) - max(ends)) <= 1,
+              (envelope_from, envelope_until, windows))
+
+    status, body = http("POST", "/api/access-applications", token=user, system=CRM,
+                        body={"roleIds": [role_d], "reason": "§9.17 驳回验收"})
     reject_application = data_of((status, body)) or {}
     reject_no = reject_application.get("applicationNo")
     check("§9.17 通过后可再次创建第二张申请", status == 200 and reject_no,
@@ -964,12 +1091,12 @@ def test_access_application():
     status, body = http("GET", "/api/me/bootstrap", token=user, system=CRM)
     permissions_after_reject = (data_of((status, body)) or {}).get("permissions") or []
     check("§9.17 驳回不写入角色权限",
-          status == 200 and secondary_permission["code"] not in permissions_after_reject,
+          status == 200 and reject_permission["code"] not in permissions_after_reject,
           sorted(permissions_after_reject))
 
     status, _ = openapi("POST", "/openapi/approval/access-applications/decision",
                         body={"applicationNo": reject_no, "decision": "APPROVED",
-                              "validFrom": utc_iso(-60), "validUntil": utc_iso(3600)},
+                              "reviewer": "acceptance"},
                         app_key=APPROVAL_APP_KEY, secret=APPROVAL_SECRET)
     check("§9.17 已驳回申请再次通过 → 409", status == 409, status)
 
@@ -979,6 +1106,193 @@ def test_access_application():
     check("§9.17 我的申请状态筛选/分页返回已通过记录",
           status == 200 and any(item.get("applicationNo") == application_no
                                 for item in page.get("items", [])), (status, page))
+
+
+def test_time_template():
+    """§9.18 角色时间模板：CRUD 权限、角色绑定、模板窗口分配、停用拒绝。"""
+    section("§9.18 角色时间模板（A21：CRUD/绑定/窗口/停用）")
+    admin = token_of(CRM_ADMIN)       # 系统管理员：role:manage，可读不可写
+    superadmin = token_of(SUPER_ADMIN)
+    applicant = token_of(USER_OPERATOR)  # 需已有当前系统有效角色，才能访问自助申请接口
+    suffix = secrets.token_hex(3)
+
+    status, templates = time_templates(admin)
+    check("§9.18 系统管理员可读取模板列表",
+          status == 200 and isinstance(templates, list) and len(templates) >= 2,
+          (status, templates))
+    check("§9.18 预置模板含夜间/全天示例",
+          any("夜" in (item.get("name") or "") for item in templates)
+          and any("全天" in (item.get("name") or "") for item in templates),
+          [item.get("name") for item in templates])
+
+    template_payload = {
+        "name": "验收模板" + suffix,
+        "timezone": "Asia/Shanghai",
+        "startDayOffset": 0,
+        "startTime": "00:00",
+        "endDayOffset": 1,
+        "endTime": "23:59",
+        "remark": "§9.18 acceptance",
+    }
+    status, _ = http("POST", "/api/time-templates", token=admin, system=CRM,
+                     body=template_payload)
+    check("§9.18 非平台超管创建模板 → 403", status == 403, status)
+
+    status, _ = http("POST", "/api/time-templates", token=superadmin, system=CRM, body={
+        "name": "验收坏模板" + suffix, "timezone": "Asia/Shanghai",
+        "startDayOffset": 0, "startTime": "18:00",
+        "endDayOffset": 0, "endTime": "09:00",
+    })
+    check("§9.18 结束早于开始的模板 → 400", status == 400, status)
+
+    status, _ = http("POST", "/api/time-templates", token=superadmin, system=CRM, body={
+        "name": "验收坏时区" + suffix, "timezone": "Not/AZone",
+        "startDayOffset": 0, "startTime": "00:00",
+        "endDayOffset": 1, "endTime": "23:59",
+    })
+    check("§9.18 非法时区 → 400", status == 400, status)
+
+    status, body = http("POST", "/api/time-templates", token=superadmin, system=CRM,
+                        body=template_payload)
+    template = data_of((status, body)) or {}
+    template_id = template.get("id")
+    check("§9.18 平台超管创建模板",
+          status == 200 and template_id is not None
+          and template.get("name") == template_payload["name"]
+          and template.get("startTime") == "00:00",
+          (status, template))
+
+    status, _ = http("POST", "/api/time-templates", token=superadmin, system=CRM,
+                     body=template_payload)
+    check("§9.18 重复模板名 → 400/409", status in (400, 409), status)
+
+    status, body = http("PUT", "/api/time-templates/%s" % template_id,
+                        token=superadmin, system=CRM,
+                        body={"name": template_payload["name"], "timezone": "Asia/Shanghai",
+                              "startDayOffset": 0, "startTime": "00:00",
+                              "endDayOffset": 1, "endTime": "23:59",
+                              "remark": "§9.18 updated", "status": 1})
+    updated = data_of((status, body)) or {}
+    check("§9.18 平台超管更新模板",
+          status == 200 and updated.get("remark") == "§9.18 updated",
+          (status, updated))
+
+    def create_role(code, template_id, permission_id):
+        status, body = http("POST", "/api/roles", token=admin, system=CRM, body={
+            "systemId": 1, "code": code, "name": "模板验收角色" + code[-4:],
+            "status": 1, "sort": 99, "remark": "§9.18 acceptance",
+            "timeTemplateId": template_id,
+        })
+        role = data_of((status, body)) or {}
+        role_id = role.get("id")
+        check("§9.18 创建%s角色 %s" % ("绑定模板" if template_id else "无模板", code),
+              status == 200 and role_id is not None
+              and role.get("timeTemplateId") == template_id, (status, body))
+        if role_id is None:
+            return None
+        status, body = http("POST", "/api/roles/%s/permissions/grant" % role_id,
+                            token=admin, system=CRM,
+                            body={"permissionIds": [permission_id],
+                                  "grantReason": "§9.18 acceptance"})
+        grants = (data_of((status, body)) or {}).get("grants", [])
+        check("§9.18 角色 %s 授权成功" % code,
+              status == 200 and any(item.get("permissionId") == permission_id
+                                    for item in grants), (status, body))
+        return role_id
+
+    status, body = http("GET", "/api/permissions?systemId=1", token=admin, system=CRM)
+    permissions_tree = flatten_permissions(data_of((status, body)) or [])
+    permissions = [item for item in permissions_tree
+                   if (item.get("code") or "").startswith("order:")]
+    if not permissions:
+        permissions = permissions_tree
+    if len(permissions) < 2:
+        check("§9.18 前置：CRM 权限树至少 2 个可授权权限", False, permissions)
+        return
+
+    role_with_template = create_role("tmpl-role-" + suffix, template_id, permissions[0]["id"])
+    role_permanent = create_role("tmpl-perm-" + suffix, None, permissions[1]["id"])
+    if role_with_template is None or role_permanent is None:
+        return
+
+    status, body = http("GET", "/api/roles?systemId=1&page=1&size=100",
+                        token=admin, system=CRM)
+    roles = (data_of((status, body)) or {}).get("items", [])
+    admin_role = next((item for item in roles if item.get("code") == "admin"), None)
+    if admin_role is not None:
+        status, _ = http("PUT", "/api/roles/%s" % admin_role.get("id"),
+                         token=admin, system=CRM,
+                         body={"name": admin_role.get("name"),
+                               "timeTemplateId": template_id})
+        check("§9.18 admin 角色绑定模板 → 400", status == 400, status)
+
+    status, body = http("GET", "/api/access-applications/options", token=applicant, system=CRM)
+    options = data_of((status, body)) or {}
+    option_by_code = {item.get("roleCode"): item for item in options.get("roles", [])}
+    option = option_by_code.get("tmpl-role-" + suffix, {})
+    check("§9.18 options 只含绑定启用模板的角色（无模板角色不可申请）",
+          status == 200 and "tmpl-role-" + suffix in option_by_code
+          and "tmpl-perm-" + suffix not in option_by_code, (status, options))
+    check("§9.18 options 角色带模板摘要",
+          option.get("timeTemplateId") == template_id
+          and option.get("timeTemplateName") == template_payload["name"]
+          and bool(option.get("timeTemplateText")), option)
+
+    status, _ = http("POST", "/api/access-applications", token=applicant, system=CRM,
+                     body={"roleIds": [role_permanent], "reason": "§9.18 无模板角色"})
+    check("§9.18 申请无模板角色 → 400", status == 400, status)
+
+    status, body = http("POST", "/api/user-roles", token=admin, system=CRM, body={
+        "systemId": 1, "externalUserId": DIRECT_USER,
+        "roleId": role_with_template, "grantReason": "§9.18 模板窗口",
+    })
+    user_role = data_of((status, body)) or {}
+    window_from, window_until = window_of(user_role)
+    check("§9.18 管理员直接分配角色 → 按模板写入窗口",
+          status == 200 and window_sane(window_from, window_until),
+          (status, user_role))
+
+    status, body = http("POST", "/api/user-roles", token=admin, system=CRM, body={
+        "systemId": 1, "externalUserId": DIRECT_USER,
+        "roleId": role_permanent, "grantReason": "§9.18 永久角色",
+    })
+    permanent_grant = data_of((status, body)) or {}
+    permanent_from, permanent_until = window_of(permanent_grant)
+    check("§9.18 无模板角色直接分配 → 永久（窗口为空）",
+          status == 200 and permanent_from is None and permanent_until is None,
+          (status, permanent_grant))
+
+    status, body = http("POST", "/api/access-applications", token=applicant, system=CRM,
+                        body={"roleIds": [role_with_template],
+                              "reason": "§9.18 停用模板审批"})
+    pending = data_of((status, body)) or {}
+    pending_no = pending.get("applicationNo")
+    check("§9.18 绑定模板角色可创建申请（停用前）",
+          status == 200 and pending_no is not None, (status, pending))
+
+    status, _ = http("DELETE", "/api/time-templates/%s" % template_id,
+                     token=superadmin, system=CRM)
+    check("§9.18 平台超管停用模板", status == 200, status)
+
+    status, body = http("GET", "/api/time-templates?status=0", token=admin, system=CRM)
+    disabled = data_of((status, body)) or []
+    check("§9.18 停用后 status=0 列表可见",
+          status == 200 and any(item.get("id") == template_id for item in disabled),
+          (status, disabled))
+
+    status, _ = http("POST", "/api/user-roles", token=admin, system=CRM, body={
+        "systemId": 1, "externalUserId": DIRECT_USER3,
+        "roleId": role_with_template, "grantReason": "§9.18 停用模板",
+    })
+    check("§9.18 绑定停用模板的角色分配 → 409", status == 409, status)
+
+    if pending_no is not None:
+        status, _ = openapi("POST", "/openapi/approval/access-applications/decision",
+                            body={"applicationNo": pending_no, "decision": "APPROVED",
+                                  "reviewer": "acceptance",
+                                  "decisionComment": "§9.18 停用模板审批"},
+                            app_key=APPROVAL_APP_KEY, secret=APPROVAL_SECRET)
+        check("§9.18 模板停用后审批通过 → 409", status == 409, status)
 
 
 TESTS = [
@@ -998,6 +1312,7 @@ TESTS = [
     ("9.1b", test_sdk_end_to_end),
     ("9.1c", test_sdk_jdk21_end_to_end),
     ("9.17", test_access_application),
+    ("9.18", test_time_template),
 ]
 
 

@@ -171,7 +171,7 @@ class RolePermissionServiceTest {
     @Test
     void grantToAdminRoleIsRejectedWithGuidance() {
         assertThatThrownBy(() -> service.grant(ADMIN_ROLE_ID,
-                new RolePermissionGrantRequest(List.of(PERMISSION_ID), null, null, "尝试授权")))
+                new RolePermissionGrantRequest(List.of(PERMISSION_ID), "尝试授权")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(400);
                     assertThat(exception.getMessage()).contains("系统管理员角色默认拥有全部权限");
@@ -196,7 +196,7 @@ class RolePermissionServiceTest {
     @Test
     void grantWildcardToNonAdminRoleIsRejectedWithGuidance() {
         assertThatThrownBy(() -> service.grant(OPERATOR_ROLE_ID,
-                new RolePermissionGrantRequest(List.of(WILDCARD_PERMISSION_ID), null, null, "尝试授权通配")))
+                new RolePermissionGrantRequest(List.of(WILDCARD_PERMISSION_ID), "尝试授权通配")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(400);
                     assertThat(exception.getMessage()).contains("通配");
@@ -210,7 +210,7 @@ class RolePermissionServiceTest {
     void grantBatchContainingWildcardWritesNothing() {
         assertThatThrownBy(() -> service.grant(OPERATOR_ROLE_ID,
                 new RolePermissionGrantRequest(List.of(PERMISSION_ID, WILDCARD_PERMISSION_ID),
-                        null, null, "批量授权含通配")))
+                        "批量授权含通配")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(400);
                     assertThat(exception.getMessage()).contains("通配");
@@ -222,7 +222,7 @@ class RolePermissionServiceTest {
     @Test
     void adminRoleProtectionTakesPrecedenceOverWildcardCheck() {
         assertThatThrownBy(() -> service.grant(ADMIN_ROLE_ID,
-                new RolePermissionGrantRequest(List.of(WILDCARD_PERMISSION_ID), null, null, "尝试授权")))
+                new RolePermissionGrantRequest(List.of(WILDCARD_PERMISSION_ID), "尝试授权")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(400);
                     assertThat(exception.getMessage()).contains("系统管理员角色默认拥有全部权限");
@@ -234,7 +234,7 @@ class RolePermissionServiceTest {
     @Test
     void grantToOperatorRoleStillWorks() {
         RolePermissionsVO result = service.grant(OPERATOR_ROLE_ID,
-                new RolePermissionGrantRequest(List.of(PERMISSION_ID), null, null, "运营授权"));
+                new RolePermissionGrantRequest(List.of(PERMISSION_ID), "运营授权"));
 
         assertThat(savedPermissionIds).containsExactly(PERMISSION_ID);
         SysRolePermission relation = relations.get(key(OPERATOR_ROLE_ID, PERMISSION_ID));

@@ -1,8 +1,5 @@
 package com.telbank.rbac.service;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,7 +27,9 @@ import com.telbank.rbac.web.dto.GrantDtos.RolePermissionsVO;
  * 角色-权限授权（契约 §3.5）。
  *
  * <p>落库口径按契约 §9.1：同一 {@code (role_id, permission_id)} 关系已存在时更新原行的
- * {@code valid_from/valid_until/source_approval_id/grant_reason/status=1}，不新增行。</p>
+ * {@code source_approval_id/grant_reason/status=1}，不新增行。</p>
+ *
+ * <p>A21：角色-权限不再带时效，授权长期有效；用户侧的生效窗口由 {@code sys_user_role} 承载。</p>
  *
  * <p>A18：admin 角色（code={@code admin}）默认拥有全部权限，grant/revoke 返回 400；
  * 读取授权列表保持原行为。</p>
@@ -76,8 +75,6 @@ public class RolePermissionService {
             SysPermission permission = permissions.get(relation.getPermissionId());
             grants.add(new RolePermissionGrantVO(relation.getPermissionId(),
                     permission == null ? null : permission.getCode(),
-                    TimeUtils.toInstant(relation.getValidFrom()),
-                    TimeUtils.toInstant(relation.getValidUntil()),
                     relation.getStatus()));
         }
         return new RolePermissionsVO(role.getId(), grants);
@@ -88,7 +85,6 @@ public class RolePermissionService {
         SysRole role = requireRole(roleId);
         systemScopeGuard.requireAccess(role.getSystemId());
         rejectAdminRoleChanges(role);
-        validateValidity(request.validFrom(), request.validUntil());
         List<SysRolePermission> toSave = new ArrayList<>(request.permissionIds().size());
         for (Long permissionId : request.permissionIds()) {
             if (permissionId == null) {
@@ -104,8 +100,6 @@ public class RolePermissionService {
             relation.setSystemId(role.getSystemId());
             relation.setRoleId(roleId);
             relation.setPermissionId(permissionId);
-            relation.setValidFrom(TimeUtils.toUtcLocalDateTime(request.validFrom()));
-            relation.setValidUntil(TimeUtils.toUtcLocalDateTime(request.validUntil()));
             relation.setAutoRevoke(RbacConstants.AUTO_REVOKE_YES);
             relation.setGrantReason(request.grantReason());
             relation.setSourceApprovalId(null);
@@ -155,15 +149,5 @@ public class RolePermissionService {
     private SysRole requireRole(Long roleId) {
         return roleRepository.findById(roleId)
                 .orElseThrow(() -> ApiException.notFound("role not found: " + roleId));
-    }
-
-    static void validateValidity(Instant validFrom, Instant validUntil) {
-        if (validFrom != null && validUntil != null && !validUntil.isAfter(validFrom)) {
-            throw ApiException.badRequest("validUntil must be after validFrom");
-        }
-    }
-
-    static LocalDateTime toUtcLocalDateTime(Instant instant) {
-        return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 }
