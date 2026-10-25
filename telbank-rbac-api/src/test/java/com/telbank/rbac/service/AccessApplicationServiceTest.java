@@ -3,15 +3,18 @@ package com.telbank.rbac.service;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.telbank.rbac.common.ApiException;
@@ -35,6 +38,7 @@ import com.telbank.rbac.security.ManagementContextService;
 import com.telbank.rbac.testutil.SecurityTestSupport;
 import com.telbank.rbac.testutil.TestProxies;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.ApplicationVO;
+import com.telbank.rbac.web.dto.AccessApplicationDtos.CreateRequest;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.OptionsVO;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.RoleOptionVO;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.RolePermissionVO;
@@ -71,6 +75,16 @@ class AccessApplicationServiceTest {
     private final List<RoleQueryCall> roleQueryCalls = new ArrayList<>();
     private final List<Long> ownedRoleSystemIds = new ArrayList<>();
     private final List<String> ownedRoleUserIds = new ArrayList<>();
+    private final List<Long> ownedRoleIds = new ArrayList<>();
+    private final List<Long> roleLookupRoleIds = new ArrayList<>();
+    private final List<Long> roleLookupSystemIds = new ArrayList<>();
+    private final List<PendingCall> pendingCalls = new ArrayList<>();
+    private final List<String> savedApplicationNos = new ArrayList<>();
+    private final List<String> existsApplicationNoCalls = new ArrayList<>();
+    private final AtomicLong applicationIds = new AtomicLong(200L);
+    private final AtomicLong snapshotIds = new AtomicLong(1000L);
+    private boolean duplicateApplicationNo;
+    private boolean applicationSaveConflict;
 
     private SysAccessApplicationMapper applicationRepository;
     private SysAccessApplicationRoleMapper applicationRoleRepository;
@@ -83,6 +97,7 @@ class AccessApplicationServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
+        ownedRoleIds.add(OPERATOR_ROLE_ID);
         SysSystem crm = system(CRM_ID, "crm", "CRM系统");
         SysSystem erp = system(ERP_ID, "erp", "ERP系统");
         SysRole admin = role(ADMIN_ROLE_ID, "admin", "管理员", RbacConstants.STATUS_ENABLED, 1);
@@ -125,7 +140,7 @@ class AccessApplicationServiceTest {
                 case "findActiveRoleIds":
                     ownedRoleSystemIds.add((Long) args[0]);
                     ownedRoleUserIds.add((String) args[1]);
-                    return List.of(OPERATOR_ROLE_ID);
+                    return List.copyOf(ownedRoleIds);
                 case "countEffectiveRoles":
                     return 1L;
                 case "countEffectivePermission":
@@ -142,6 +157,18 @@ class AccessApplicationServiceTest {
                 return List.of(admin, operator, auditor, intern).stream()
                         .filter(role -> status == null || status.equals(role.getStatus()))
                         .toList();
+            }
+            if ("findByIdAndSystemId".equals(method.getName())) {
+                Long roleId = (Long) args[0];
+                Long systemId = (Long) args[1];
+                roleLookupRoleIds.add(roleId);
+                roleLookupSystemIds.add(systemId);
+                if (!CRM_ID.equals(systemId)) {
+                    return Optional.empty();
+                }
+                return List.of(admin, operator, auditor, intern).stream()
+                        .filter(role -> role.getId().equals(roleId))
+                        .findFirst();
             }
             return TestProxies.defaultValue(method.getReturnType());
         });
@@ -160,6 +187,35 @@ class AccessApplicationServiceTest {
             switch (method.getName()) {
                 case "findByApplicationNo":
                     return Optional.ofNullable(applications.get((String) args[0]));
+                case "findPending": {
+                    Long systemId = (Long) args[0];
+                    String externalUserId = (String) args[1];
+                    pendingCalls.add(new PendingCall(systemId, externalUserId));
+                    return applications.values().stream()
+                            .filter(application -> application.getSystemId().equals(systemId))
+                            .filter(application -> externalUserId.equals(application.getExternalUserId()))
+                            .filter(application -> Integer.valueOf(
+                                    RbacConstants.ACCESS_APPLICATION_STATUS_PENDING)
+                                    .equals(application.getStatus()))
+                            .findFirst();
+                }
+                case "existsByApplicationNo": {
+                    String applicationNo = (String) args[0];
+                    existsApplicationNoCalls.add(applicationNo);
+                    return duplicateApplicationNo || applications.containsKey(applicationNo);
+                }
+                case "save": {
+                    SysAccessApplication application = (SysAccessApplication) args[0];
+                    if (applicationSaveConflict) {
+                        throw new DataIntegrityViolationException("duplicate pending application");
+                    }
+                    if (application.getId() == null) {
+                        application.setId(applicationIds.getAndIncrement());
+                    }
+                    applications.put(application.getApplicationNo(), application);
+                    savedApplicationNos.add(application.getApplicationNo());
+                    return application;
+                }
                 case "search": {
                     Page<SysAccessApplication> page = (Page<SysAccessApplication>) args[0];
                     Long systemId = (Long) args[1];
@@ -182,14 +238,26 @@ class AccessApplicationServiceTest {
         });
         applicationRoleRepository = TestProxies.proxy(SysAccessApplicationRoleMapper.class,
                 (proxy, method, args) -> {
-                    if ("findByApplicationIdInOrderByIdAsc".equals(method.getName())) {
-                        List<Long> applicationIds = List.copyOf((Collection<Long>) args[0]);
-                        snapshotCalls.add(applicationIds);
-                        return applicationIds.stream()
-                                .flatMap(id -> snapshots.getOrDefault(id, List.of()).stream())
-                                .toList();
+                    switch (method.getName()) {
+                        case "findByApplicationIdInOrderByIdAsc": {
+                            List<Long> applicationIds = List.copyOf((Collection<Long>) args[0]);
+                            snapshotCalls.add(applicationIds);
+                            return applicationIds.stream()
+                                    .flatMap(id -> snapshots.getOrDefault(id, List.of()).stream())
+                                    .toList();
+                        }
+                        case "save": {
+                            SysAccessApplicationRole snapshot = (SysAccessApplicationRole) args[0];
+                            if (snapshot.getId() == null) {
+                                snapshot.setId(snapshotIds.getAndIncrement());
+                            }
+                            snapshots.computeIfAbsent(snapshot.getApplicationId(),
+                                    id -> new ArrayList<>()).add(snapshot);
+                            return snapshot;
+                        }
+                        default:
+                            return TestProxies.defaultValue(method.getReturnType());
                     }
-                    return TestProxies.defaultValue(method.getReturnType());
                 });
 
         service = newService(new RbacProperties());
@@ -409,6 +477,203 @@ class AccessApplicationServiceTest {
         assertThat(vo.reviewedBy()).isEqualTo("approver");
     }
 
+    @Test
+    void create_persistsPendingApplicationWithGeneratedNumberAndSnapshots() {
+        ApplicationVO vo = service.create(new CreateRequest(List.of(AUDITOR_ROLE_ID),
+                "  季度末需要批量导出订单  "));
+
+        assertThat(vo.id()).isNotNull();
+        assertThat(vo.applicationNo()).matches("RA-\\d{8}-[A-Z0-9]{6}");
+        assertThat(vo.systemId()).isEqualTo(CRM_ID);
+        assertThat(vo.systemCode()).isEqualTo("crm");
+        assertThat(vo.status()).isEqualTo("PENDING");
+        assertThat(vo.roleCount()).isEqualTo(1);
+        assertThat(vo.roles()).extracting(RoleVO::roleCode).containsExactly("auditor");
+        assertThat(vo.reason()).isEqualTo("季度末需要批量导出订单");
+        assertThat(vo.approvedValidFrom()).isNull();
+        assertThat(vo.approvedValidUntil()).isNull();
+        assertThat(vo.approvalUrl()).isEqualTo(TEMPLATE.replace("{applicationNo}",
+                vo.applicationNo()));
+
+        assertThat(pendingCalls).singleElement().satisfies(call -> {
+            assertThat(call.systemId()).isEqualTo(CRM_ID);
+            assertThat(call.externalUserId()).isEqualTo(USER);
+        });
+        assertThat(roleLookupRoleIds).containsExactly(AUDITOR_ROLE_ID);
+        assertThat(roleLookupSystemIds).containsExactly(CRM_ID);
+        assertThat(savedApplicationNos).containsExactly(vo.applicationNo());
+        SysAccessApplication saved = applications.get(vo.applicationNo());
+        assertThat(saved.getSystemId()).isEqualTo(CRM_ID);
+        assertThat(saved.getExternalUserId()).isEqualTo(USER);
+        assertThat(saved.getStatus()).isEqualTo(RbacConstants.ACCESS_APPLICATION_STATUS_PENDING);
+        assertThat(saved.getReason()).isEqualTo("季度末需要批量导出订单");
+        assertThat(snapshots.get(saved.getId())).singleElement().satisfies(snapshot -> {
+            assertThat(snapshot.getRoleId()).isEqualTo(AUDITOR_ROLE_ID);
+            assertThat(snapshot.getRoleCode()).isEqualTo("auditor");
+            assertThat(snapshot.getRoleName()).isEqualTo("审计员");
+        });
+    }
+
+    @Test
+    void create_deduplicatesRoleIdsAndAcceptsMultipleRoles() {
+        ApplicationVO vo = service.create(new CreateRequest(
+                List.of(AUDITOR_ROLE_ID, AUDITOR_ROLE_ID), "多角色申请"));
+
+        assertThat(vo.roleCount()).isEqualTo(1);
+        assertThat(vo.roles()).extracting(RoleVO::roleId).containsExactly(AUDITOR_ROLE_ID);
+        assertThat(roleLookupRoleIds).containsExactly(AUDITOR_ROLE_ID);
+    }
+
+    @Test
+    void create_rejectsInvalidRoleLists() {
+        assertThatThrownBy(() -> service.create(new CreateRequest(List.of(), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("roleIds 不能为空");
+                });
+        assertThatThrownBy(() -> service.create(new CreateRequest(null, "原因")))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getStatus()).isEqualTo(400));
+
+        List<Long> tooMany = new ArrayList<>();
+        for (long index = 0; index < 21; index++) {
+            tooMany.add(index + 1);
+        }
+        assertThatThrownBy(() -> service.create(new CreateRequest(tooMany, "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("一次最多申请 20 个角色");
+                });
+        assertThatThrownBy(() -> service.create(new CreateRequest(
+                Arrays.asList(AUDITOR_ROLE_ID, null), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("roleIds 不能包含空值");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+        assertThat(pendingCalls).isEmpty();
+    }
+
+    @Test
+    void create_rejectsBlankOrOversizedReason() {
+        for (String reason : Arrays.asList(null, "", "   ")) {
+            assertThatThrownBy(() -> service.create(
+                    new CreateRequest(List.of(AUDITOR_ROLE_ID), reason)))
+                    .isInstanceOfSatisfying(ApiException.class,
+                            exception -> assertThat(exception.getStatus()).isEqualTo(400));
+        }
+        assertThatThrownBy(() -> service.create(new CreateRequest(List.of(AUDITOR_ROLE_ID),
+                "x".repeat(201))))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("申请原因不能超过 200 字");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_rejectsRoleOutsideCurrentSystemOrMissing() {
+        assertThatThrownBy(() -> service.create(new CreateRequest(List.of(999L), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("角色不属于当前系统");
+                });
+        assertThat(roleLookupSystemIds).containsExactly(CRM_ID);
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_rejectsDisabledRole() {
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(INTERN_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("角色已停用，不能申请");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_rejectsAdminRole() {
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(ADMIN_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("系统管理员角色不可自助申请");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_rejectsAlreadyOwnedRole() {
+        ownedRoleIds.add(AUDITOR_ROLE_ID);
+
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(AUDITOR_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("已拥有该角色，无需申请");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_rejectsWhenAnotherPendingApplicationExists() {
+        SysAccessApplication pending = application(PENDING_APPLICATION_ID, PENDING_NO, CRM_ID,
+                USER, RbacConstants.ACCESS_APPLICATION_STATUS_PENDING);
+        applications.put(PENDING_NO, pending);
+
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(AUDITOR_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(409);
+                    assertThat(exception.getMessage()).isEqualTo("已有待审批申请，请等待审批完成");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_mapsUniqueConstraintViolationToConflict() {
+        applicationSaveConflict = true;
+
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(AUDITOR_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(409);
+                    assertThat(exception.getMessage()).isEqualTo("已有待审批申请，请等待审批完成");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_givesUpAfterFiveDuplicateApplicationNumbers() {
+        duplicateApplicationNo = true;
+
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(AUDITOR_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(500);
+                    assertThat(exception.getMessage()).isEqualTo("申请单号生成失败，请重试");
+                });
+        assertThat(existsApplicationNoCalls).hasSize(5);
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
+    @Test
+    void create_requiresManagementContextAndAuthenticatedApplicant() {
+        SecurityTestSupport.reset();
+        SecurityTestSupport.authenticate(USER);
+        SecurityTestSupport.requestWithSystemCode(null);
+
+        assertThatThrownBy(() -> service.create(
+                new CreateRequest(List.of(AUDITOR_ROLE_ID), "原因")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(403);
+                    assertThat(exception.getMessage()).isEqualTo("X-System-Code header is required");
+                });
+        assertThat(savedApplicationNos).isEmpty();
+    }
+
     private AccessApplicationService newService(RbacProperties properties) {
         PlatformAdminService platformAdminService =
                 new PlatformAdminService(systemRepository, userRoleRepository);
@@ -479,5 +744,8 @@ class AccessApplicationServiceTest {
     }
 
     private record SearchCall(Long systemId, String externalUserId, Integer status, long page, long size) {
+    }
+
+    private record PendingCall(Long systemId, String externalUserId) {
     }
 }

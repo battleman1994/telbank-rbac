@@ -2,6 +2,8 @@ package com.telbank.rbac.web.admin;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,7 +13,10 @@ import com.telbank.rbac.common.PageQuery;
 import com.telbank.rbac.common.PageResult;
 import com.telbank.rbac.service.AccessApplicationService;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.ApplicationVO;
+import com.telbank.rbac.web.dto.AccessApplicationDtos.CreateRequest;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.OptionsVO;
+
+import jakarta.validation.Valid;
 
 /**
  * 业务用户临时权限申请（申请人侧）：可申请选项、我的申请分页与详情。
@@ -33,6 +38,11 @@ public class AccessApplicationController {
     @GetMapping("/options")
     public ApiResponse<OptionsVO> options() {
         return ApiResponse.ok(accessApplicationService.options());
+    }
+
+    @PostMapping
+    public ApiResponse<ApplicationVO> create(@Valid @RequestBody CreateRequest request) {
+        return ApiResponse.ok(accessApplicationService.create(request));
     }
 
     @GetMapping

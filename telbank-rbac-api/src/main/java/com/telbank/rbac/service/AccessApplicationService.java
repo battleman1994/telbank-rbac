@@ -1,5 +1,9 @@
 package com.telbank.rbac.service;
 
+import java.security.SecureRandom;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -7,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +38,7 @@ import com.telbank.rbac.security.CurrentUserProvider;
 import com.telbank.rbac.security.ManagementContext;
 import com.telbank.rbac.security.ManagementContextService;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.ApplicationVO;
+import com.telbank.rbac.web.dto.AccessApplicationDtos.CreateRequest;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.OptionsVO;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.RoleOptionVO;
 import com.telbank.rbac.web.dto.AccessApplicationDtos.RolePermissionVO;
@@ -50,6 +56,16 @@ public class AccessApplicationService {
 
     /** 平台管理员角色不参与自助申请（避免通配权限被申请）。 */
     private static final String ADMIN_ROLE_CODE = "admin";
+
+    private static final int MAX_APPLICATION_ROLES = 20;
+    private static final int MAX_REASON_LENGTH = 200;
+    private static final int MAX_APPLICATION_NO_ATTEMPTS = 5;
+    private static final String APPLICATION_NO_PREFIX = "RA-";
+    private static final String APPLICATION_NO_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private static final int APPLICATION_NO_SUFFIX_LENGTH = 6;
+    private static final DateTimeFormatter APPLICATION_NO_DATE_FORMAT =
+            DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SysAccessApplicationMapper applicationRepository;
     private final SysAccessApplicationRoleMapper applicationRoleRepository;
@@ -79,6 +95,100 @@ public class AccessApplicationService {
         this.contextService = contextService;
         this.currentUserProvider = currentUserProvider;
         this.properties = properties;
+    }
+
+    /**
+     * 创建临时权限申请（待审批）：校验角色归属/启用/非 admin、当前未持有、无其他待审批单，
+     * 生成全局唯一申请单号并写主表 + 角色快照；数据库唯一键兜底并发冲突。
+     */
+    @Transactional
+    public ApplicationVO create(CreateRequest request) {
+        ManagementContext context = contextService.requireContext();
+        String externalUserId = currentUserProvider.requireExternalUserId();
+
+        if (request.roleIds() == null || request.roleIds().isEmpty()) {
+            throw ApiException.badRequest("roleIds 不能为空");
+        }
+        if (request.roleIds().size() > MAX_APPLICATION_ROLES) {
+            throw ApiException.badRequest("一次最多申请 " + MAX_APPLICATION_ROLES + " 个角色");
+        }
+        if (request.roleIds().stream().anyMatch(roleId -> roleId == null)) {
+            throw ApiException.badRequest("roleIds 不能包含空值");
+        }
+        List<Long> roleIds = request.roleIds().stream().distinct().toList();
+        String reason = request.reason() == null ? null : request.reason().trim();
+        if (reason == null || reason.isEmpty()) {
+            throw ApiException.badRequest("申请原因不能为空");
+        }
+        if (reason.length() > MAX_REASON_LENGTH) {
+            throw ApiException.badRequest("申请原因不能超过 " + MAX_REASON_LENGTH + " 字");
+        }
+
+        List<SysRole> roles = roleIds.stream()
+                .map(roleId -> roleRepository.findByIdAndSystemId(roleId, context.systemId())
+                        .orElseThrow(() -> ApiException.badRequest("角色不属于当前系统")))
+                .toList();
+        if (roles.stream().anyMatch(role -> role.getStatus() == null
+                || !Integer.valueOf(RbacConstants.STATUS_ENABLED).equals(role.getStatus()))) {
+            throw ApiException.badRequest("角色已停用，不能申请");
+        }
+        if (roles.stream().anyMatch(role -> ADMIN_ROLE_CODE.equals(role.getCode()))) {
+            throw ApiException.badRequest("系统管理员角色不可自助申请");
+        }
+
+        Set<Long> ownedRoleIds = new HashSet<>(
+                userRoleRepository.findActiveRoleIds(context.systemId(), externalUserId));
+        if (roles.stream().anyMatch(role -> ownedRoleIds.contains(role.getId()))) {
+            throw ApiException.badRequest("已拥有该角色，无需申请");
+        }
+        applicationRepository.findPending(context.systemId(), externalUserId)
+                .ifPresent(pending -> {
+                    throw ApiException.conflict("已有待审批申请，请等待审批完成");
+                });
+
+        SysAccessApplication application = new SysAccessApplication();
+        application.setSystemId(context.systemId());
+        application.setExternalUserId(externalUserId);
+        application.setStatus(RbacConstants.ACCESS_APPLICATION_STATUS_PENDING);
+        application.setReason(reason);
+        application.setApplicationNo(nextApplicationNo());
+        try {
+            applicationRepository.save(application);
+        } catch (DataIntegrityViolationException exception) {
+            throw ApiException.conflict("已有待审批申请，请等待审批完成");
+        }
+
+        for (SysRole role : roles) {
+            SysAccessApplicationRole snapshot = new SysAccessApplicationRole();
+            snapshot.setApplicationId(application.getId());
+            snapshot.setRoleId(role.getId());
+            snapshot.setRoleCode(role.getCode());
+            snapshot.setRoleName(role.getName());
+            applicationRoleRepository.save(snapshot);
+        }
+        return detailByEntity(application, context);
+    }
+
+    /** 生成 {@code RA-yyyyMMdd-XXXXXX} 申请单号，先查重，最多重试 5 次。 */
+    private String nextApplicationNo() {
+        String datePart = LocalDate.now(ZoneOffset.UTC)
+                .format(APPLICATION_NO_DATE_FORMAT);
+        for (int attempt = 0; attempt < MAX_APPLICATION_NO_ATTEMPTS; attempt++) {
+            String applicationNo = APPLICATION_NO_PREFIX + datePart + "-" + randomSuffix();
+            if (!applicationRepository.existsByApplicationNo(applicationNo)) {
+                return applicationNo;
+            }
+        }
+        throw new ApiException(500, "申请单号生成失败，请重试");
+    }
+
+    private static String randomSuffix() {
+        StringBuilder suffix = new StringBuilder(APPLICATION_NO_SUFFIX_LENGTH);
+        for (int index = 0; index < APPLICATION_NO_SUFFIX_LENGTH; index++) {
+            suffix.append(APPLICATION_NO_ALPHABET.charAt(
+                    SECURE_RANDOM.nextInt(APPLICATION_NO_ALPHABET.length())));
+        }
+        return suffix.toString();
     }
 
     /**
