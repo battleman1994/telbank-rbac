@@ -40,7 +40,7 @@ public final class AccessApplicationDtos {
                             List<RoleOptionVO> roles) {
     }
 
-    /** POST /api/access-applications：roleIds 非空、去重、最多 20 个；reason 1–200 字。 */
+    /** POST /api/access-applications：roleIds 非空、最多 20 个（重复项由 service 层去重）；reason 1–200 字。 */
     public record CreateRequest(@NotEmpty @Size(max = 20) List<Long> roleIds,
                                 @NotBlank @Size(max = 200) String reason) {
     }

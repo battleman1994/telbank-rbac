@@ -66,9 +66,9 @@ class AccessApplicationServiceTest {
     private final Map<Long, List<SysAccessApplicationRole>> snapshots = new ConcurrentHashMap<>();
     private final List<SysAccessApplication> searchResults = new ArrayList<>();
     private final List<SearchCall> searchCalls = new ArrayList<>();
-    private final List<List<Long>> permissionPreviewCalls = new ArrayList<>();
+    private final List<PermissionPreviewCall> permissionPreviewCalls = new ArrayList<>();
     private final List<List<Long>> snapshotCalls = new ArrayList<>();
-    private final List<Integer> roleQueryStatuses = new ArrayList<>();
+    private final List<RoleQueryCall> roleQueryCalls = new ArrayList<>();
     private final List<Long> ownedRoleSystemIds = new ArrayList<>();
     private final List<String> ownedRoleUserIds = new ArrayList<>();
 
@@ -136,8 +136,9 @@ class AccessApplicationServiceTest {
         });
         roleRepository = TestProxies.proxy(SysRoleMapper.class, (proxy, method, args) -> {
             if ("findAllBySystemIdAndStatusOrderBySortAscIdAsc".equals(method.getName())) {
+                Long systemId = (Long) args[0];
                 Integer status = (Integer) args[1];
-                roleQueryStatuses.add(status);
+                roleQueryCalls.add(new RoleQueryCall(systemId, status));
                 return List.of(admin, operator, auditor, intern).stream()
                         .filter(role -> status == null || status.equals(role.getStatus()))
                         .toList();
@@ -146,8 +147,9 @@ class AccessApplicationServiceTest {
         });
         rolePermissionRepository = TestProxies.proxy(SysRolePermissionMapper.class, (proxy, method, args) -> {
             if ("findActivePermissionRows".equals(method.getName())) {
+                Long systemId = (Long) args[0];
                 List<Long> roleIds = List.copyOf((Collection<Long>) args[1]);
-                permissionPreviewCalls.add(roleIds);
+                permissionPreviewCalls.add(new PermissionPreviewCall(systemId, roleIds));
                 return roleIds.stream()
                         .flatMap(roleId -> previewRows.getOrDefault(roleId, List.of()).stream())
                         .toList();
@@ -216,10 +218,15 @@ class AccessApplicationServiceTest {
                 .extracting(RolePermissionVO::code)
                 .containsExactly("order:read");
         assertThat(options.roles().toString()).doesNotContain("admin").doesNotContain("intern");
-        assertThat(roleQueryStatuses).containsExactly(RbacConstants.STATUS_ENABLED);
+        assertThat(roleQueryCalls).singleElement().satisfies(call -> {
+            assertThat(call.systemId()).isEqualTo(CRM_ID);
+            assertThat(call.status()).isEqualTo(RbacConstants.STATUS_ENABLED);
+        });
         // 权限预览一次批量查询，且不会带上 admin 角色（避免通配权限暴露）
-        assertThat(permissionPreviewCalls).singleElement().satisfies(roleIds -> assertThat(roleIds)
-                .containsExactly(OPERATOR_ROLE_ID, AUDITOR_ROLE_ID));
+        assertThat(permissionPreviewCalls).singleElement().satisfies(call -> {
+            assertThat(call.systemId()).isEqualTo(CRM_ID);
+            assertThat(call.roleIds()).containsExactly(OPERATOR_ROLE_ID, AUDITOR_ROLE_ID);
+        });
         assertThat(ownedRoleSystemIds).containsExactly(CRM_ID);
         assertThat(ownedRoleUserIds).containsExactly(USER);
     }
@@ -314,6 +321,26 @@ class AccessApplicationServiceTest {
 
         assertThat(searchCalls.get(1).status())
                 .isEqualTo(RbacConstants.ACCESS_APPLICATION_STATUS_PENDING);
+    }
+
+    @Test
+    void page_passesStatusCodesToSearchForApprovedRejectedAndNull() {
+        service.page("APPROVED", PageQuery.of(1, 20));
+        service.page("REJECTED", PageQuery.of(1, 20));
+        service.page(null, PageQuery.of(1, 20));
+
+        // 与数据库/前端约定：PENDING=0、APPROVED=1、REJECTED=2；null 表示全部。
+        assertThat(searchCalls).extracting(SearchCall::status)
+                .containsExactly(1, 2, null);
+    }
+
+    @Test
+    void statusName_mapsKnownCodesAndFallsBackToUnknown() {
+        assertThat(AccessApplicationService.statusName(0)).isEqualTo("PENDING");
+        assertThat(AccessApplicationService.statusName(1)).isEqualTo("APPROVED");
+        assertThat(AccessApplicationService.statusName(2)).isEqualTo("REJECTED");
+        assertThat(AccessApplicationService.statusName(99)).isEqualTo("UNKNOWN");
+        assertThat(AccessApplicationService.statusName(null)).isNull();
     }
 
     @Test
@@ -443,6 +470,12 @@ class AccessApplicationServiceTest {
         row.setName(name);
         row.setType(type);
         return row;
+    }
+
+    private record PermissionPreviewCall(Long systemId, List<Long> roleIds) {
+    }
+
+    private record RoleQueryCall(Long systemId, Integer status) {
     }
 
     private record SearchCall(Long systemId, String externalUserId, Integer status, long page, long size) {
