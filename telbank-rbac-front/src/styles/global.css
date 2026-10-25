@@ -71,33 +71,35 @@ body {
   text-overflow: ellipsis;
 }
 
+/* 折叠按钮保持低调：默认仅显示淡灰图标，悬停才出现浅色底 */
 .app-sider-toggle.ant-btn {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   padding: 0;
-  color: #5b6b82;
-  background: #f7faff;
-  border: 1px solid #e2ebf7;
-  border-radius: 10px;
+  color: #8c8c8c;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  opacity: 0.7;
   transition:
     color 0.2s,
     background 0.2s,
-    border-color 0.2s;
+    opacity 0.2s;
 }
 
 .app-sider-toggle.ant-btn:hover {
   color: #1668dc;
-  background: #eef5ff;
-  border-color: #bcd7ff;
+  background: rgba(22, 104, 220, 0.08);
+  opacity: 1;
 }
 
 .app-sider-toggle.ant-btn .anticon {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .app-header {
@@ -149,10 +151,9 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* 表格行高稍微紧凑；列头在宽屏保持一行，窄屏继续换行 */
-.ant-table-wrapper .ant-table-thead > tr > th,
-.ant-table-wrapper .ant-table-tbody > tr > td {
-  padding-block: 12px !important;
+/* 表格行高与横向留白稍微紧凑；列头在宽屏保持一行，窄屏继续换行 */
+.ant-table-wrapper .ant-table-cell {
+  padding: 12px !important;
 }
 
 @media (min-width: 1200px) {

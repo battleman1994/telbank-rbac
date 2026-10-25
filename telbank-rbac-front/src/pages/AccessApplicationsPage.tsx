@@ -37,7 +37,7 @@ import { PageShell } from '../components/PageShell'
 import { SystemRequired } from '../components/SystemGate'
 import { TimeRangeLines } from '../components/TimeRangeLines'
 import { useCurrentSystem, useCurrentSystemId } from '../stores/app'
-import { formatDateTime, formatDateTimeMinute } from '../utils/format'
+import { formatDateTime } from '../utils/format'
 import { createPaginationConfig } from '../utils/pagination'
 
 const { Text } = Typography
@@ -67,8 +67,8 @@ function AccessApplicationStatusTag({ status }: { status: AccessApplicationStatu
 function ApprovedWindowLines({ record }: { record: AccessApplicationVO }) {
   return (
     <TimeRangeLines
-      start={formatDateTimeMinute(record.approvedValidFrom)}
-      end={formatDateTimeMinute(record.approvedValidUntil)}
+      start={formatDateTime(record.approvedValidFrom)}
+      end={formatDateTime(record.approvedValidUntil)}
     />
   )
 }
@@ -329,8 +329,8 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
     {
       title: '申请时间',
       dataIndex: 'createdAt',
-      width: 150,
-      render: (value: string) => formatDateTimeMinute(value),
+      width: 160,
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: '操作',
