@@ -297,3 +297,11 @@ body {
 .ant-message-notice {
   pointer-events: none !important;
 }
+
+/* 我的申请：所选角色的权限预览分组，与表单其它字段视觉分层 */
+.access-role-preview {
+  padding: 8px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}

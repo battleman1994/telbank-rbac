@@ -161,6 +161,21 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 2 | 前端隐藏按钮后直接调接口 403 | 单元测试（filter） | 成立 | ✅ |
 | 3 | 无有效 JWT / JWT 过期 401 | API 脚本 | 成立 | ✅ |
 
+## 9.17 业务用户临时权限申请（A20）
+
+| # | 场景 | 验证方式 | 预期 | 状态 |
+|---|---|---|---|---|
+| 1 | 业务用户无管理权限也能看到「我的申请」并进入 | 前端代码审查 + headless 联调（13600136000） | 菜单仅「我的申请」，首页重定向到 `/access-applications`，不再出现「无管理权限」整页空态 | ✅ |
+| 2 | 可申请角色只含当前系统非 admin 角色，附权限预览 | API 脚本 §9.17 `options` + 前端联调 | 仅当前系统、排除 `admin`/`*`，返回每个角色的权限码 | ✅ |
+| 3 | 创建申请：PENDING、单号/时间/审批链接；重复提交 409 | API 脚本 §9.17 | 申请单号 `RA-...`，`createdAt` 非空；同一用户同系统最多一条 PENDING | ✅ |
+| 4 | 申请 admin 角色被拒绝 | API 脚本 §9.17 | 400 | ✅ |
+| 5 | 审批通过：APPROVED、按统一连续窗口写 `sys_user_role` | API 脚本 §9.17 + bootstrap 复验 | 新权限出现；`grantedRoleIds` 与申请角色一致 | ✅ |
+| 6 | 审批回调错误 AppKey / 重复同窗口回调 | API 脚本 §9.17 | 错误 401；重复 `idempotent=true` 不重复授权 | ✅ |
+| 7 | 驳回：REJECTED 且不授权；驳回后再通过 409 | API 脚本 §9.17 | 权限集不含申请角色权限；状态冲突 409 | ✅ |
+| 8 | 跨系统查询本人申请单 | API 脚本 §9.17 | ERP 上下文查 CRM 申请单 404 | ✅ |
+| 9 | 角色授权页不再可授予 `*`；后端拒绝非 admin 角色手工授通配 | 前端代码审查 + 后端单测/API + headless | 授权树无通配节点；`grant` 传 `*` 400；admin 默认通配不受影响 | ✅ |
+| 10 | 模拟外部审批脚本 | `scripts/mock-access-approval.py list/show/approve/reject` | 可在无审批平台环境完成通过/驳回闭环 | ✅ |
+
 ---
 
 ## 证据级别说明
@@ -183,6 +198,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | §9.15 系统隔离 / 数据驱动超管 / bootstrap（v2.1 A 方案） | ✅ | 全量 API 脚本：`superadmin` DB 判定为超管；`crm-admin-001` 只看到 CRM、bootstrap 含通配 `*`，跨系统/系统接入 403；超管在 CRM 上下文跨系统查 ERP 也 403（须切上下文）；139 仅 CRM；137 过期无系统；`/api/user-systems` 404 |
 | §9.16 系统接入（仅超管）与管理员自动开通 | ✅ | 超管 POST `/api/systems`（含 adminExternalUserId）→ 自动创建默认 `admin` 角色 + **一条 `*` 权限** + 授权；新管理员凭 `*` 可管理本系统（权限树仅一条 `*`）；非超管 403；PUT status=0 停用后移除 |
 | A19 表格内容优先展示（v2.6） | ✅ | 表格 auto 布局；宽度足够不换行、不够换行完整展示，不使用省略号；时间列短格式；headless 1440×900 验证所有页面表格无横向滚动、字段完整展示 |
+| A20 业务用户临时权限申请（v2.7） | ✅ | 新增 `sys_access_application` / `sys_access_application_role`（迁移 10）；自助申请 API 不要求管理权限；审批回调按申请单行锁、多角色事务、同窗口幂等；`13600136000` 申请→通过→权限出现→驳回→跨系统隔离闭环 22/22；前端「我的申请」入口/角色预览/审批外链；角色授权树过滤 `*`，后端拒绝非 admin 通配授权 |
 | A18 凭据查看 + admin 授权保护（v2.6） | ✅ | 「接入凭据」页（system:credential）系统管理员可看本系统完整 AppKey/AppSecret、默认隐藏；平台超管可查看任意系统；角色授权排除 admin，后端 grant/revoke 400；验收 7 项 + 单测 151 |
 | A17 系统接入凭据（v2.5） | ✅ | `sys_system` 增加 appKey/appSecret（09 回填 crm/erp）；手动/审核创建均分配 appKey=code + 32 位 secret；列表返回 AppKey/掩码、创建/审批响应一次性返回完整 secret；开放接口 DB 凭据优先仍可正常验签 | 
 | A16 系统接入双通道 + 审核（v2.5） | ✅ | 手动录入保留；SDK 上报 `POST /openapi/onboarding/systems`（onboarding AppKey/HMAC）→ PENDING 申请；超管 GET/approve/reject；approve 自动创建系统/`admin` 角色/`*`/管理员授权并返回凭据；单 system_code 最新状态、驳回可重报；真实 SDK 启动上报验证通过；全量验收 101/101 |
@@ -215,6 +231,8 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 5. **管理前端真实后端联调（待补）**：前端已通过类型检查、构建与 mock 冒烟（v2.0 菜单/上下文/系统接入表单），尚未在真实权限中心后端上做浏览器人工联调（启动方式见 README §4，验收时可逐页操作并观察 `/api/**` 请求）。
 6. **系统接入无删除**：v2.0 仅支持 PUT `status=0` 停用（需求未定义删除）；测试脚本会留下唯一编码的停用系统。
 7. **超管必须按上下文操作**：v2.1 起超管也不能在单请求中跨系统查询（需先切换 X-System-Code），`/api/systems/**` 仍为超管专属例外。
+8. **审批平台无拉取申请单的开放 API**：A20 只提供权限中心 → 外部审批平台的决策回调；`scripts/mock-access-approval.py list/show` 直接读本地 demo 库模拟待办箱，生产需由外部审批平台自行保存申请单号/链接。
+9. **审批窗口由审批平台决定**：A20 申请阶段不接受期望时效；通过时外部审批必须回传统一连续的 `validFrom/validUntil`，权限中心按此窗口逐角色写 `sys_user_role`，不提供按日重复窗口。
 
 ## 执行记录
 
@@ -222,6 +240,11 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-25 13:02 | `./scripts/verify-all.sh`（A20 后） | **16 项检查全过**：api **192** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09/10 迁移、凭据/admin 保护、A20 申请产物、3 平台脚本 |
+| 2026-10-25 12:59 | 前端 `npm run build`（A20 我的申请页/角色授权过滤） | `tsc -b` 0 error；3259 modules；JS 1,456.05 kB / gzip 459.13 kB |
+| 2026-10-25 12:58 | headless Chrome（1440×900，API 28090 + 前端 5173） | 13600136000 仅见「我的申请」入口、无管理菜单，可打开新建弹窗；crm-admin-001 选择 operator 后权限预览 3 项；角色授权页 operator 授权树无 `*`、admin 不在角色下拉 |
+| 2026-10-25 12:57 | `python3 scripts/acceptance.py --base-url http://localhost:28090`（临时 MySQL 3308 + 全新库 01→10 + API 28090 + 前端 5173） | **124/124 PASS，0 FAIL**：原 102 项 + A20 §9.17 **22/22**；136 申请→审批通过→bootstrap 权限出现→驳回→跨系统隔离闭环 |
+| 2026-10-25 12:51 | `mvn -pl telbank-rbac-api clean test`（A20 后端） | **192/192 PASS，0 failure/0 error** |
 | 20:28 | GitHub Actions `telbank-rbac CI`（commit 3798799） | **6 个 job 全部 success**：权限中心(88)/SDK v1(97)/SDK v2(98)/前端/Windows 脚本/JDK 8 运行时（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)） |
 | 20:26 | SDK v2.0 语义适配 + 真实 API 复核（8080 + 重建后的 4 个示例系统） | `/rbac/me/systems`：137→`[]`、136→crm+erp、139→crm（修复空列表误降级）；`--only 9.1b,9.1c` → **8/8 PASS**；v1 97 单测 / v2 98 单测 |
 | 20:19 | 用户库 `telbank_rbac` 应用 04 迁移 + 新后端 8080 冒烟 | 迁移后系统 crm/erp/platform、无 sys_user_system；`superadmin` platformAdmin=true、业务系统 crm/erp；隔离冒烟 `--only 9.14,9.15,9.1` → **28/28 PASS** |

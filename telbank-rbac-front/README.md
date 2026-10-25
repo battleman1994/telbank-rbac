@@ -77,7 +77,7 @@ cd telbank-rbac-front && npm run dev
 | `superadmin` | 平台超管（`platform:admin`） | 可见顶级「系统接入」；可在所有业务系统间切换，`hasPerm` 恒 true |
 | `crm-admin-001` | CRM 系统管理员 | 仅可见 CRM 系统与「权限管理」菜单，无「系统接入」 |
 | `erp-admin-001` | ERP 系统管理员 | 仅可见 ERP 系统与「权限管理」菜单，无「系统接入」 |
-| 普通运营账号 | 无管理权限 | 无管理菜单；直接访问管理页面显示「无管理权限 / 无访问权限」 |
+| 普通运营账号 | 无管理权限 | 无管理菜单，仅「我的申请」入口（`alwaysVisible`）；直接访问管理页面显示 403 无权限 |
 
 ## 系统隔离模型与登录上下文
 
@@ -112,6 +112,7 @@ cd telbank-rbac-front && npm run dev
 | 菜单 | 路由 | 所需权限码（当前系统内短码） | 页面说明 |
 |---|---|---|---|
 | 系统接入（顶级，仅平台超管） | `/systems` | 无 | 系统接入管理：编码、名称、区域、系统管理员账号/姓名、状态 |
+| 我的申请（顶级，无需权限码） | `/access-applications` | 无（alwaysVisible） | 业务用户自助提交临时角色权限申请、查看本人申请单与审批链接 |
 | 接入凭据（权限管理组内） | `/system-credential` | `system:credential` | 查看当前系统 AppKey / AppSecret（默认隐藏，可显示/复制）；admin 角色经通配 `*` 通过 |
 | 角色管理 | `/roles` | `role:manage` | 当前系统角色 CRUD |
 | 权限管理 | `/permissions` | `permission:manage` | 权限码树（type/is_public/method/api_pattern） |
@@ -120,12 +121,11 @@ cd telbank-rbac-front && npm run dev
 | 资源管理 | `/sdk-endpoints` | `resource:manage` | SDK 端点上报与权限码关联；未关联端点显式标记「未生效」 |
 | 页面元素 | `/page-actions` | `page:manage` | 页面元素标识：pageCode/code/text/type（语义类型） |
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
-| 接入凭据 | `/system-credential` | `system:credential` | 查看当前系统 AppKey/AppSecret（admin `*`/超管可见） |
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。
 - `/systems` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页。
-- **通配权限（A 方案）**：`permissions` 支持 `*` 与 `前缀:*` 两种通配。权限集合含 `*` 时 `hasPerm` 恒 true（admin / superadmin 角色只授一条 `*`，因此全部菜单可见）；含 `前缀:*`（如 `role:*`）时，请求码以 `前缀:` 开头即 true；否则精确匹配。权限树 / 角色授权页会把 `code='*'` 的权限行展示为「*（全部权限）」并正常勾选、展示（名称取后端「全部权限（通配）」）。
-- 无任何管理权限：布局显示「无管理权限」空态而非白屏。
+- **通配权限（A 方案）**：`permissions` 支持 `*` 与 `前缀:*` 两种通配。权限集合含 `*` 时 `hasPerm` 恒 true（admin / superadmin 角色只授一条 `*`，因此全部菜单可见）；含 `前缀:*`（如 `role:*`）时，请求码以 `前缀:` 开头即 true；否则精确匹配。**角色授权页的授权树/可授权列表会递归过滤 `code='*'` 节点**（通配由系统默认规则管理，不参与逐项授权），已存在的通配授权仍在右侧「已授权列表」只读展示，并在选择该角色时显示「已拥有通配权限」提示。
+- 无任何管理权限：布局菜单仍保留「我的申请」（`alwaysVisible`），不显示「无管理权限」空态；连「我的申请」之外的页面均无权限时，路由守卫渲染 403 无权限页。
 - **已移除「用户-系统开通」**：删除路由 `/user-systems`、页面、API 封装、菜单项与类型；系统访问权限完全由「用户-角色（有效角色）」推导。
 
 ## 系统接入页（平台超管专属，A16）
@@ -172,6 +172,27 @@ cd telbank-rbac-front && npm run dev
 - 页面顶部 Alert：「系统管理员角色（admin）默认拥有全部权限，无需授权；如需调整请编辑角色信息」。
 - 角色管理页对 `admin` 角色展示「内置」金色 Tag；后端对 admin 角色的 grant/revoke 返回 400 作为双保险。
 
+## 我的申请（自助权限申请，业务用户入口）
+
+- 路由 `/access-applications`，顶级菜单「我的申请」标记 `alwaysVisible`，**不需要任何权限码**，路由放在 `PermissionGuard` 之外；任何登录用户都可见/可进入。
+- 布局 `AdminLayout` 不再因「无管理权限」整页拦截：只要存在可见菜单就正常渲染 `Outlet`；仅当连 alwaysVisible 菜单都不存在时才展示无权限空态。
+- 首页重定向 `HomeRedirect`：有管理页时优先第一个有权限的管理页；无管理页时回退到 `/access-applications`（普通运营账号登录后直接进入「我的申请」）。
+- 页面结构：
+  - 顶部只读展示当前系统（`currentSystem.name/code`），状态筛选（全部 / 待审批 / 已通过 / 已驳回）+ 刷新 + 新建申请。
+  - 列表列：申请单号 / 状态 / 申请角色 / 授权有效期 / 申请原因 / 申请时间 / 操作；待审批单号可点击跳转 `approvalUrl`（外部审批平台，新窗口），详情抽屉复用列表数据并拉取单条详情。
+  - 空态、加载态、错误 `Alert` + 重试齐全；列表 `table-layout:auto` 无横向滚动。
+- 新建申请弹窗：
+  - 当前系统只读；**角色多选**只展示当前系统非 `admin` 角色，已拥有的角色置灰并标注「已拥有」；
+  - 选择角色后实时展示「角色权限预览」（角色名/角色编码/权限码，按角色分组）；
+  - 申请原因必填（≤200 字），前端校验并提交 `POST /api/access-applications`（当前系统通过 `X-System-Code` 头传递，不放在 body）；成功后 toast 展示申请单号、列表回第 1 页并刷新；失败保留已选角色与原因可重试。
+- 接口（契约 §5.1，`src/api/accessApplications.ts`）：
+  - `GET /api/access-applications/options` → `{systemId,systemCode,systemName,approvalUrlTemplate?,roles[{roleId,roleCode,roleName,owned,permissions[{id,code,name,type}]}]}`
+  - `GET /api/access-applications?status=&page=&size=` → `{items[],total,page,size}`，`items[]` 字段：`id,applicationNo,systemId,systemCode,status(PENDING/APPROVED/REJECTED),roleCount,roles[{roleId,roleCode,roleName}],reason,approvedValidFrom?,approvedValidUntil?,decisionComment?,reviewedBy?,reviewedAt?,createdAt,approvalUrl?`
+  - `POST /api/access-applications`：`{roleIds[],reason}`
+  - `GET /api/access-applications/{applicationNo}`：申请详情
+  - 状态映射：`PENDING` 待审批 / `APPROVED` 已通过 / `REJECTED` 已驳回。
+- 前端不提供审批操作（审批在外部审批平台完成，展示审批链接跳转）；审批通过后由后端按统一连续有效期授予角色，过期自动失效。
+
 ## 角色授权页（交互重构）
 
 - **左右工作区**：左侧「授权操作」完成角色选择、权限树勾选、逐条时效、授权原因与提交；右侧「已授权列表」展示该角色全部授权（状态、起止时间、单条撤销）及授权规则。避免把宽表格拉满后字段空旷、操作区与列表一左一右割裂。
@@ -213,7 +234,7 @@ cd telbank-rbac-front && npm run dev
 
 - **TanStack Query** 管理服务端状态：
   - `['admin-session']`：`/api/me` → `/api/me/systems` →（选当前系统）→ `/api/me/bootstrap` 串联结果；切换系统时失效重取
-  - `['permissions', systemId]`、`['roles', systemId, {...}]`、`['role-permissions', systemId, roleId]`、`['user-roles', systemId, externalUserId]`、`['page-actions', systemId, {...}]`、`['sdk-endpoints', systemId, {...}]`、`['approval-grants', systemId, {...}]`
+  - `['permissions', systemId]`、`['roles', systemId, {...}]`、`['role-permissions', systemId, roleId]`、`['user-roles', systemId, externalUserId]`、`['page-actions', systemId, {...}]`、`['sdk-endpoints', systemId, {...}]`、`['approval-grants', systemId, {...}]`、`['access-applications', systemId, {status,page,size}]`、`['access-application-options', systemId]`、`['access-application', systemId, applicationNo]`
   - 切换系统时**只 refetch `admin-session`**，不全局 invalidate 旧 systemId 查询；页面 queryKey 含 systemId，系统上下文变化后自动按新 key 重取（避免「旧 systemId + 新系统头」的跨系统 403）
 - **Zustand**（`src/stores/app.ts`）：`token`、`currentUser`、`systems`、`currentSystemCode`、`platformAdmin`、`permissions: Set<string>`、`hasPerm(code)`（平台超管恒 true）、`setBootstrap`、`logout`
   - 持久化：`rbac.token`（JWT）、`rbac.currentSystemCode`（当前业务系统上下文）
@@ -229,19 +250,20 @@ telbank-rbac-front/
 ├── public/favicon.svg
 └── src/
     ├── main.tsx                 # Provider 装配：ConfigProvider + antd App + QueryClient + Router
-    ├── router.tsx               # 登录页 + 受保护布局 + 8 个权限管理页 + 系统接入（超管守卫）
-    ├── config/menu.ts           # 菜单/路由/权限短码映射（role:manage 等）+ 系统接入（仅超管）
+    ├── router.tsx               # 登录页 + 受保护布局 + 9 个权限管理页 + 系统接入（超管守卫）+ 我的申请（无需权限）
+    ├── config/menu.ts           # 菜单/路由/权限短码映射（role:manage 等）+ 系统接入（仅超管）+ 我的申请（alwaysVisible）
     ├── api/
     │   ├── request.ts           # 原生 fetch：JWT / X-System-Code=当前系统 / 信封解析 / 401
-    │   ├── types.ts             # 契约类型（含 bootstrap / 系统接入管理员字段）
+    │   ├── types.ts             # 契约类型（含 bootstrap / 系统接入管理员字段 / 权限申请）
     │   ├── me.ts                # getMe / getMySystems / getBootstrap / loadAdminSession
     │   ├── systems.ts roles.ts permissions.ts rolePermissions.ts
     │   ├── userRoles.ts pageActions.ts sdkEndpoints.ts grants.ts
+    │   ├── systemCredentials.ts systemApplications.ts accessApplications.ts
     │   └── index.ts
     ├── stores/app.ts            # Zustand：token/systems/currentSystemCode/permissions/hasPerm
-    ├── layouts/AdminLayout.tsx  # 权限菜单 + 系统切换器 + 会话引导 + 无权限空态
+    ├── layouts/AdminLayout.tsx  # 权限菜单 + 系统切换器 + 会话引导 + 我的申请入口
     ├── components/              # PageShell/SystemGate/StatusTags/AppNotifier/错误边界/PermissionGuard/NoPermission
-    ├── pages/                   # LoginPage + 9 个管理页面 + NotFoundPage
+    ├── pages/                   # LoginPage + 9 个管理页面 + AccessApplicationsPage + NotFoundPage
     ├── utils/                   # 时间格式、Ant 路径校验、分页配置、文案常量
     └── styles/global.css
 ```
@@ -252,7 +274,7 @@ telbank-rbac-front/
 - 每个页面在查询失败时展示 `Alert`（含错误信息与「重试」按钮），不会白屏；列表查询为空时展示表格空态文案。
 - 顶层 `AppErrorBoundary` 捕获渲染异常，展示可刷新的错误页。
 - 未登录访问受保护路由自动跳转 `/login`；JWT 失效（401）自动清理会话并回到登录页。
-- 权限不足：路由级 `PermissionGuard` 展示 403 无权限页（含「前往可用页面」按钮）；`/systems` 非超管访问展示「系统接入仅平台超管可访问」；无任何管理权限时布局展示「无管理权限」空态。
+- 权限不足：路由级 `PermissionGuard` 展示 403 无权限页（含「前往可用页面」按钮）；`/systems` 非超管访问展示「系统接入仅平台超管可访问」；无任何可见菜单（连「我的申请」也没有）时布局展示无权限空态。
 - 后端未启动时，页面提示「无法连接权限中心后端」，构建与开发服务器不依赖后端。
 
 ## 构建产物（本工程最近一次构建）
@@ -262,19 +284,19 @@ telbank-rbac-front/
 > tsc -b && vite build
 
 vite v8.3.5 building client environment for production...
-✓ 3257 modules transformed.
+✓ 3259 modules transformed.
 dist/index.html                     0.60 kB │ gzip:   0.40 kB
-dist/assets/index-*.css             3.90 kB │ gzip:   1.40 kB
-dist/assets/index-*.js          1,430.90 kB │ gzip: 451.42 kB
-✓ built in ~0.5s
+dist/assets/index-udQR-fIr.css      4.00 kB │ gzip:   1.43 kB
+dist/assets/index-DQn7UXyr.js   1,456.05 kB │ gzip: 459.13 kB
+✓ built in 323ms
 ```
 
-`npm run build` 总耗时约 3 秒（含 `tsc -b` 类型检查），`dist/` 总大小约 1.5 MB（JS gzip 约 448 kB）。
+`npm run build` 总耗时约 3.8 秒（含 `tsc -b` 类型检查），`dist/` 总大小约 1.4 MB（JS gzip 约 459 kB）。
 
 ## 已知限制 / 后续
 
 - 后端新契约（系统隔离、`platform:admin` 数据驱动超管、系统接入管理员字段）由 api-dev 并行改造；联调阶段若字段名有差异需要对齐。
-- 未做路由级 code splitting：生产包单 chunk 约 1.4 MB（gzip 约 442 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
+- 未做路由级 code splitting：生产包单 chunk 约 1.46 MB（gzip 约 459 kB），后续可用 `React.lazy` + `manualChunks` 优化首屏。
 - 授权记录按契约仅提供查询（只读）；「到期提醒」菜单/路由已移除（后端 `/api/expiring-grants` 接口保留）。
 - 资源管理：未关联权限码的端点显示「未生效/未关联」并有当前页提示，行背景高亮；关联后才进入 SDK mappings 生效。
 - 角色授权提交按「相同时效」分组调用 grant：后端当前只有单组时效接口，因此多组提交不是数据库事务；任一组失败时前端提示错误，已成功组会保留，可重试。
@@ -312,3 +334,10 @@ dist/assets/index-*.js          1,430.90 kB │ gzip: 451.42 kB
   - 资源管理未生效提示：当前页 3 个未生效端点时 Alert 文案中的数字 3 为强调样式（21.6px / `#d46b08`），不再是普通正文。
   - 普通运营账号：无任何管理菜单，直接访问 `/system-credential` 显示无权限空态。
   - 接口日志：`/api/system-credentials/current` 由当前系统上下文发起；`/api/system-credentials/{id}` 仅 superadmin 调用（其他账号 403）。
+- 我的申请 + 通配过滤冒烟（mock 后端 + headless Chrome，零 console 错误；dev server 用 5176 端口，不占用用户 5173/8080）：
+  - 普通运营账号（无管理权限）：登录后 `/` 重定向到 `/access-applications`；左侧仅「我的申请」菜单，不再出现「无管理权限」整页空态。
+  - 列表展示申请单号/状态/申请角色/授权有效期/申请原因/申请时间/操作；待审批单号链接到 `approvalUrl`（`http://approval.local/app/APP-...`）。
+  - 新建申请：空提交校验「请至少选择一个角色」「请填写申请原因」；选择「订单运营（operator）」后预览 `order:list/order:delete`；提交成功 toast「申请已提交：APP-20261025-0004」并回列表刷新；已拥有角色置灰标注「已拥有」。
+  - 详情抽屉展示单号/状态/所属系统/申请角色/原因/提交时间/有效期/审批信息，与列表一致。
+  - 角色授权页（`permissions=["*"]` 管理员）：选择「订单运营（operator）」后，授权树内**不含**「全部权限（通配）」节点（仅订单管理 2 个子节点），顶部展示通配提示 Alert，右栏已授权列表仍只读展示通配记录，已勾选数仅统计非通配权限（1 项）。
+  - 表格 `scrollWidth === clientWidth`（我的申请列表无横向滚动）。

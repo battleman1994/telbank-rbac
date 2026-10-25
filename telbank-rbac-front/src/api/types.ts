@@ -371,11 +371,83 @@ export interface ApprovalGrantVO {
 }
 
 /* ------------------------------------------------------------------ */
+/* §5.1 业务用户临时权限申请（申请人侧，自助申请）                      */
+/* ------------------------------------------------------------------ */
+
+/** 申请单状态：待审批 / 已通过 / 已驳回（审批在外部审批平台完成） */
+export type AccessApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+/** 可申请角色中的权限预览项 */
+export interface AccessRolePermissionVO {
+  id: number
+  code: string
+  name: string
+  type: PermissionType | number
+}
+
+/** 可申请角色：owned=true 表示申请人当前已有效持有，前端禁止勾选 */
+export interface AccessRoleOptionVO {
+  roleId: number
+  roleCode: string
+  roleName: string
+  owned: boolean
+  permissions: AccessRolePermissionVO[]
+}
+
+/** GET /api/access-applications/options —— 当前系统可申请角色与审批链接模板 */
+export interface AccessApplicationOptionsVO {
+  systemId: number
+  systemCode: string
+  systemName: string
+  approvalUrlTemplate: string
+  roles: AccessRoleOptionVO[]
+}
+
+/** 申请单中的角色快照（申请时的 roleCode/roleName） */
+export interface AccessApplicationRoleVO {
+  roleId: number
+  roleCode: string
+  roleName: string
+}
+
+/**
+ * 申请单视图：时间字段为 ISO-8601 UTC 字符串；
+ * approvedValidFrom/approvedValidUntil 仅在审批通过后存在（统一授权窗口）。
+ */
+export interface AccessApplicationVO {
+  id: number
+  applicationNo: string
+  systemId: number
+  systemCode: string
+  status: AccessApplicationStatus
+  roleCount: number
+  roles: AccessApplicationRoleVO[]
+  reason: string
+  approvedValidFrom: string | null
+  approvedValidUntil: string | null
+  decisionComment: string | null
+  reviewedBy: string | null
+  reviewedAt: string | null
+  createdAt: string
+  approvalUrl: string | null
+}
+
+/** POST /api/access-applications —— roleIds 非空且不超过 20 个，reason 1–200 字 */
+export interface AccessApplicationCreatePayload {
+  roleIds: number[]
+  reason: string
+}
+
+/* ------------------------------------------------------------------ */
 /* 查询参数                                                             */
 /* ------------------------------------------------------------------ */
 
 export interface KeywordPageQuery extends PageQuery {
   keyword?: string
+}
+
+export interface AccessApplicationListQuery extends PageQuery {
+  status?: AccessApplicationStatus
 }
 
 export interface RoleListQuery extends KeywordPageQuery {

@@ -40,6 +40,19 @@ const { Text } = Typography
 
 type ValidityRange = [Dayjs | null, Dayjs | null] | null
 
+/**
+ * 递归移除通配权限 `*` 节点（含其子树）：通配由系统默认规则管理，不参与逐项授权，
+ * 也不出现在可授权树中；已存在的通配授权仍在右侧「已授权列表」只读展示。
+ */
+function filterWildcardTree(nodes: PermissionNode[]): PermissionNode[] {
+  return nodes
+    .filter((node) => node.code !== '*')
+    .map((node) => ({
+      ...node,
+      children: node.children ? filterWildcardTree(node.children) : undefined,
+    }))
+}
+
 function flattenTree(nodes: PermissionNode[]): PermissionNode[] {
   return nodes.flatMap((node) => [node, ...flattenTree(node.children ?? [])])
 }
@@ -50,6 +63,27 @@ const WILDCARD_PERMISSION_NAME = '全部权限（通配）'
 function permissionDisplayName(node: PermissionNode): string {
   if (node.code === '*') return node.name || WILDCARD_PERMISSION_NAME
   return node.name
+}
+
+/** 已授权记录 → 权限节点（通配 `*` 不在过滤后的权限树中，用授权记录构造只读展示节点） */
+function resolveGrantPermission(
+  grant: PermissionGrant,
+  permissions: PermissionNode[],
+  systemId: number,
+): PermissionNode {
+  return (
+    permissions.find((node) => node.id === grant.permissionId) ?? {
+      id: grant.permissionId,
+      systemId,
+      parentId: 0,
+      type: 3,
+      code: grant.code,
+      name: grant.code === '*' ? WILDCARD_PERMISSION_NAME : grant.code,
+      sort: 0,
+      status: grant.status,
+      isPublic: 0,
+    }
+  )
 }
 
 function buildTreeData(nodes: PermissionNode[]): TreeDataNode[] {
@@ -150,29 +184,35 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
     }
   }, [rolesQuery.data, selectedRoleId])
 
-  const flatPermissions = useMemo(
-    () => flattenTree(permissionsQuery.data ?? []),
+  // 可授权权限树：递归移除通配 `*` 节点；勾选/全选/展开均基于过滤后的树
+  const permissionTree = useMemo(
+    () => filterWildcardTree(permissionsQuery.data ?? []),
     [permissionsQuery.data],
   )
 
+  const flatPermissions = useMemo(() => flattenTree(permissionTree), [permissionTree])
+
   useEffect(() => {
     if (!permissionsQuery.data) return
-    setExpandedKeys(flattenTree(permissionsQuery.data).map((node) => String(node.id)))
-  }, [permissionsQuery.data])
+    setExpandedKeys(flattenTree(permissionTree).map((node) => String(node.id)))
+  }, [permissionsQuery.data, permissionTree])
 
-  // 勾选态 = 已授权态；时效草稿从每条授权记录分别回填，避免「统一时效」覆盖单条时效
+  // 勾选态 = 已授权态；时效草稿从每条授权记录分别回填，避免「统一时效」覆盖单条时效。
+  // 通配 `*` 不在过滤后的授权树中，其授权记录只读展示，不进入勾选态。
   useEffect(() => {
     const grants = grantsQuery.data?.grants ?? []
     const active = grants.filter((grant) => grant.status === 1)
-    setCheckedKeys(active.map((grant) => String(grant.permissionId)))
+    const grantableIds = new Set(flatPermissions.map((node) => String(node.id)))
+    const checked = active.filter((grant) => grantableIds.has(String(grant.permissionId)))
+    setCheckedKeys(checked.map((grant) => String(grant.permissionId)))
     const next: Record<number, ValidityRange> = {}
-    for (const grant of active) {
+    for (const grant of checked) {
       const from = toDayjs(grant.validFrom)
       const until = toDayjs(grant.validUntil)
       next[grant.permissionId] = from || until ? [from, until] : null
     }
     setValidityByPermission(next)
-  }, [grantsQuery.data])
+  }, [grantsQuery.data, flatPermissions])
 
   const checkedPermissions = useMemo(() => {
     const selected = new Set(checkedKeys.map((key) => String(key)))
@@ -335,10 +375,10 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
 
       {hasWildcardGrant ? (
         <Alert
-          type="success"
+          type="info"
           showIcon
           title="该角色已拥有通配权限「*」（全部权限）"
-          description="在当前系统内，该角色对所有菜单、按钮与受控接口默认放行；勾选/撤销其他权限码不会影响通配权限。"
+          description="通配授权由系统默认规则管理，不在下方授权树中逐项展示；勾选/撤销其他权限码不会影响该通配授权。"
         />
       ) : null}
 
@@ -406,7 +446,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
                       checkable
                       checkStrictly
                       selectable={false}
-                      treeData={buildTreeData(permissionsQuery.data ?? [])}
+                      treeData={buildTreeData(permissionTree)}
                       checkedKeys={checkedKeys}
                       expandedKeys={expandedKeys}
                       onExpand={(keys) => setExpandedKeys(keys)}
@@ -554,7 +594,7 @@ function RolePermissionsContent({ systemId }: { systemId: number }) {
           ) : (
             <div className="grant-grant-list">
               {grants.map((grant: PermissionGrant) => {
-                const permission = flatPermissions.find((node) => node.id === grant.permissionId)
+                const permission = resolveGrantPermission(grant, flatPermissions, systemId)
                 return (
                   <div className="grant-grant-row" key={`${grant.permissionId}-${grant.status}`}>
                     <div className="grant-grant-main">

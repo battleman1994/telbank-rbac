@@ -166,7 +166,10 @@ public class AccessApplicationService {
             snapshot.setRoleName(role.getName());
             applicationRoleRepository.save(snapshot);
         }
-        return detailByEntity(application, context);
+        // created_at 由数据库默认值生成，插入后回读一次，保证创建响应与列表/详情一致。
+        SysAccessApplication saved = applicationRepository.findById(application.getId())
+                .orElse(application);
+        return detailByEntity(saved, context);
     }
 
     /** 生成 {@code RA-yyyyMMdd-XXXXXX} 申请单号，先查重，最多重试 5 次。 */

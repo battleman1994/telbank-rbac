@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router'
 import { HomeRedirect, PermissionGuard, PlatformAdminGuard } from './components/PermissionGuard'
 import { MANAGEMENT_PERMISSIONS } from './config/menu'
 import AdminLayout from './layouts/AdminLayout'
+import AccessApplicationsPage from './pages/AccessApplicationsPage'
 import ApprovalGrantsPage from './pages/ApprovalGrantsPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
@@ -22,6 +23,7 @@ import UserRolesPage from './pages/UserRolesPage'
  *   由 PermissionGuard 做路由级权限守卫（无权限渲染 403 页）
  * - /systems（系统接入）仅平台超管可访问（PlatformAdminGuard）
  * - /system-credential（接入凭据）需 system:credential（admin 角色由 `*` 通配通过）
+ * - /access-applications（我的申请）为自助入口，不包管理权限守卫，所有登录用户可访问
  */
 export const router = createBrowserRouter([
   {
@@ -33,6 +35,11 @@ export const router = createBrowserRouter([
     element: <AdminLayout />,
     children: [
       { index: true, element: <HomeRedirect /> },
+      {
+        // 自助申请入口：当前系统内申请临时角色权限，审批在外部审批平台完成
+        path: 'access-applications',
+        element: <AccessApplicationsPage />,
+      },
       {
         path: 'systems',
         element: (

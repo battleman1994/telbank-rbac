@@ -806,6 +806,181 @@ def test_sdk_onboarding():
           and created.get("appSecretMasked"), created)
 
 
+def utc_iso(offset_seconds=0):
+    """UTC ISO-8601 秒级时间，供申请/审批窗口使用。"""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + offset_seconds))
+
+
+def test_access_application():
+    """§9.17 业务用户临时权限申请：申请页 API + 审批决策回调 + 权限生效。"""
+    section("§9.17 业务用户临时权限申请（自助申请 + 审批回调）")
+    admin = token_of(CRM_ADMIN)
+    user = token_of(USER_CROSS)
+    suffix = secrets.token_hex(3)
+
+    def flatten(nodes):
+        result = []
+        for node in nodes or []:
+            result.append(node)
+            result.extend(flatten(node.get("children")))
+        return result
+
+    status, body = http("GET", "/api/permissions?systemId=1", token=admin, system=CRM)
+    tree = data_of((status, body)) or []
+    permission_by_code = {node.get("code"): node for node in flatten(tree)}
+    approve_permission = permission_by_code.get("order:approve") or permission_by_code.get("order:delete")
+    secondary_permission = permission_by_code.get("order:detail") or permission_by_code.get("order:view:amount")
+    check("§9.17 前置：CRM 权限树包含 order:approve 与一个可验收业务权限",
+          status == 200 and approve_permission and secondary_permission,
+          (status, sorted(permission_by_code)))
+
+    status, body = http("GET", "/api/roles?systemId=1&page=1&size=100",
+                        token=admin, system=CRM)
+    roles = (data_of((status, body)) or {}).get("items", [])
+    admin_role = next((role for role in roles if role.get("code") == "admin"), None)
+    check("§9.17 前置：CRM 存在 admin 角色", status == 200 and admin_role is not None,
+          roles)
+
+    if not approve_permission or not secondary_permission or not admin_role:
+        return
+
+    def create_role(code, permission_id):
+        status, body = http("POST", "/api/roles", token=admin, system=CRM, body={
+            "systemId": 1, "code": code, "name": "验收临时角色" + code[-4:],
+            "status": 1, "sort": 99, "remark": "§9.17 acceptance",
+        })
+        role = data_of((status, body)) or {}
+        role_id = role.get("id")
+        check("§9.17 crm-admin 创建临时测试角色 %s" % code,
+              status == 200 and role_id is not None, (status, body))
+        if role_id is None:
+            return None
+        status, body = http("POST", "/api/roles/%s/permissions/grant" % role_id,
+                            token=admin, system=CRM, body={
+                                "permissionIds": [permission_id],
+                                "validFrom": utc_iso(-3600),
+                                "validUntil": utc_iso(365 * 86400),
+                                "grantReason": "§9.17 acceptance",
+                            })
+        grants = (data_of((status, body)) or {}).get("grants", [])
+        check("§9.17 临时角色 %s 授予业务权限" % code,
+              status == 200 and any(g.get("permissionId") == permission_id for g in grants),
+              (status, body))
+        return role_id
+
+    role_a = create_role("apply-auditor-" + suffix, approve_permission["id"])
+    role_b = create_role("apply-reviewer-" + suffix, secondary_permission["id"])
+    if role_a is None or role_b is None:
+        return
+
+    status, body = http("GET", "/api/access-applications/options", token=user, system=CRM)
+    options = data_of((status, body)) or {}
+    option_by_code = {role.get("roleCode"): role for role in options.get("roles", [])}
+    check("§9.17 options 返回当前系统且包含未拥有的临时角色",
+          status == 200 and options.get("systemCode") == CRM
+          and option_by_code.get("apply-auditor-" + suffix, {}).get("owned") is False,
+          (status, options))
+    check("§9.17 options 角色权限预览包含业务权限",
+          approve_permission["code"] in {
+              p.get("code") for p in
+              option_by_code.get("apply-auditor-" + suffix, {}).get("permissions", [])
+          }, option_by_code.get("apply-auditor-" + suffix))
+    check("§9.17 options 审批链接模板含 {applicationNo}",
+          "{applicationNo}" in (options.get("approvalUrlTemplate") or ""),
+          options.get("approvalUrlTemplate"))
+
+    status, body = http("POST", "/api/access-applications", token=user, system=CRM,
+                        body={"roleIds": [role_a], "reason": "§9.17 临时审批验收"})
+    application = data_of((status, body)) or {}
+    application_no = application.get("applicationNo")
+    check("§9.17 创建申请 → PENDING 且有单号/时间/审批链接",
+          status == 200 and application.get("status") == "PENDING"
+          and application_no and application.get("createdAt")
+          and application.get("approvalUrl"),
+          (status, application))
+
+    status, _ = http("POST", "/api/access-applications", token=user, system=CRM,
+                     body={"roleIds": [role_b], "reason": "重复提交"})
+    check("§9.17 同一用户已有 PENDING 时重复提交 → 409", status == 409, status)
+
+    status, _ = http("POST", "/api/access-applications", token=user, system=CRM,
+                     body={"roleIds": [admin_role.get("id")], "reason": "申请管理员角色"})
+    check("§9.17 申请 admin 角色 → 400", status == 400, status)
+
+    decision_body = {
+        "applicationNo": application_no,
+        "decision": "APPROVED",
+        "validFrom": utc_iso(-60),
+        "validUntil": utc_iso(3600),
+        "reviewer": "acceptance",
+        "decisionComment": "§9.17 通过",
+    }
+    status, body = openapi("POST", "/openapi/approval/access-applications/decision",
+                           body=decision_body, app_key=APPROVAL_APP_KEY,
+                           secret=APPROVAL_SECRET)
+    decided = data_of((status, body)) or {}
+    check("§9.17 审批通过 → APPROVED、授权角色正确、非幂等",
+          status == 200 and decided.get("status") == "APPROVED"
+          and decided.get("idempotent") is False
+          and role_a in (decided.get("grantedRoleIds") or []),
+          (status, decided))
+
+    status, _ = openapi("POST", "/openapi/approval/access-applications/decision",
+                        body=decision_body, app_key="wrong-app-key", secret="wrong-secret")
+    check("§9.17 审批回调错误 AppKey → 401", status == 401, status)
+
+    status, body = openapi("POST", "/openapi/approval/access-applications/decision",
+                           body=decision_body, app_key=APPROVAL_APP_KEY,
+                           secret=APPROVAL_SECRET)
+    repeated = data_of((status, body)) or {}
+    check("§9.17 同窗口重复审批 → idempotent=true 且不重复授权",
+          status == 200 and repeated.get("idempotent") is True, (status, repeated))
+
+    status, body = http("GET", "/api/me/bootstrap", token=user, system=CRM)
+    permissions = (data_of((status, body)) or {}).get("permissions") or []
+    check("§9.17 审批通过后 13600136000 bootstrap 出现新权限",
+          status == 200 and approve_permission["code"] in permissions,
+          sorted(permissions))
+
+    status, _ = http("GET", "/api/access-applications/" + application_no,
+                     token=user, system=ERP)
+    check("§9.17 用 ERP 上下文查询 CRM 申请单 → 404", status == 404, status)
+
+    status, body = http("POST", "/api/access-applications", token=user, system=CRM,
+                        body={"roleIds": [role_b], "reason": "§9.17 驳回验收"})
+    reject_application = data_of((status, body)) or {}
+    reject_no = reject_application.get("applicationNo")
+    check("§9.17 通过后可再次创建第二张申请", status == 200 and reject_no,
+          (status, reject_application))
+
+    status, body = openapi("POST", "/openapi/approval/access-applications/decision",
+                           body={"applicationNo": reject_no, "decision": "REJECTED",
+                                 "reviewer": "acceptance", "decisionComment": "§9.17 驳回"},
+                           app_key=APPROVAL_APP_KEY, secret=APPROVAL_SECRET)
+    rejected = data_of((status, body)) or {}
+    check("§9.17 审批驳回 → REJECTED", status == 200 and rejected.get("status") == "REJECTED",
+          (status, rejected))
+
+    status, body = http("GET", "/api/me/bootstrap", token=user, system=CRM)
+    permissions_after_reject = (data_of((status, body)) or {}).get("permissions") or []
+    check("§9.17 驳回不写入角色权限",
+          status == 200 and secondary_permission["code"] not in permissions_after_reject,
+          sorted(permissions_after_reject))
+
+    status, _ = openapi("POST", "/openapi/approval/access-applications/decision",
+                        body={"applicationNo": reject_no, "decision": "APPROVED",
+                              "validFrom": utc_iso(-60), "validUntil": utc_iso(3600)},
+                        app_key=APPROVAL_APP_KEY, secret=APPROVAL_SECRET)
+    check("§9.17 已驳回申请再次通过 → 409", status == 409, status)
+
+    status, body = http("GET", "/api/access-applications?status=APPROVED&page=1&size=20",
+                        token=user, system=CRM)
+    page = data_of((status, body)) or {}
+    check("§9.17 我的申请状态筛选/分页返回已通过记录",
+          status == 200 and any(item.get("applicationNo") == application_no
+                                for item in page.get("items", [])), (status, page))
+
+
 TESTS = [
     ("9.14", test_auth),
     ("9.15", test_system_isolation),
@@ -822,6 +997,7 @@ TESTS = [
     ("9.4", test_sdk_data_prereq),
     ("9.1b", test_sdk_end_to_end),
     ("9.1c", test_sdk_jdk21_end_to_end),
+    ("9.17", test_access_application),
 ]
 
 

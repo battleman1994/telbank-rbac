@@ -3,8 +3,8 @@
 > 本文件是三个交付工程之间的**接口契约**，与 `docs/telbank-rbac.md`（需求基线）配套使用。
 > 需求文档未明确或内部有冲突处，以本文件「§9 偏差与实现口径」为准；实现不得再自行发明协议。
 >
-> 版本：v2.6（2026-10-24）· 维护：Lead
-> 修订：v2.6 A18 接入凭据查看（系统管理员/超管）+ admin 角色授权保护；A19 管理端表格内容优先（auto/wrap、不用省略号）；v2.5 A16 系统接入双通道（SDK onboarding 上报 + 超管审核单条最新状态，手动录入保留）+ A17 系统 appKey/appSecret 分配与展示；v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
+> 版本：v2.7（2026-10-25）· 维护：Lead
+> 修订：v2.7 A20 业务用户临时权限申请（申请单/审批 decision 回调/统一连续有效期/我的申请）+ 角色授权 `*` 过滤与非 admin 通配授权后端拒绝；v2.6 A18 接入凭据查看（系统管理员/超管）+ admin 角色授权保护；A19 管理端表格内容优先（auto/wrap、不用省略号）；v2.5 A16 系统接入双通道（SDK onboarding 上报 + 超管审核单条最新状态，手动录入保留）+ A17 系统 appKey/appSecret 分配与展示；v2.4 页面元素管理简化（只维护 pageCode/code/text/type 元素标识，type 改为语义类型 button/link/menu/icon/input，不再维护样式；action/config 仍保留在 API 与 SDK 契约中，页面不再编辑）+ 07 历史类型归一；v2.3 前端移除「到期提醒」菜单/路由/页面（`/api/expiring-grants` 后端接口保留）+ 管理台 100% 视口布局/表格自适应；v2.2 持久层 JPA/Hibernate → MyBatis-Plus 3.5.17（Boot4 starter），REST 契约/表结构不变；v2.1 A 方案通配权限（admin/超管只授一条 `*`，支持 `*`/`前缀:*` 匹配）+ 严格系统隔离（超管也必须按当前 X-System-Code 查询，禁止单请求跨系统）；v2.0 系统隔离模型重构（需求附录 A11）：删除用户-系统开通；系统访问由有效角色推导；数据驱动超管（platform 系统 + platform:admin，不再用配置文件）；管理上下文=X-System-Code 业务系统；管理权限改为系统内短码；系统接入仅超管且接入时录入系统管理员、自动创建默认 admin 角色；菜单 IA 重构。v1.3 移除 Flyway，数据库改为手动 SQL 初始化（需求附录 A10）；v1.2 增加权限中心自身接入（`rbac` 系统 + 管理上下文 + `/api/me/bootstrap`）与 JDK 21/Boot 4 SDK 变体；v1.1 补充实现期口径（SDK 构建工具链 JDK 17+ / `api_pattern` 支持 `{var}` / 新增 `/openapi/sdk/user-systems` / 真实 Redis 与 JDK 8 CI 验证）；v1.0 初版。
 
 ---
 
@@ -312,6 +312,51 @@ Content-Type: application/json
 4. `permissionCodes`：仅作为审批内容审计信息，必须全部是 `roleId` 已授权的权限码，否则 400（防止审批内容与角色不符）。`grantType="permission"` 返回 400：当前数据模型不支持绕过角色直接给用户授权（无 user_permission 表）。
 5. 发布 Redis 通知；返回成功。
 
+### 5.1 业务用户临时权限申请（A20）
+
+权限中心只保存申请单与审批结果，不实现审批流。申请人接口要求 JWT，并由既有 `ManagementContextFilter` 要求当前系统上下文（`X-System-Code`）；**不要求管理权限码**，但申请人必须在当前系统有至少一个有效角色。所有查询强制限定 `system_id + external_user_id`，跨系统返回 404。
+
+申请人 API（`/api/access-applications`）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/options` | 返回当前系统可申请角色、权限预览、`approvalUrlTemplate`；排除 `admin`、已有效持有的角色和 `*` 通配权限 |
+| POST | `/` | 创建申请：`{"roleIds":[1,2],"reason":"..."}`，`roleIds` 1–20 个、`reason` 1–200 字；同一系统同一申请人最多一条 `PENDING`，重复提交 409 |
+| GET | `?status=PENDING\|APPROVED\|REJECTED&page=&size=` | 当前用户当前系统的申请分页，按创建时间倒序 |
+| GET | `/{applicationNo}` | 当前用户的申请详情；申请单号非本人/非当前系统 → 404 |
+
+申请单字段：`applicationNo`（`RA-yyyyMMdd-XXXXXX`）、`status`（PENDING/APPROVED/REJECTED）、`roleCount`、`roles`（申请时角色快照）、`reason`、`approvedValidFrom/Until`、`decisionComment`、`reviewedBy`、`reviewedAt`、`createdAt`、`approvalUrl`。审批通过后，`sys_user_role` 中的授权窗口即申请单的 `approvedValidFrom/Until`。
+
+审批决策回调（审批系统 → api）：
+
+```http
+POST /openapi/approval/access-applications/decision
+X-App-Key: approval-system
+X-Timestamp / X-Nonce / X-Signature   # 与 §4.1 同一套签名算法
+Content-Type: application/json
+```
+
+```json
+{
+  "applicationNo": "RA-20261025-A1B2C3",
+  "decision": "APPROVED",
+  "validFrom": "2026-10-25T01:30:00Z",
+  "validUntil": "2026-10-26T01:30:00Z",
+  "reviewer": "external-approval",
+  "decisionComment": "同意，仅限本次"
+}
+```
+
+处理规则：
+
+1. 使用 `rbac.approval` 独立 AppKey/AppSecret 验签；`applicationNo` 不存在 → 404。
+2. `decision` 仅接受 `APPROVED`/`REJECTED`（大小写不敏感）；`APPROVED` 必须同时给 `validFrom/validUntil`，且 `validUntil > validFrom`、`validUntil > now`。
+3. 只有 `PENDING` 申请单可决策；`REJECTED` 重放幂等返回 `idempotent=true`；已通过但同窗口重放也幂等；不同结果/窗口 → 409。
+4. 通过时逐角色复用 `ApprovalGrantService.grant(...)`，`approvalId = applicationNo + ":" + roleId`，写 `sys_user_role` 时效；任一角色失败整体回滚、申请保持 `PENDING`。已持有角色或 `admin` 角色 → 409。
+5. 驳回只回写状态与审批字段，不写授权；通过/驳回均发布 Redis 变更通知。
+
+申请人看到的审批外链由 `rbac.access-approval.url-template` 生成，前端替换 `{applicationNo}`；权限中心不代理审批平台页面。演示时可用 `scripts/mock-access-approval.py` 模拟外部审批。
+
 ---
 
 ## 6. Redis 变更通知（api → sdk）
@@ -424,9 +469,13 @@ spring:
     url: jdbc:mysql://localhost:3306/telbank_rbac?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
     username: ${RBAC_DB_USER:root}
     password: ${RBAC_DB_PASSWORD:}
-  jpa:
-    hibernate.ddl-auto: none
-    open-in-view: false
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
 rbac:
   security:
     jwt:
@@ -444,6 +493,8 @@ rbac:
   approval:
     app-key: approval-system
     app-secret: ${RBAC_APPROVAL_SECRET:approval-dev-secret}
+  access-approval:
+    url-template: ${RBAC_ACCESS_APPROVAL_URL_TEMPLATE:http://localhost:8090/approval/access?applicationNo={applicationNo}}
   onboarding:
     enabled: ${RBAC_ONBOARDING_ENABLED:true}
     app-key: ${RBAC_ONBOARDING_APP_KEY:onboarding-app}
@@ -468,7 +519,7 @@ rbac:
 
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
-> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10；A16（系统接入双通道 + 审核）= §3.2.1/§4.5；A17（系统 appKey/appSecret）= §3.2/§4.1；A18（凭据查看 + admin 授权保护）= §3.2.2/§3.5/§10；A19（表格内容优先展示）= §10。
+> 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10；A16（系统接入双通道 + 审核）= §3.2.1/§4.5；A17（系统 appKey/appSecret）= §3.2/§4.1；A18（凭据查看 + admin 授权保护）= §3.2.2/§3.5/§10；A19（表格内容优先展示）= §10；A20（业务用户临时权限申请）= §5.1/§8.1/§10。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。
@@ -486,8 +537,9 @@ rbac:
 - 环境变量：`VITE_API_BASE_URL`（默认 `http://localhost:8080`）。
 - 登录：`/login` 页面粘贴 JWT（外部认证系统签发；本地用 `scripts/gen-demo-jwt.sh` 生成），存 `localStorage["rbac.token"]`；请求头注入 `Authorization: Bearer`；当前系统存 `localStorage["rbac.systemCode"]`。
 - 系统上下文：登录后 GET `/api/me` → `/api/me/systems` → 选择 `currentSystemCode`（本地缓存命中否则第一条）→ 带 `X-System-Code` 拉 `/api/me/bootstrap`；所有管理端查询都带当前业务系统头；超管可切换所有业务系统并看到「系统接入」，系统管理员只能看到自己的系统。
-- 菜单 IA：`权限管理` 组（角色管理/角色授权/权限管理/资源管理/页面元素/用户授权/授权记录/接入凭据）+ 顶级「系统接入」（仅超管）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」与「到期提醒」菜单（接口仍保留）。
-- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管）：业务系统 Tab（手动录入 + AppKey/掩码密钥展示/查看密钥）与接入申请 Tab（SDK 上报待审核，审核/驳回，一次性返回新系统凭据）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效，admin 角色排除）、用户授权（含时效）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录、接入凭据（A18）。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
+- 菜单 IA：`权限管理` 组（角色管理/角色授权/权限管理/资源管理/页面元素/用户授权/授权记录/接入凭据）+ 顶级「系统接入」（仅超管）+ 顶级「我的申请」（所有已登录用户，A20）；`hasPerm` 支持 `*` 与 `前缀:*`；不再有「用户-系统开通」与「到期提醒」菜单（接口仍保留）。
+- 页面（对应需求 §5.7，v2.0 IA）：系统接入（仅超管）：业务系统 Tab（手动录入 + AppKey/掩码密钥展示/查看密钥）与接入申请 Tab（SDK 上报待审核，审核/驳回，一次性返回新系统凭据）；权限管理组：角色管理、权限管理（树）、角色授权（树勾选 + 时效，admin 角色排除，**可授权树不再展示 `*` 通配**）、用户授权（含时效）、资源管理（SDK 端点）、页面元素（只维护元素标识：pageCode/code/text/type）、授权记录、接入凭据（A18）；「我的申请」（A20）：业务用户选择当前系统角色（排除 admin/已持有/`*`），查看角色权限预览，填写原因提交；列表按状态筛选、显示申请单号/时效/审批外链，不提供审批操作。**用户-系统开通、到期提醒菜单已移除**（`/api/expiring-grants` 接口保留）。
+- 自服务入口：业务用户即使没有任何管理权限码，也能看到「我的申请」并进入页面；`AdminLayout` 以「是否有任意可见菜单」判断是否空态，而非只看管理权限；首页 `HomeRedirect` 优先管理菜单，无管理菜单时落到「我的申请」。
 - 状态：TanStack Query 管理服务端状态；Zustand 管理当前用户/系统/权限码集合；不使用 Axios，使用封装的 `request()`（原生 fetch）。
 - 表格内容优先（A19）：`table-layout:auto`，宽度足够不换行、不够换行完整展示，不用省略号；时间列 `YYYY-MM-DD HH:mm`；表格 100% 宽度、无横向滚动。
 - 必须 `npm run build` 通过（含 `tsc` 类型检查）。

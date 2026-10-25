@@ -4,6 +4,8 @@ import {
   ApiOutlined,
   AuditOutlined,
   BankOutlined,
+  FileTextOutlined,
+  FormOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -46,7 +48,9 @@ const { Text } = Typography
 type MenuItemNode = NonNullable<MenuProps['items']>[number]
 
 const MENU_ICON_BY_PATH: Record<string, ReactNode> = {
+  '/access-applications': <FormOutlined />,
   '/systems': <BankOutlined />,
+  '/system-credential': <FileTextOutlined />,
   '/roles': <TeamOutlined />,
   '/permissions': <ApartmentOutlined />,
   '/role-permissions': <SafetyCertificateOutlined />,
@@ -88,7 +92,8 @@ function buildMenuItems(visibility: MenuVisibility): MenuItemNode[] {
  * - 平台超管见顶级「系统接入」并可在所有系统间切换；普通系统管理员仅见自己的系统，
  *   系统数 >1 时提供切换器，=1 时显示「当前系统：xxx」标签
  * - 切换系统只更新 store/请求头并重新拉 bootstrap + 失效数据查询，不整页刷新
- * - 无任何管理权限时展示「无管理权限」空态而非白屏
+ * - 「我的申请」为自助入口（始终可见），无管理权限的普通用户也能进入该页；
+ *   仅当当前系统无任何可见菜单时才整区展示空态提示，不白屏
  */
 export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -137,11 +142,6 @@ export default function AdminLayout() {
 
   const visibility: MenuVisibility = { hasPerm, platformAdmin }
   const menuItems = buildMenuItems(visibility)
-  const hasManagementAccess =
-    platformAdmin ||
-    MANAGEMENT_MENU_ITEMS.some(
-      (item) => !item.platformAdminOnly && item.permission && hasPerm(item.permission),
-    )
   const currentSystem = systems.find((system) => system.code === currentSystemCode)
   const canSwitchSystem = systems.length > 1
 
@@ -264,23 +264,8 @@ export default function AdminLayout() {
     </Sider>
   )
 
-  // 无任何管理权限：保留布局框架，内容区展示空态，不白屏
-  if (!hasManagementAccess) {
-    return (
-      <Layout className="app-layout">
-        {sider}
-        <Layout>
-          {header}
-          <Content className="app-content">
-            <NoPermission
-              title="无管理权限"
-              description={`当前账号（${currentUser?.externalUserId ?? '-'}）在当前系统（${currentSystem?.name ?? currentSystemCode ?? '-'}）内没有任何管理权限，请联系平台超管授权或切换其他系统。`}
-            />
-          </Content>
-        </Layout>
-      </Layout>
-    )
-  }
+  // 「我的申请」等 alwaysVisible 菜单对登录用户始终可见；无任何菜单时才展示整区空态
+  const hasNoMenu = menuItems.length === 0
 
   return (
     <Layout className="app-layout">
@@ -294,6 +279,11 @@ export default function AdminLayout() {
                 status="info"
                 title="当前账号暂无可管理系统"
                 subTitle="系统访问权限由有效角色推导，请联系平台超管为你分配系统内角色。"
+              />
+            ) : hasNoMenu ? (
+              <NoPermission
+                title="暂无可用功能"
+                description={`当前账号（${currentUser?.externalUserId ?? '-'}）在当前系统（${currentSystem?.name ?? currentSystemCode ?? '-'}）内没有任何可用菜单，请联系平台超管授权或切换其他系统。`}
               />
             ) : (
               <Outlet />

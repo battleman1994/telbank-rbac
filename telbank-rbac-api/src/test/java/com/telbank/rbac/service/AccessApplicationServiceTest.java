@@ -216,6 +216,12 @@ class AccessApplicationServiceTest {
                     savedApplicationNos.add(application.getApplicationNo());
                     return application;
                 }
+                case "findById": {
+                    Long id = (Long) args[0];
+                    return applications.values().stream()
+                            .filter(application -> id.equals(application.getId()))
+                            .findFirst();
+                }
                 case "search": {
                     Page<SysAccessApplication> page = (Page<SysAccessApplication>) args[0];
                     Long systemId = (Long) args[1];

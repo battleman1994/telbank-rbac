@@ -146,6 +146,22 @@ ok "持久层使用 MyBatis-Plus（无 JPA/Hibernate）"
 grep -q 'system:credential' telbank-rbac-front/src/config/menu.ts \
   || die "前端菜单缺少 system:credential"
 ok "系统接入凭据查看 + admin 授权保护产物存在"
+# A20 业务用户临时权限申请产物
+[ -f "$SQL_DIR/10_access_application.sql" ] \
+  || die "缺少 10_access_application.sql"
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/web/admin/AccessApplicationController.java ] \
+  || die "缺少 AccessApplicationController"
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/web/openapi/OpenApiAccessApplicationController.java ] \
+  || die "缺少 OpenApiAccessApplicationController"
+[ -f telbank-rbac-api/src/main/java/com/telbank/rbac/service/AccessDecisionService.java ] \
+  || die "缺少 AccessDecisionService"
+[ -f telbank-rbac-front/src/pages/AccessApplicationsPage.tsx ] \
+  || die "缺少我的申请页面"
+[ -f telbank-rbac-front/src/api/accessApplications.ts ] \
+  || die "缺少 accessApplications API 模块"
+[ -x scripts/mock-access-approval.py ] \
+  || die "缺少可执行的 mock-access-approval.py"
+ok "业务用户临时权限申请产物存在"
 
 for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/impl/contracts.md; do
   [ -s "$f" ] || die "缺少文档 $f"
