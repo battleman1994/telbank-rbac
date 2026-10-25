@@ -552,14 +552,6 @@ public ApplicationVO create(CreateRequest request) {
         throw ApiException.conflict("已有待审批申请，请等待审批完成");
     });
 
-    if (request.reason() == null || request.reason().trim().isEmpty()) {
-        throw ApiException.badRequest("申请原因不能为空");
-    }
-    String reason = request.reason().trim();
-    if (reason.length() > 200) {
-        throw ApiException.badRequest("申请原因不能超过 200 字");
-    }
-
     SysAccessApplication app = new SysAccessApplication();
     app.setSystemId(ctx.systemId());
     app.setExternalUserId(user);
