@@ -40,7 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 角色授权保护（A18）：admin 角色默认拥有全部权限，grant/revoke 返回 400；普通角色不受影响。
+ * 角色授权保护：A18 下 admin 角色默认拥有全部权限，grant/revoke 返回 400；
+ * Task 5 下非 admin 角色禁止手工授予通配权限 {@code *}；普通角色不受影响。
  */
 class RolePermissionServiceTest {
 
@@ -48,6 +49,7 @@ class RolePermissionServiceTest {
     private static final Long ADMIN_ROLE_ID = 1L;
     private static final Long OPERATOR_ROLE_ID = 2L;
     private static final Long PERMISSION_ID = 5L;
+    private static final Long WILDCARD_PERMISSION_ID = 6L;
 
     private final Map<String, SysRolePermission> relations = new ConcurrentHashMap<>();
     private final Set<Long> savedPermissionIds = new LinkedHashSet<>();
@@ -108,9 +110,16 @@ class RolePermissionServiceTest {
                     if ("findByIdAndSystemId".equals(method.getName())) {
                         Long permissionId = (Long) args[0];
                         Long systemId = (Long) args[1];
-                        return PERMISSION_ID.equals(permissionId) && CRM_ID.equals(systemId)
-                                ? Optional.of(permission())
-                                : Optional.empty();
+                        if (!CRM_ID.equals(systemId)) {
+                            return Optional.empty();
+                        }
+                        if (PERMISSION_ID.equals(permissionId)) {
+                            return Optional.of(permission());
+                        }
+                        if (WILDCARD_PERMISSION_ID.equals(permissionId)) {
+                            return Optional.of(wildcardPermission());
+                        }
+                        return Optional.empty();
                     }
                     if ("findAllById".equals(method.getName())) {
                         return List.of(permission());
@@ -185,6 +194,44 @@ class RolePermissionServiceTest {
     }
 
     @Test
+    void grantWildcardToNonAdminRoleIsRejectedWithGuidance() {
+        assertThatThrownBy(() -> service.grant(OPERATOR_ROLE_ID,
+                new RolePermissionGrantRequest(List.of(WILDCARD_PERMISSION_ID), null, null, "尝试授权通配")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("通配");
+                    assertThat(exception.getMessage()).contains("*");
+                });
+        assertThat(relations).isEmpty();
+        assertThat(savedPermissionIds).isEmpty();
+    }
+
+    @Test
+    void grantBatchContainingWildcardWritesNothing() {
+        assertThatThrownBy(() -> service.grant(OPERATOR_ROLE_ID,
+                new RolePermissionGrantRequest(List.of(PERMISSION_ID, WILDCARD_PERMISSION_ID),
+                        null, null, "批量授权含通配")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("通配");
+                });
+        assertThat(relations).isEmpty();
+        assertThat(savedPermissionIds).isEmpty();
+    }
+
+    @Test
+    void adminRoleProtectionTakesPrecedenceOverWildcardCheck() {
+        assertThatThrownBy(() -> service.grant(ADMIN_ROLE_ID,
+                new RolePermissionGrantRequest(List.of(WILDCARD_PERMISSION_ID), null, null, "尝试授权")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("系统管理员角色默认拥有全部权限");
+                });
+        assertThat(relations).isEmpty();
+        assertThat(savedPermissionIds).isEmpty();
+    }
+
+    @Test
     void grantToOperatorRoleStillWorks() {
         RolePermissionsVO result = service.grant(OPERATOR_ROLE_ID,
                 new RolePermissionGrantRequest(List.of(PERMISSION_ID), null, null, "运营授权"));
@@ -247,6 +294,16 @@ class RolePermissionServiceTest {
         permission.setSystemId(CRM_ID);
         permission.setCode("order:list");
         permission.setName("订单列表");
+        permission.setStatus(1);
+        return permission;
+    }
+
+    private static SysPermission wildcardPermission() {
+        SysPermission permission = new SysPermission();
+        permission.setId(WILDCARD_PERMISSION_ID);
+        permission.setSystemId(CRM_ID);
+        permission.setCode("*");
+        permission.setName("全部权限（通配）");
         permission.setStatus(1);
         return permission;
     }

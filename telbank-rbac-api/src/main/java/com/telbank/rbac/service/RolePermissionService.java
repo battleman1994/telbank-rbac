@@ -34,6 +34,9 @@ import com.telbank.rbac.web.dto.GrantDtos.RolePermissionsVO;
  *
  * <p>A18：admin 角色（code={@code admin}）默认拥有全部权限，grant/revoke 返回 400；
  * 读取授权列表保持原行为。</p>
+ *
+ * <p>业务用户临时权限申请（Task 5）：通配权限 {@code *} 只属于系统管理员角色，
+ * 非 admin 角色手工授予 {@code *} 一律 400；admin 角色本身的 grant/revoke 仍按 A18 拒绝。</p>
  */
 @Service
 public class RolePermissionService {
@@ -91,9 +94,10 @@ public class RolePermissionService {
             if (permissionId == null) {
                 throw ApiException.badRequest("permissionIds must not contain null");
             }
-            permissionRepository.findByIdAndSystemId(permissionId, role.getSystemId())
+            SysPermission permission = permissionRepository.findByIdAndSystemId(permissionId, role.getSystemId())
                     .orElseThrow(() -> ApiException.badRequest(
                             "permission " + permissionId + " does not belong to system " + role.getSystemId()));
+            rejectWildcardGrant(permission);
             SysRolePermission relation = rolePermissionRepository
                     .findByRoleIdAndPermissionId(roleId, permissionId)
                     .orElseGet(SysRolePermission::new);
@@ -136,6 +140,15 @@ public class RolePermissionService {
     private static void rejectAdminRoleChanges(SysRole role) {
         if (SystemService.DEFAULT_ADMIN_ROLE_CODE.equals(role.getCode())) {
             throw ApiException.badRequest("系统管理员角色默认拥有全部权限，无需授权");
+        }
+    }
+
+    /**
+     * Task 5：非 admin 角色禁止手工授予通配权限 {@code *}，通配权限只由系统管理员角色默认拥有。
+     */
+    private static void rejectWildcardGrant(SysPermission permission) {
+        if (RbacConstants.PERM_WILDCARD.equals(permission.getCode())) {
+            throw ApiException.badRequest("通配权限 * 只能由系统管理员角色默认拥有，不能手工授权");
         }
     }
 
