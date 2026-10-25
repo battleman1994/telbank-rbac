@@ -89,7 +89,7 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
     {
       title: '授权时效',
       key: 'validity',
-      width: 190,
+      width: 220,
       render: (_, record) => (
         <TimeRangeLines
           start={record.validFrom ? formatDateTime(record.validFrom) : '立即生效'}
@@ -113,16 +113,9 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
     {
       title: '授权时间',
       dataIndex: 'grantedAt',
-      width: 140,
-      render: (value: string | null) => {
-        if (!value) return '-'
-        const full = formatDateTime(value)
-        return (
-          <span title={full} className="mono-text">
-            {full.length > 16 ? full.slice(0, 16) : full}
-          </span>
-        )
-      },
+      width: 170,
+      render: (value: string | null) =>
+        value ? <span className="mono-text grant-time">{formatDateTime(value)}</span> : '-',
     },
     {
       title: '操作',
@@ -197,6 +190,7 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
           ) : null}
 
           <Table<ApprovalGrantVO>
+            className="approval-grants-table"
             rowKey={(record) =>
               [
                 record.kind,
