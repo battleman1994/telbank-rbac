@@ -35,8 +35,9 @@ import type {
 } from '../api/types'
 import { PageShell } from '../components/PageShell'
 import { SystemRequired } from '../components/SystemGate'
+import { TimeRangeLines } from '../components/TimeRangeLines'
 import { useCurrentSystem, useCurrentSystemId } from '../stores/app'
-import { formatDateTime } from '../utils/format'
+import { formatDateTime, formatDateTimeMinute } from '../utils/format'
 import { createPaginationConfig } from '../utils/pagination'
 
 const { Text } = Typography
@@ -62,10 +63,14 @@ function AccessApplicationStatusTag({ status }: { status: AccessApplicationStatu
   return <Tag color={meta?.color}>{meta?.text ?? status}</Tag>
 }
 
-/** 统一授权窗口展示；未审批通过 / 无窗口时显示占位符 */
-function formatApprovedWindow(record: AccessApplicationVO): string {
-  if (!record.approvedValidFrom && !record.approvedValidUntil) return '-'
-  return `${formatDateTime(record.approvedValidFrom)} ~ ${formatDateTime(record.approvedValidUntil)}`
+/** 统一授权窗口展示：开始/结束分两行 */
+function ApprovedWindowLines({ record }: { record: AccessApplicationVO }) {
+  return (
+    <TimeRangeLines
+      start={formatDateTimeMinute(record.approvedValidFrom)}
+      end={formatDateTimeMinute(record.approvedValidUntil)}
+    />
+  )
 }
 
 const APPROVED_PHASE_META = {
@@ -104,32 +109,33 @@ function RoleSnapshotDetails({ record }: { record: AccessApplicationVO }) {
   if (roles.length === 0) return <Text type="secondary">-</Text>
   return (
     <Flex vertical gap={8}>
-      {roles.map((role) => {
-        const roleWindow =
-          role.approvedValidFrom || role.approvedValidUntil
-            ? `${formatDateTime(role.approvedValidFrom)} ~ ${formatDateTime(role.approvedValidUntil)}`
-            : null
-        return (
-          <div key={role.roleId} className="access-role-window">
-            <Space size={6} wrap>
-              <Tag color="geekblue">{role.roleCode}</Tag>
-              <Text strong>{role.roleName}</Text>
-              <Tag color="purple">{role.timeTemplateName || '永久角色'}</Tag>
-              {record.status === 'APPROVED' ? (
-                <ApprovedPhaseTag
-                  validFrom={role.approvedValidFrom}
-                  validUntil={role.approvedValidUntil}
-                />
-              ) : null}
-            </Space>
-            <div className="access-role-window__time">
+      {roles.map((role) => (
+        <div key={role.roleId} className="access-role-window">
+          <Space size={6} wrap>
+            <Tag color="geekblue">{role.roleCode}</Tag>
+            <Text strong>{role.roleName}</Text>
+            <Tag color="purple">{role.timeTemplateName || '永久角色'}</Tag>
+            {record.status === 'APPROVED' ? (
+              <ApprovedPhaseTag
+                validFrom={role.approvedValidFrom}
+                validUntil={role.approvedValidUntil}
+              />
+            ) : null}
+          </Space>
+          <div className="access-role-window__time">
+            {record.status === 'APPROVED' ? (
+              <TimeRangeLines
+                start={formatDateTime(role.approvedValidFrom)}
+                end={formatDateTime(role.approvedValidUntil)}
+              />
+            ) : (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                授权窗口：{roleWindow ?? '待审批通过后按模板计算'}
+                授权窗口：待审批通过后按模板计算
               </Text>
-            </div>
+            )}
           </div>
-        )
-      })}
+        </div>
+      ))}
     </Flex>
   )
 }
@@ -297,13 +303,21 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
       width: 200,
       render: (_, record) =>
         record.status === 'APPROVED' ? (
-          <Space orientation="vertical" size={0}>
-            <Text>{formatApprovedWindow(record)}</Text>
-            <ApprovedPhaseTag
-              validFrom={record.approvedValidFrom}
-              validUntil={record.approvedValidUntil}
-            />
-          </Space>
+          <ApprovedWindowLines record={record} />
+        ) : (
+          <Text type="secondary">-</Text>
+        ),
+    },
+    {
+      title: '生效状态',
+      key: 'approvedPhase',
+      width: 100,
+      render: (_, record) =>
+        record.status === 'APPROVED' ? (
+          <ApprovedPhaseTag
+            validFrom={record.approvedValidFrom}
+            validUntil={record.approvedValidUntil}
+          />
         ) : (
           <Text type="secondary">-</Text>
         ),
@@ -315,8 +329,8 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
     {
       title: '申请时间',
       dataIndex: 'createdAt',
-      width: 160,
-      render: (value: string) => formatDateTime(value),
+      width: 150,
+      render: (value: string) => formatDateTimeMinute(value),
     },
     {
       title: '操作',
@@ -611,14 +625,17 @@ function AccessApplicationsContent({ systemId }: { systemId: number }) {
                 key: 'approvedWindow',
                 label: '授权有效期',
                 children:
+                  detail.status === 'APPROVED' ? <ApprovedWindowLines record={detail} /> : '-',
+              },
+              {
+                key: 'approvedPhase',
+                label: '生效状态',
+                children:
                   detail.status === 'APPROVED' ? (
-                    <Space size={8} wrap>
-                      <Text>{formatApprovedWindow(detail)}</Text>
-                      <ApprovedPhaseTag
-                        validFrom={detail.approvedValidFrom}
-                        validUntil={detail.approvedValidUntil}
-                      />
-                    </Space>
+                    <ApprovedPhaseTag
+                      validFrom={detail.approvedValidFrom}
+                      validUntil={detail.approvedValidUntil}
+                    />
                   ) : (
                     '-'
                   ),

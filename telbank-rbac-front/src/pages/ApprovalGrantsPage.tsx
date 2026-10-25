@@ -20,6 +20,7 @@ import type { ApprovalGrantVO } from '../api/types'
 import { PageShell } from '../components/PageShell'
 import { ApprovalKindTag, StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
+import { TimeRangeLines } from '../components/TimeRangeLines'
 import { useCurrentSystemId } from '../stores/app'
 import { formatDateTime } from '../utils/format'
 import { createPaginationConfig } from '../utils/pagination'
@@ -58,10 +59,7 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
       }),
   })
 
-  // 表格只展示日期，避免完整时间戳在窄列中换行；详情抽屉仍展示完整时间
-  const shortDate = (value?: string | null) => (value ? formatDateTime(value).slice(0, 10) : null)
-  const shortValidity = (validFrom?: string | null, validUntil?: string | null) =>
-    `${shortDate(validFrom) ?? '立即生效'} ~ ${shortDate(validUntil) ?? '永久有效'}`
+
 
   const columns: TableProps<ApprovalGrantVO>['columns'] = [
     {
@@ -92,7 +90,12 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
       title: '授权时效',
       key: 'validity',
       width: 190,
-      render: (_, record) => shortValidity(record.validFrom, record.validUntil),
+      render: (_, record) => (
+        <TimeRangeLines
+          start={record.validFrom ? formatDateTime(record.validFrom) : '立即生效'}
+          end={record.validUntil ? formatDateTime(record.validUntil) : '永久有效'}
+        />
+      ),
     },
     {
       title: '状态',

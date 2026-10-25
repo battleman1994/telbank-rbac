@@ -4,11 +4,21 @@ import type { TimeTemplateVO } from '../api/types'
 /** 统一时间展示格式 */
 export const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss'
 
+/** 列表时间展示格式（到分钟） */
+export const DATE_TIME_MINUTE_FORMAT = 'YYYY-MM-DD HH:mm'
+
 /** 格式化为本地时间字符串；空值返回占位符 */
 export function formatDateTime(value?: string | null, placeholder = '-'): string {
   if (!value) return placeholder
   const parsed = dayjs(value)
   return parsed.isValid() ? parsed.format(DATE_TIME_FORMAT) : String(value)
+}
+
+/** 格式化为本地时间（精确到分钟）；空值返回占位符 */
+export function formatDateTimeMinute(value?: string | null, placeholder = '-'): string {
+  if (!value) return placeholder
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed.format(DATE_TIME_MINUTE_FORMAT) : String(value)
 }
 
 /** 授权时效展示：空 validFrom 表示立即生效，空 validUntil 表示永久有效 */

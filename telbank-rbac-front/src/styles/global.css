@@ -149,6 +149,30 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* 表格行高稍微紧凑；列头在宽屏保持一行，窄屏继续换行 */
+.ant-table-wrapper .ant-table-thead > tr > th,
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  padding-block: 12px !important;
+}
+
+@media (min-width: 1200px) {
+  .ant-table-wrapper .ant-table-thead > tr > th {
+    white-space: nowrap;
+  }
+}
+
+/* 时间区间：开始/结束分两行展示 */
+.time-range-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.5;
+}
+
+.time-range-lines__label {
+  color: #8c8c8c;
+}
+
 /* 覆盖 Ant 的 ellipsis 样式，让长文本换行完整展示 */
 .ant-table-cell.ant-table-cell-ellipsis {
   white-space: normal !important;

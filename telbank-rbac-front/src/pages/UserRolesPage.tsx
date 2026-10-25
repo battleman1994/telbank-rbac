@@ -23,8 +23,9 @@ import type { RoleVO, UserRoleCreatePayload, UserRoleVO } from '../api/types'
 import { PageShell } from '../components/PageShell'
 import { StatusTag } from '../components/StatusTags'
 import { SystemRequired } from '../components/SystemGate'
+import { TimeRangeLines } from '../components/TimeRangeLines'
 import { useCurrentSystemId } from '../stores/app'
-import { formatValidity } from '../utils/format'
+import { formatDateTime } from '../utils/format'
 
 const { Text } = Typography
 
@@ -143,7 +144,12 @@ function UserRolesContent({ systemId }: { systemId: number }) {
     {
       title: '时效',
       key: 'validity',
-      render: (_, record) => formatValidity(record.validFrom, record.validUntil),
+      render: (_, record) => (
+        <TimeRangeLines
+          start={record.validFrom ? formatDateTime(record.validFrom) : '立即生效'}
+          end={record.validUntil ? formatDateTime(record.validUntil) : '永久有效'}
+        />
+      ),
     },
     { title: '状态', dataIndex: 'status', width: 90, render: (value: number) => <StatusTag status={value} /> },
     { title: '授权原因', dataIndex: 'grantReason', ellipsis: true, render: (value: string | null) => value || '-' },
