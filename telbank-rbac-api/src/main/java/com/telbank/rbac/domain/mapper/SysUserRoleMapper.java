@@ -110,6 +110,22 @@ public interface SysUserRoleMapper extends RbacMapper<SysUserRole> {
             """)
     List<Long> findAccessibleSystemIds(@Param("externalUserId") String externalUserId);
 
+    /** 用户在某系统当前有效的角色 id（临时权限申请「已拥有」判断）。 */
+    @Select("""
+            SELECT ur.role_id
+            FROM sys_user_role ur
+            JOIN sys_role r ON r.id = ur.role_id AND r.system_id = ur.system_id
+            WHERE ur.system_id = #{systemId}
+              AND ur.external_user_id = #{externalUserId}
+              AND ur.status = 1
+              AND r.status = 1
+              AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
+              AND (ur.valid_until IS NULL OR ur.valid_until > NOW())
+            ORDER BY ur.role_id
+            """)
+    List<Long> findActiveRoleIds(@Param("systemId") Long systemId,
+                                 @Param("externalUserId") String externalUserId);
+
     /** 用户在某系统是否有有效角色（管理上下文准入）。 */
     @Select("""
             SELECT COUNT(*) FROM sys_user_role ur

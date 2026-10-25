@@ -47,6 +47,11 @@ public final class RbacConstants {
     public static final int APPLICATION_STATUS_REJECTED = 2;
     public static final String APPLICATION_SOURCE_SDK = "SDK";
 
+    // 业务用户临时权限申请状态（sys_access_application.status）
+    public static final int ACCESS_APPLICATION_STATUS_PENDING = 0;
+    public static final int ACCESS_APPLICATION_STATUS_APPROVED = 1;
+    public static final int ACCESS_APPLICATION_STATUS_REJECTED = 2;
+
     // ------------------------------------------------------------------
     // Redis 变更通知（契约 §6）
     // ------------------------------------------------------------------
