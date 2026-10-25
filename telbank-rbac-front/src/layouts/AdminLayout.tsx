@@ -5,6 +5,8 @@ import {
   AuditOutlined,
   BankOutlined,
   ClockCircleOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
   FileTextOutlined,
   FormOutlined,
   LogoutOutlined,
@@ -27,6 +29,7 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd'
 import type { MenuProps } from 'antd'
@@ -247,11 +250,23 @@ export default function AdminLayout() {
       collapsible
       collapsed={collapsed}
       onCollapse={setCollapsed}
+      trigger={null}
       className="app-sider"
     >
       <div className="app-logo">
-        <SafetyCertificateOutlined className="app-logo-icon" />
-        <span>权限中心管理台</span>
+        <div className="app-logo-brand">
+          <SafetyCertificateOutlined className="app-logo-icon" />
+          <span className="app-logo-title">权限中心管理台</span>
+        </div>
+        <Tooltip title={collapsed ? '展开菜单' : '收起菜单'} placement="right">
+          <Button
+            type="text"
+            className="app-sider-toggle"
+            aria-label={collapsed ? '展开菜单' : '收起菜单'}
+            icon={collapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
+            onClick={() => setCollapsed((value) => !value)}
+          />
+        </Tooltip>
       </div>
       <Menu
         mode="inline"

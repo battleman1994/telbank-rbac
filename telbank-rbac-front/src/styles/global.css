@@ -41,9 +41,10 @@ body {
 .app-logo {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px;
   height: 64px;
+  padding: 0 12px 0 20px;
   margin: 0;
   overflow: hidden;
   font-size: 17px;
@@ -53,8 +54,50 @@ body {
   border-bottom: 1px solid #f0f0f0;
 }
 
+.app-logo-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .app-logo-icon {
+  flex: 0 0 auto;
   font-size: 22px;
+}
+
+.app-logo-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-sider-toggle.ant-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  color: #5b6b82;
+  background: #f7faff;
+  border: 1px solid #e2ebf7;
+  border-radius: 10px;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s;
+}
+
+.app-sider-toggle.ant-btn:hover {
+  color: #1668dc;
+  background: #eef5ff;
+  border-color: #bcd7ff;
+}
+
+.app-sider-toggle.ant-btn .anticon {
+  font-size: 13px;
 }
 
 .app-header {
@@ -300,9 +343,25 @@ body {
   margin-top: 4px;
 }
 
-/* 侧边栏折叠时隐藏 logo 文本 */
-.ant-layout-sider-collapsed .app-logo span {
+/* 侧边栏折叠时仅隐藏标题，保留 logo 图标和右侧展开按钮 */
+.ant-layout-sider-collapsed .app-logo {
+  gap: 4px;
+  justify-content: space-between;
+  padding-inline: 10px;
+}
+
+.ant-layout-sider-collapsed .app-logo-brand {
+  gap: 0;
+}
+
+.ant-layout-sider-collapsed .app-logo-title {
   display: none;
+}
+
+.ant-layout-sider-collapsed .app-sider-toggle.ant-btn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
 }
 
 /* 弹窗表单：统一控件占满列宽、字段间距，避免输入框过短/不齐 */

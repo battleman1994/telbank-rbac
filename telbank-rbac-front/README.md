@@ -124,6 +124,7 @@ cd telbank-rbac-front && npm run dev
 | 授权记录 | `/approval-grants` | `audit:view` | 审批授权记录查询 |
 
 - 路由守卫：`src/router.tsx` 中每个页面包裹 `PermissionGuard`（短码）；不满足渲染 403 无权限页（可跳转到第一个有权限菜单），不白屏。
+- 侧栏折叠：标题行右侧（标题/菜单分割线同一行）提供自定义圆角按钮，双箭头图标 + Tooltip；使用 `Sider trigger={null}` 关闭默认底部 trigger。折叠后保留 logo 图标和展开按钮，标题文本隐藏。
 - `/systems`、`/time-templates` 使用 `PlatformAdminGuard`（`bootstrap.platformAdmin === true` 才可访问），非超管直接访问显示无权限页；「时间模板」为全局配置，不随系统上下文变化。
 - **角色权限（A21）**：角色-权限永久有效；角色的生效窗口由角色绑定的「时间模板」决定，在角色管理页配置、在用户角色/审批分配时由服务端计算。
 - **通配权限（A 方案）**：`permissions` 支持 `*` 与 `前缀:*` 两种通配。权限集合含 `*` 时 `hasPerm` 恒 true（admin / superadmin 角色只授一条 `*`，因此全部菜单可见）；含 `前缀:*`（如 `role:*`）时，请求码以 `前缀:` 开头即 true；否则精确匹配。**角色权限页的授权树/可授权列表会递归过滤 `code='*'` 节点**（通配由系统默认规则管理，不参与逐项授权），已存在的通配授权仍在右侧「已授权列表」只读展示，并在选择该角色时显示「已拥有通配权限」提示。

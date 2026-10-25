@@ -267,6 +267,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 | 2026-10-25 16:20 | `python3 scripts/acceptance.py --base-url http://localhost:28090`（临时 MySQL 3308 + 全新库 01→11 + API 28090 + 前端 5181） | **159/159 PASS，0 FAIL**：含 A21 §9.17 **35/35**、§9.18 **24/24**；多角色模板窗口/包络、模板停用 409、角色权限静态化、admin 绑定模板 400 全过 |
 | 2026-10-25 16:17 | headless Chrome（1440×900，真实 A21 后端） | 平台超管见「时间模板」页并可查看预置夜间/全天模板；crm-admin 角色权限页无逐项时效、用户角色页无日期选择；业务用户「我的申请」仅见该入口、表单展示角色模板摘要；角色管理表格内容完整无省略 |
 | 2026-10-25 16:59 | 表格自适应 UI 审计（headless Chrome 1440×900 / 900×900，真实 A21 后端） | 覆盖角色管理、权限管理、页面元素、资源管理、授权记录、用户角色、系统接入（业务系统/接入申请）、时间模板、我的申请共 10 个表格；全部 `table-layout:auto`、`scrollWidth === clientWidth`、无横向裁切；1440 宽度按内容展开且不换行，900 宽度由内容压缩并换行完整展示；窄屏不启用 fixed 等宽列 |
+| 2026-10-25 17:03 | 侧栏折叠控件 UI 验证（headless Chrome 1440×900） | 收起按钮位于标题/菜单分割线同一行右侧（`x=189/231`，12px 右边距），非默认底部 trigger；展开 232px、折叠 80px 切换正常，折叠后保留 logo 与展开按钮、隐藏标题；自定义双箭头图标 + Tooltip/aria-label 均生效 |
 | 2026-10-25 13:02 | `./scripts/verify-all.sh`（A20 后） | **16 项检查全过**：api **192** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09/10 迁移、凭据/admin 保护、A20 申请产物、3 平台脚本 |
 | 2026-10-25 12:59 | 前端 `npm run build`（A20 我的申请页/角色授权过滤） | `tsc -b` 0 error；3259 modules；JS 1,456.05 kB / gzip 459.13 kB |
 | 2026-10-25 12:58 | headless Chrome（1440×900，API 28090 + 前端 5173） | 13600136000 仅见「我的申请」入口、无管理菜单，可打开新建弹窗；crm-admin-001 选择 operator 后权限预览 3 项；角色授权页 operator 授权树无 `*`、admin 不在角色下拉 |
