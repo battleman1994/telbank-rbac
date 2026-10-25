@@ -85,7 +85,17 @@ body {
 
 .ant-table table {
   width: 100% !important;
-  table-layout: auto;
+  max-width: 100% !important;
+  table-layout: auto !important;
+}
+
+/*
+ * 列宽交给内容自适应：去掉各页面 columns.width 形成的固定 col 宽度。
+ * 空间足够时按内容宽度展示且不换行；空间不足时由 auto 布局压缩并换行。
+ */
+.ant-table table colgroup col {
+  width: auto !important;
+  min-width: 0 !important;
 }
 
 /* 内容优先：列宽能容纳就不换行，不够时换行，不用省略号截断 */
@@ -114,6 +124,37 @@ body {
 
 .ant-table-content {
   overflow-x: hidden !important;
+}
+
+/* 窄屏减少单元格内边距，让列优先通过换行自适应，而不是把表格挤出容器 */
+@media (max-width: 1200px) {
+  .ant-table-wrapper .ant-table-cell {
+    padding-inline: 8px !important;
+  }
+}
+
+/*
+ * 窄屏进一步收紧内边距，让 auto 布局能把内容压进容器并通过换行展示，
+ * 避免 fixed 布局导致的等宽列和内容裁切。
+ */
+@media (max-width: 1100px) {
+  .ant-table-wrapper .ant-table-cell {
+    padding-inline: 6px !important;
+  }
+
+  .ant-table-cell .ant-space {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .ant-table-cell .ant-tag {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* 登录页 */

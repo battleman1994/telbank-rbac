@@ -247,6 +247,9 @@ cd telbank-rbac-front && npm run dev
 ## 表格展示
 
 - 表格 `table-layout:auto`：宽度足够不换行，不够时换行完整展示，不使用省略号；时间列 `YYYY-MM-DD HH:mm`；表格 100% 宽度、无横向滚动。
+- 列宽由内容决定：全局覆盖 `columns.width` 生成的 col 宽度（`col { width:auto; min-width:0 }`），不允许固定列宽把内容挤成竖排。
+- 窄屏兜底：`<=1200px` 单元格左右内边距降为 8px，`<=1100px` 降为 6px，并允许 `Tag` 与操作按钮组换行；不使用 `fixed` 等宽布局。
+- 适配范围：角色管理、权限管理、资源管理、页面元素、授权记录、用户角色、我的申请、系统接入（两个 Tab）、时间模板；headless Chrome 在 1440×900 与 900×900 验证 `scrollWidth === clientWidth`，空间足够时不换行。
 
 ## 状态管理
 
