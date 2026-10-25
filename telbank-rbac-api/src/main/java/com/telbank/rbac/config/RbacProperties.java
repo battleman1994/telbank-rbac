@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -16,6 +18,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   clients: [{app-key, system-code, app-secret}]
  *   approval: {app-key, app-secret}
  *   onboarding: {enabled, app-key, app-secret}
+ *   access-approval: {url-template}
  *   regions: {region_a: {host, port, password, channel-prefix}}
  *   redis.enabled: true|false
  *   expiry-scan-cron: "0 * * * * *"
@@ -34,6 +37,9 @@ public class RbacProperties {
 
     /** SDK 系统接入上报使用的独立 AppKey/AppSecret（不绑定 systemCode）。 */
     private final Onboarding onboarding = new Onboarding();
+
+    /** 业务用户临时权限申请的审批平台链接模板。 */
+    private final AccessApproval accessApproval = new AccessApproval();
 
     /** 区域 -> Redis 连接配置，用于发布变更通知与给 SDK 下发连接信息。 */
     private Map<String, Region> regions = new LinkedHashMap<>();
@@ -64,6 +70,10 @@ public class RbacProperties {
 
     public Onboarding getOnboarding() {
         return onboarding;
+    }
+
+    public AccessApproval getAccessApproval() {
+        return accessApproval;
     }
 
     public Map<String, Region> getRegions() {
@@ -223,6 +233,33 @@ public class RbacProperties {
 
         public void setAppSecret(String appSecret) {
             this.appSecret = appSecret;
+        }
+    }
+
+    /**
+     * 审批平台链接模板：前端/接口把 {@value #APPLICATION_NO_PLACEHOLDER} 替换为申请单号。
+     * 模板缺少占位符时启动仅记录 WARN，配置值原样返回，不影响启动。
+     */
+    public static class AccessApproval {
+
+        public static final String APPLICATION_NO_PLACEHOLDER = "{applicationNo}";
+
+        private static final Logger log = LoggerFactory.getLogger(AccessApproval.class);
+
+        private String urlTemplate =
+                "http://localhost:8090/approval/access?applicationNo={applicationNo}";
+
+        public String getUrlTemplate() {
+            return urlTemplate;
+        }
+
+        public void setUrlTemplate(String urlTemplate) {
+            if (urlTemplate == null || urlTemplate.isBlank()
+                    || !urlTemplate.contains(APPLICATION_NO_PLACEHOLDER)) {
+                log.warn("rbac.access-approval.url-template 缺少占位符 {}: {}",
+                        APPLICATION_NO_PLACEHOLDER, urlTemplate);
+            }
+            this.urlTemplate = urlTemplate;
         }
     }
 

@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Update;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.telbank.rbac.domain.entity.SysRolePermission;
+import com.telbank.rbac.domain.mapper.row.AccessRolePermissionRow;
 
 public interface SysRolePermissionMapper extends RbacMapper<SysRolePermission> {
 
@@ -57,6 +58,29 @@ public interface SysRolePermissionMapper extends RbacMapper<SysRolePermission> {
               AND p.status = 1
             """)
     List<String> findGrantedCodesByRoleId(@Param("roleId") Long roleId);
+
+    /**
+     * 角色当前有效的权限行：授权启用（status=1）且在时效内、权限启用且属于当前系统。
+     *
+     * <p>用于申请人「可申请选项」的权限预览，批量查询避免 N+1；调用方需保证 roleIds 非空。</p>
+     */
+    @Select("""
+            <script>
+            SELECT rp.role_id AS roleId, p.id AS id, p.code AS code, p.name AS name, p.type AS type
+            FROM sys_role_permission rp
+            JOIN sys_permission p ON p.id = rp.permission_id
+            WHERE rp.role_id IN
+              <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">#{roleId}</foreach>
+              AND rp.status = 1
+              AND p.system_id = #{systemId}
+              AND p.status = 1
+              AND (rp.valid_from IS NULL OR rp.valid_from &lt;= NOW())
+              AND (rp.valid_until IS NULL OR rp.valid_until &gt; NOW())
+            ORDER BY rp.role_id, p.sort, p.id
+            </script>
+            """)
+    List<AccessRolePermissionRow> findActivePermissionRows(@Param("systemId") Long systemId,
+                                                           @Param("roleIds") List<Long> roleIds);
 
     /** 定时收回：待过期 system_id 列表。 */
     @Select("""

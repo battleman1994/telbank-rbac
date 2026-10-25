@@ -36,6 +36,8 @@ rbac:
   approval:
     app-key: approval-system
     app-secret: ${RBAC_APPROVAL_SECRET:approval-dev-secret}
+  access-approval:         # 自助申请审批链接模板（前端替换 {applicationNo}，不落库）
+    url-template: ${RBAC_ACCESS_APPROVAL_URL_TEMPLATE:http://localhost:8090/approval/access?applicationNo={applicationNo}}
   onboarding:              # SDK 系统接入上报（独立 AppKey，不绑定 systemCode）
     enabled: ${RBAC_ONBOARDING_ENABLED:true}
     app-key: ${RBAC_ONBOARDING_APP_KEY:onboarding-app}
