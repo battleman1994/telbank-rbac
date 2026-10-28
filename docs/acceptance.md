@@ -264,6 +264,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-28 14:01 | GitHub Actions `telbank-rbac CI`（commit `13580ca`，架构文档入库） | **6 个 job 全部 success**：权限中心（JDK21）/ SDK v1（JDK17）/ SDK v2（JDK21）/ 前端（Node22）/ Windows 启动脚本 / JDK 8 运行时（[run 40641226497](https://github.com/battleman1994/telbank-rbac/actions/runs/40641226497)） |
 | 2026-10-28 13:48 | `RBAC_M2_REPO=/tmp/rbac-m2repo ./scripts/verify-all.sh`（架构文档入库前复跑） | **18 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建（3262 modules，JS 1,469.77 kB / gzip 462.64 kB）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、**架构文档齐备（5 部分 / 41 张 Mermaid 图 / 无草稿残留）**、3 平台脚本 |
 | 2026-10-26 08:40 | `./scripts/verify-all.sh`（架构文档门禁加入后） | **18 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建（3262 modules）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、**架构文档齐备（5 部分 / 41 张 Mermaid 图 / 无草稿残留）**、3 平台脚本 |
 | 2026-10-26 08:38 | Mermaid CLI 11.17 渲染 `docs/architecture.md` 全部图 | **41/41 图渲染成功（failures=0）**，产出 41 个 SVG；文档 5 个部分、3271 行 |
