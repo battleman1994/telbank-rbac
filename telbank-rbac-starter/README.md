@@ -1,6 +1,6 @@
 # telbank-rbac-starter（JDK 8 / Spring Boot 2.7.x 版 SDK）
 
-供 **JDK 8 字节码 + Spring Boot 2.7.x** 业务系统接入的 RBAC SDK。协议、配置键、类名、包名与 JDK 21 版 `telbank-rbac2-starter` **完全一致**，仅实现层分别为 Feign/OkHttp + Jackson 2（本模块）与 RestClient + Jackson 3。
+供 **JDK 8 字节码 + Spring Boot 2.7.x** 业务系统接入的 RBAC SDK。协议、配置键、类名、包名与 JDK 21 版 `telbank-rbac2-starter` **完全一致**，仅实现层分别为 Spring `RestTemplate` + Jackson 2（本模块）与 Spring `RestClient` + Jackson 3（A22：两版业务层均只收发 POJO）。
 
 - 需求基线：[`docs/telbank-rbac.md`](../docs/telbank-rbac.md)
 - 接口契约（§0/§4/§7）：[`docs/impl/contracts.md`](../docs/impl/contracts.md)
@@ -76,7 +76,7 @@ v2.0 A 方案下 admin/superadmin 角色只授一条 `*` 权限，openapi user-p
 |---|---|---|
 | 自动配置 | `META-INF/spring.factories` | `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
 | Servlet | `javax.servlet` | `jakarta.servlet` |
-| HTTP 客户端 | Feign 11 + OkHttp 3 | Spring 7 `RestClient` |
+| HTTP 客户端 | Spring `RestTemplate` + Jackson 2 | Spring 7 `RestClient` + Jackson 3 |
 | JSON | Jackson 2 | Jackson 3（`tools.jackson`） |
 | 字节码 | Java 8（major=52） | Java 21（major=65） |
 

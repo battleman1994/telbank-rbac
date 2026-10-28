@@ -17,7 +17,7 @@
 |---|---|---|---|
 | 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
 | **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway）、MyBatis-Plus 3.5.17（Boot4 starter）、Caffeine + Redis |
-| **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（用户-角色窗口 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Feign + OkHttp、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
+| **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（用户-角色窗口 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、Spring `RestTemplate` HTTP 客户端（JDK 21 版为 Spring `RestClient`；业务层只收发 POJO，A22）、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
 | **JDK 21 业务系统 SDK** | `telbank-rbac2-starter/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Spring 7 RestClient、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
 
@@ -439,6 +439,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - **架构文档（2026-10-28 入库）**：[`docs/architecture.md`](docs/architecture.md) 共 **5 个部分、41 张 Mermaid 图**，覆盖系统全景、后端运行时、43 个 `/api` + 9 个 `/openapi` 接口、SDK、前端、启动/部署/CI 与运维；41 张图已用 Mermaid CLI 11.17 **逐图渲染通过（failures=0）**，并纳入 `verify-all.sh` 门禁（18 项）。
 - 一键验证：`./scripts/verify-all.sh` → **18 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 - **A21（角色时间模板）已完成**：`scripts/acceptance.py` §9.17 已按模板窗口改写并新增 §9.18、`scripts/mock-access-approval.py` 已移除 `--valid-from/--valid-until`、`scripts/verify-all.sh` 已增加 11 迁移 / 时间模板页面 / 菜单检查；全新临时库上全量验收 **159/159 PASS**，`verify-all.sh` **18 项全过**。
+- **SDK HTTP 客户端简化（A22，2026-10-28）**：JDK 8 版 Feign+OkHttp → Spring `RestTemplate`（移除 feign/okhttp 依赖与手写解码器），JDK 21 版 `RestClient` 改 typed `RbacEnvelope<T>`；两版业务层只收发 POJO，签名/协议不变；SDK 单测 v1 **121/121**、v2 **122/122** 通过，真实 MySQL+API SDK e2e **8/8 PASS**（verify-all/CI 见 docs/acceptance.md）
 
 ---
 

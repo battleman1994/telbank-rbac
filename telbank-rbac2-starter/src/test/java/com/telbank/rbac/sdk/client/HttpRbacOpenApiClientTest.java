@@ -6,6 +6,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
@@ -21,6 +22,8 @@ import org.springframework.test.web.client.RequestMatcher;
 import org.springframework.web.client.RestClient;
 
 import com.telbank.rbac.sdk.config.RbacSdkProperties;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 开放接口客户端的 wire 行为（Boot 4 / Spring 7 RestClient 版）：
@@ -108,7 +111,7 @@ class HttpRbacOpenApiClientTest {
         assertThat(request.method).isEqualTo(HttpMethod.POST);
         assertThat(request.uri.toString()).isEqualTo(
                 "https://rbac.example.com/openapi/sdk/endpoints/sync");
-        String body = new String(request.body, java.nio.charset.StandardCharsets.UTF_8);
+        String body = new String(request.body, StandardCharsets.UTF_8);
         assertThat(body).contains("\"systemCode\":\"crm\"")
                 .contains("\"method\":\"GET\"")
                 .contains("\"path\":\"/api/order/list\"")
@@ -165,7 +168,7 @@ class HttpRbacOpenApiClientTest {
         CapturedRequest request = fixture.captured;
         assertThat(request.method).isEqualTo(HttpMethod.POST);
         assertThat(request.uri.getPath()).isEqualTo("/openapi/onboarding/systems");
-        String body = new String(request.body, java.nio.charset.StandardCharsets.UTF_8);
+        String body = new String(request.body, StandardCharsets.UTF_8);
         assertThat(body).contains("\"systemCode\":\"demo-sdk\"")
                 .contains("\"name\":\"Demo SDK 系统\"")
                 .contains("\"region\":\"region_a\"")
@@ -219,8 +222,6 @@ class HttpRbacOpenApiClientTest {
      */
     private static final class HttpFixture {
 
-        private final RestClient.Builder builder = RestClient.builder();
-
         private final MockRestServiceServer server;
 
         private final CapturedRequest captured = new CapturedRequest();
@@ -228,9 +229,11 @@ class HttpRbacOpenApiClientTest {
         private final HttpRbacOpenApiClient api;
 
         private HttpFixture(RbacSdkProperties properties) {
+            JsonMapper objectMapper = HttpRbacOpenApiClient.createJsonMapper();
+            RestClient.Builder builder = HttpRbacOpenApiClient.createRestClientBuilder(objectMapper);
             this.server = MockRestServiceServer.bindTo(builder).build();
             this.api = new HttpRbacOpenApiClient(properties, new RbacSigner("crm", SECRET),
-                    builder.build(), RbacResponseDecoder.createObjectMapper());
+                    builder.build(), objectMapper);
         }
 
         private void expectSuccess(String body) {

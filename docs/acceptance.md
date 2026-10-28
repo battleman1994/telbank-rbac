@@ -260,10 +260,14 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 > **架构文档已交付（2026-10-25 起草、2026-10-26 验证、2026-10-28 入库）**：新增 [`docs/architecture.md`](architecture.md)，5 个部分 / 3271 行 / **41 张 Mermaid 图**（系统全景、后端运行时、43 个 `/api` + 9 个 `/openapi` 接口、SDK、前端、启动/部署/CI 与运维）；41 张图用 **Mermaid CLI 11.17 逐图渲染通过（failures=0）**；`verify-all.sh` 新增架构文档门禁（5 部分 / 图数下限 / 代码围栏闭合 / 无 `_drafts` 残留 / 文档总览已索引），一键验证 **18 项全过**（2026-10-26 08:40 首次、2026-10-28 入库前复跑）。文档仅描述现状，不改变代码与验收结论。
 
+> **A22 SDK HTTP 客户端简化已交付（2026-10-28）**：用户要求去掉 SDK HTTP 层的 byte[] 级编解码复杂度。JDK 8 版 SDK 由 Feign 11 + OkHttp 3 改为 Spring `RestTemplate` + Jackson 2 消息转换器（移除 feign-core/feign-okhttp/okhttp 依赖与 `RbacFeignDecoder`）；JDK 21 版 SDK 保持 Spring `RestClient` 并改为 typed `ParameterizedTypeReference<RbacEnvelope<T>>` 反序列化（移除 `RbacResponseDecoder`/`RawResponse`/手写 `readAllBytes`）；两版业务层只收发业务 POJO，签名所需的请求 JSON 序列化保留在传输层一处；协议、签名规则、配置键、公开 API 与两版一致性不变。SDK 单测 v1 **121/121**（Java 8 字节码 major=52）、v2 **122/122**；`verify-all.sh` **18/18**。
+
 > 验证机：macOS arm64（`hellokitty`）· MySQL 26.7（127.0.0.1:3306；v2.0 使用独立库 `telbank_rbac_v2` 按 01→04 初始化）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；JDK 8 运行时由 GitHub Actions 验证；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-28 17:17 | 真实 MySQL（3307，`start-all-macos.sh --temp-db`）+ API（8080）+ 两版示例业务系统（8081/8082/8091/8092）：`python3 scripts/acceptance.py --only 9.1b,9.1c` | **8/8 PASS，0 FAIL**：v1 SDK（Java 8 字节码）**4/4**、v2 SDK（JDK 21）**4/4**；覆盖未映射接口无 token 放行、有权限 200、同用户跨系统 403、系统管理员 200；两版示例 fat jar 反解确认内嵌重构后 SDK（含 `RbacEnvelope`，旧 `RbacFeignDecoder`/`RbacResponseDecoder` 已移除） |
+| 2026-10-28 16:20 | `RBAC_M2_REPO=/tmp/rbac-m2repo ./scripts/verify-all.sh`（A22 SDK HTTP 客户端简化后） | **18 项检查全过**：api **219** 单测、SDK v1 **121**（Spring RestTemplate，major=52）、SDK v2 **122**（typed RestClient + `RbacEnvelope<T>`）、前端构建（3262 modules）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20/A21 产物、架构文档齐备、**SDK HTTP 客户端产物（无 Feign/OkHttp/字节级解码器，A22）**、3 平台脚本 |
 | 2026-10-28 14:01 | GitHub Actions `telbank-rbac CI`（commit `13580ca`，架构文档入库） | **6 个 job 全部 success**：权限中心（JDK21）/ SDK v1（JDK17）/ SDK v2（JDK21）/ 前端（Node22）/ Windows 启动脚本 / JDK 8 运行时（[run 40641226497](https://github.com/battleman1994/telbank-rbac/actions/runs/40641226497)） |
 | 2026-10-28 13:48 | `RBAC_M2_REPO=/tmp/rbac-m2repo ./scripts/verify-all.sh`（架构文档入库前复跑） | **18 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建（3262 modules，JS 1,469.77 kB / gzip 462.64 kB）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、**架构文档齐备（5 部分 / 41 张 Mermaid 图 / 无草稿残留）**、3 平台脚本 |
 | 2026-10-26 08:40 | `./scripts/verify-all.sh`（架构文档门禁加入后） | **18 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建（3262 modules）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、**架构文档齐备（5 部分 / 41 张 Mermaid 图 / 无草稿残留）**、3 平台脚本 |

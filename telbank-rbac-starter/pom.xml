@@ -30,14 +30,6 @@
         <maven.compiler.target>8</maven.compiler.target>
         <maven.compiler.release>8</maven.compiler.release>
         <!-- Boot 2.7.18 管理的 Lombok 1.18.30 已支持 JDK 21 编译，无需覆盖 -->
-        <feign.version>11.10</feign.version>
-        <!--
-          注意：属性不能叫 okhttp.version —— Spring Boot 2.7.18 的依赖管理用
-          ${okhttp.version}（=4.9.3）导入 com.squareup.okhttp3:okhttp-bom，
-          覆盖它会解析不存在的 okhttp-bom:3.14.9 导致 POM 直接构建失败。
-          这里用独立属性 okhttp3.version 锁定 OkHttp 3.x。
-        -->
-        <okhttp3.version>3.14.9</okhttp3.version>
     </properties>
 
     <dependencies>
@@ -67,22 +59,8 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- HTTP 客户端：Feign + OkHttp（规格锁定，Feign 11.x / OkHttp 3.x） -->
-        <dependency>
-            <groupId>io.github.openfeign</groupId>
-            <artifactId>feign-core</artifactId>
-            <version>${feign.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.openfeign</groupId>
-            <artifactId>feign-okhttp</artifactId>
-            <version>${feign.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>okhttp</artifactId>
-            <version>${okhttp3.version}</version>
-        </dependency>
+        <!-- HTTP 客户端：使用宿主已有的 Spring Web（RestTemplate + Jackson 消息转换器），
+             不再引入 Feign/OkHttp。业务层只处理 POJO，HTTP 细节由 Spring 负责。 -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

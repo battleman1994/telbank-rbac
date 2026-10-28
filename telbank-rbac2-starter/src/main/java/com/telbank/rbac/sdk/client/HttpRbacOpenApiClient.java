@@ -1,34 +1,40 @@
 package com.telbank.rbac.sdk.client;
 
-import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.telbank.rbac.sdk.config.RbacSdkProperties;
 
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 权限中心开放接口的默认实现（Boot 4 / Spring 7 版）：Spring {@link RestClient} + JDK HttpClient。
+ * 权限中心开放接口的默认实现（JDK 21 / Spring Boot 4 版）：Spring {@link RestClient} + Jackson 3。
  *
- * <p>为保证签名与网络字节完全一致，这里显式构造完整 URL、原始 query 串与请求体字节，
- * 同一处计算签名并发送；响应以原始字节交给 Jackson 3 解码器（{@link RbacResponseDecoder}），
- * 不依赖宿主的 HttpMessageConverter。</p>
+ * <p>客户端方法只收发业务 POJO；HTTP 细节（URL、query、JSON 编解码、状态码）全部交给
+ * {@link RestClient} 与 Jackson 消息转换器。唯一保留在传输层的是「把请求 POJO 序列化一次」：
+ * 开放接口用 HMAC-SHA256 对实际发送的请求体签名，必须保证签名与线上字节一致。</p>
  *
  * <p>与 JDK 8 版 SDK 的协议（契约 §4.1/§4.2）、配置键、公开 API 完全一致。</p>
  */
@@ -54,15 +60,43 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
 
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(8);
 
+    private static final int ERROR_BODY_SNIPPET_LENGTH = 256;
+
+    private static final ParameterizedTypeReference<RbacEnvelope<MappingsResponse>> MAPPINGS_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<MappingsResponse>>() {
+            };
+
+    private static final ParameterizedTypeReference<RbacEnvelope<UserPermissionResponse>> USER_PERMISSIONS_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<UserPermissionResponse>>() {
+            };
+
+    private static final ParameterizedTypeReference<RbacEnvelope<PageActionsResponse>> PAGE_ACTIONS_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<PageActionsResponse>>() {
+            };
+
+    private static final ParameterizedTypeReference<RbacEnvelope<ConnectionInfo>> CONNECTION_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<ConnectionInfo>>() {
+            };
+
+    private static final ParameterizedTypeReference<RbacEnvelope<Object>> ENDPOINT_SYNC_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<Object>>() {
+            };
+
+    private static final ParameterizedTypeReference<RbacEnvelope<List<SystemInfo>>> USER_SYSTEMS_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<List<SystemInfo>>>() {
+            };
+
+    private static final ParameterizedTypeReference<RbacEnvelope<OnboardingApplyResult>> ONBOARDING_TYPE =
+            new ParameterizedTypeReference<RbacEnvelope<OnboardingApplyResult>>() {
+            };
+
     private final RbacSdkProperties properties;
 
     private final RbacSigner signer;
 
     private final RestClient restClient;
 
-    private final RbacResponseDecoder decoder;
-
-    private final ObjectMapper objectMapper;
+    private final JsonMapper objectMapper;
 
     private final String baseUrl;
 
@@ -70,11 +104,15 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
     private final String basePath;
 
     public HttpRbacOpenApiClient(RbacSdkProperties properties, RbacSigner signer) {
-        this(properties, signer, createRestClient(), RbacResponseDecoder.createObjectMapper());
+        this(properties, signer, createJsonMapper());
+    }
+
+    HttpRbacOpenApiClient(RbacSdkProperties properties, RbacSigner signer, JsonMapper objectMapper) {
+        this(properties, signer, createRestClientBuilder(objectMapper).build(), objectMapper);
     }
 
     HttpRbacOpenApiClient(RbacSdkProperties properties, RbacSigner signer, RestClient restClient,
-            ObjectMapper objectMapper) {
+            JsonMapper objectMapper) {
         if (properties == null || signer == null || restClient == null || objectMapper == null) {
             throw new IllegalArgumentException("HttpRbacOpenApiClient 依赖不能为空");
         }
@@ -82,7 +120,6 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
         this.signer = signer;
         this.restClient = restClient;
         this.objectMapper = objectMapper;
-        this.decoder = new RbacResponseDecoder(objectMapper);
         this.baseUrl = trimTrailingSlash(properties.getPlatformBaseUrl());
         this.basePath = resolveBasePath(this.baseUrl);
     }
@@ -90,7 +127,7 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
     @Override
     public List<MappingEntry> fetchMappings() {
         MappingsResponse response = get(PATH_MAPPINGS, query("systemCode", properties.getSystemCode()),
-                MappingsResponse.class);
+                MAPPINGS_TYPE);
         if (response == null || response.getMappings() == null) {
             return Collections.emptyList();
         }
@@ -102,10 +139,9 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
         if (isBlank(externalUserId)) {
             throw new IllegalArgumentException("externalUserId 不能为空");
         }
-        Map<String, String> query = new LinkedHashMap<String, String>();
-        query.put("systemCode", properties.getSystemCode());
-        query.put("externalUserId", externalUserId);
-        UserPermissionResponse response = get(PATH_USER_PERMISSIONS, query, UserPermissionResponse.class);
+        UserPermissionResponse response = get(PATH_USER_PERMISSIONS,
+                query("systemCode", properties.getSystemCode(), "externalUserId", externalUserId),
+                USER_PERMISSIONS_TYPE);
         if (response == null) {
             throw new RbacRemoteException("权限中心未返回用户权限集");
         }
@@ -115,7 +151,7 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
     @Override
     public List<PageAction> fetchPageActions() {
         PageActionsResponse response = get(PATH_PAGE_ACTIONS, query("systemCode", properties.getSystemCode()),
-                PageActionsResponse.class);
+                PAGE_ACTIONS_TYPE);
         if (response == null || response.getPageActions() == null) {
             return Collections.emptyList();
         }
@@ -125,7 +161,7 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
     @Override
     public ConnectionInfo fetchConnection() {
         ConnectionInfo connection = get(PATH_CONNECTION, query("systemCode", properties.getSystemCode()),
-                ConnectionInfo.class);
+                CONNECTION_TYPE);
         if (connection == null) {
             throw new RbacRemoteException("权限中心未返回 Redis 连接信息");
         }
@@ -142,13 +178,7 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
     public void syncEndpoints(List<EndpointInfo> endpoints) {
         EndpointSyncRequest request = new EndpointSyncRequest(properties.getSystemCode(),
                 endpoints == null ? Collections.<EndpointInfo>emptyList() : endpoints);
-        byte[] body;
-        try {
-            body = objectMapper.writeValueAsBytes(request);
-        } catch (RuntimeException e) {
-            throw new RbacRemoteException("端点上报请求序列化失败", e);
-        }
-        execute("POST", PATH_ENDPOINT_SYNC, "", body, Void.class);
+        post(PATH_ENDPOINT_SYNC, request, ENDPOINT_SYNC_TYPE, signer);
     }
 
     @Override
@@ -156,9 +186,8 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
         if (isBlank(externalUserId)) {
             throw new IllegalArgumentException("externalUserId 不能为空");
         }
-        Type type = new TypeReference<List<SystemInfo>>() {
-        }.getType();
-        List<SystemInfo> systems = get(PATH_USER_SYSTEMS, query("externalUserId", externalUserId), type);
+        List<SystemInfo> systems = get(PATH_USER_SYSTEMS, query("externalUserId", externalUserId),
+                USER_SYSTEMS_TYPE);
         return systems == null ? Collections.<SystemInfo>emptyList() : systems;
     }
 
@@ -174,57 +203,48 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
             throw new IllegalArgumentException(
                     "缺少 rbac-sdk.onboarding.app-key / rbac-sdk.onboarding.app-secret");
         }
-        byte[] body;
-        try {
-            body = objectMapper.writeValueAsBytes(request);
-        } catch (RuntimeException e) {
-            throw new RbacRemoteException("系统接入上报请求序列化失败", e);
-        }
         // 使用 onboarding 专用 AppKey/AppSecret 签名，与业务系统主 AppKey 隔离
-        return execute("POST", PATH_ONBOARDING_SYSTEMS, "", body, OnboardingApplyResult.class,
+        return post(PATH_ONBOARDING_SYSTEMS, request, ONBOARDING_TYPE,
                 new RbacSigner(onboardingAppKey, onboardingAppSecret));
     }
 
-    private <T> T get(String path, Map<String, String> query, Type responseType) {
-        return execute("GET", path, RbacSigner.buildQuery(query), null, responseType);
+    private <T> T get(String path, Map<String, String> query,
+            ParameterizedTypeReference<RbacEnvelope<T>> responseType) {
+        return execute(HttpMethod.GET, path, RbacSigner.buildQuery(query), null, responseType, signer);
     }
 
-    private <T> T execute(String httpMethod, String path, String rawQuery, byte[] body, Type responseType) {
-        return execute(httpMethod, path, rawQuery, body, responseType, signer);
+    private <T> T post(String path, Object payload,
+            ParameterizedTypeReference<RbacEnvelope<T>> responseType, RbacSigner requestSigner) {
+        return execute(HttpMethod.POST, path, "", payload, responseType, requestSigner);
     }
 
-    @SuppressWarnings("unchecked")
-    private <T> T execute(String httpMethod, String path, String rawQuery, byte[] body, Type responseType,
-            RbacSigner requestSigner) {
-        String method = httpMethod.toUpperCase(Locale.ROOT);
+    private <T> T execute(HttpMethod method, String path, String rawQuery, Object payload,
+            ParameterizedTypeReference<RbacEnvelope<T>> responseType, RbacSigner requestSigner) {
         String requestUrl = baseUrl + path + (rawQuery.isEmpty() ? "" : "?" + rawQuery);
         String signingPath = basePath + path;
-        Map<String, String> signHeaders = requestSigner.signHeaders(method, signingPath, rawQuery, body);
+        byte[] body = serialize(payload);
+        Map<String, String> signHeaders = requestSigner.signHeaders(method.name(), signingPath, rawQuery, body);
 
-        RawResponse rawResponse;
         try {
-            RestClient.RequestBodySpec requestSpec = restClient.method(HttpMethod.valueOf(method))
-                    .uri(URI.create(requestUrl));
+            RestClient.RequestBodySpec spec = restClient.method(method)
+                    .uri(URI.create(requestUrl))
+                    .headers(headers -> applyHeaders(headers, signHeaders, body));
             if (body != null) {
-                requestSpec = requestSpec.body(body);
+                spec = spec.body(body);
             }
-            rawResponse = requestSpec
-                    .headers(headers -> applyHeaders(headers, signHeaders, body))
-                    .exchange((request, response) -> {
-                        int status = response.getStatusCode().value();
-                        byte[] responseBody = response.getBody() == null
-                                ? new byte[0]
-                                : response.getBody().readAllBytes();
-                        return new RawResponse(status, responseBody);
-                    });
-        } catch (RuntimeException e) {
+            ResponseEntity<RbacEnvelope<T>> response = spec.retrieve().toEntity(responseType);
+            RbacEnvelope<T> envelope = response.getBody();
+            return envelope == null ? null : envelope.getData();
+        } catch (RestClientResponseException e) {
+            throw new RbacRemoteException(e.getStatusCode().value(),
+                    buildErrorMessage(e.getStatusCode().value(), e.getResponseBodyAsByteArray()));
+        } catch (ResourceAccessException e) {
             log.warn("调用权限中心失败: {} {} - {}", method, path, e.toString());
             throw new RbacRemoteException("调用权限中心失败(" + method + " " + path + "): " + e.getMessage(), e);
+        } catch (RestClientException e) {
+            log.warn("权限中心响应解析失败: {} {} - {}", method, path, e.toString());
+            throw new RbacRemoteException("权限中心响应不是合法 JSON: " + e.getMessage(), e);
         }
-        if (rawResponse == null) {
-            throw new RbacRemoteException("权限中心无响应(" + method + " " + path + ")");
-        }
-        return (T) decoder.decode(rawResponse.statusCode, rawResponse.body, responseType);
     }
 
     private void applyHeaders(HttpHeaders headers, Map<String, String> signHeaders, byte[] body) {
@@ -241,21 +261,84 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
         }
     }
 
+    /**
+     * 请求 POJO → JSON 字节：签名（HMAC over body）与线上发送必须使用同一份字节，因此只序列化一次。
+     */
+    private byte[] serialize(Object payload) {
+        if (payload == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsBytes(payload);
+        } catch (RuntimeException e) {
+            throw new RbacRemoteException("请求序列化失败: " + e.getMessage(), e);
+        }
+    }
+
+    private String buildErrorMessage(int status, byte[] body) {
+        String message = null;
+        if (body != null && body.length > 0) {
+            try {
+                JsonNode root = objectMapper.readTree(new String(body, StandardCharsets.UTF_8));
+                if (root != null && root.has("message") && !root.get("message").isNull()) {
+                    message = root.get("message").asText();
+                }
+            } catch (RuntimeException ignored) {
+                // 非 JSON 响应，使用原始片段
+            }
+        }
+        if (message == null || message.trim().isEmpty()) {
+            message = snippet(body);
+        }
+        return "权限中心返回 HTTP " + status + (message.isEmpty() ? "" : ": " + message);
+    }
+
+    private static String snippet(byte[] body) {
+        if (body == null || body.length == 0) {
+            return "";
+        }
+        String text = new String(body, StandardCharsets.UTF_8);
+        if (text.length() > ERROR_BODY_SNIPPET_LENGTH) {
+            text = text.substring(0, ERROR_BODY_SNIPPET_LENGTH) + "...";
+        }
+        return text;
+    }
+
     private static Map<String, String> query(String key, String value) {
         Map<String, String> query = new LinkedHashMap<String, String>();
         query.put(key, value);
         return query;
     }
 
-    private static RestClient createRestClient() {
+    private static Map<String, String> query(String key1, String value1, String key2, String value2) {
+        Map<String, String> query = query(key1, value1);
+        query.put(key2, value2);
+        return query;
+    }
+
+    static JsonMapper createJsonMapper() {
+        return JsonMapper.builder()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .build();
+    }
+
+    static RestClient.Builder createRestClientBuilder(JsonMapper objectMapper) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
                 .build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(READ_TIMEOUT);
+        JacksonJsonHttpMessageConverter jacksonConverter =
+                new JacksonJsonHttpMessageConverter(objectMapper);
         return RestClient.builder()
                 .requestFactory(requestFactory)
-                .build();
+                .messageConverters(converters -> {
+                    // 移除框架默认的 JSON 转换器，换成本 SDK 配置了 FAIL_ON_UNKNOWN_PROPERTIES=false
+                    // 的 Jackson 3 转换器；必须放在 byte[]/String 等基础转换器之后，
+                    // 否则 Jackson 会抢先处理 byte[] 请求体（写成 Base64 字符串）。
+                    converters.removeIf(converter -> converter instanceof JacksonJsonHttpMessageConverter);
+                    converters.add(jacksonConverter);
+                });
     }
 
     private static String resolveBasePath(String baseUrl) {
@@ -284,20 +367,5 @@ public class HttpRbacOpenApiClient implements RbacOpenApiClient {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    /**
-     * RestClient exchange 返回的原始响应（状态码 + 响应体字节）。
-     */
-    private static final class RawResponse {
-
-        private final int statusCode;
-
-        private final byte[] body;
-
-        private RawResponse(int statusCode, byte[] body) {
-            this.statusCode = statusCode;
-            this.body = body;
-        }
     }
 }

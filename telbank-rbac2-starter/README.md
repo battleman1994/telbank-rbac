@@ -62,7 +62,7 @@ v2.0 A 方案下 admin/superadmin 角色只授一条 `*` 权限，openapi user-p
 |---|---|---|
 | 自动配置 | `META-INF/spring.factories` | `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
 | Servlet | `javax.servlet` | `jakarta.servlet` |
-| HTTP 客户端 | Feign 11 + OkHttp 3 | Spring 7 `RestClient` |
+| HTTP 客户端 | Spring `RestTemplate` + Jackson 2 | Spring 7 `RestClient` + Jackson 3 |
 | JSON | Jackson 2 | Jackson 3（`tools.jackson`） |
 | 字节码 | Java 8（major=52） | Java 21（major=65） |
 
