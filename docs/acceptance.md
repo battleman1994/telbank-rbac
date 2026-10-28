@@ -266,6 +266,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-28 18:35 | GitHub Actions `telbank-rbac CI`（commit `f090378`，A22 SDK HTTP 客户端重构） | **6 个 job 全部 success**：权限中心（JDK21）/ SDK v1（JDK17 → Java 8 字节码）/ SDK v2（JDK21）/ 前端（Node22）/ Windows 启动脚本 / JDK 8 运行时（[run 40673208446](https://github.com/battleman1994/telbank-rbac/actions/runs/40673208446)） |
 | 2026-10-28 17:17 | 真实 MySQL（3307，`start-all-macos.sh --temp-db`）+ API（8080）+ 两版示例业务系统（8081/8082/8091/8092）：`python3 scripts/acceptance.py --only 9.1b,9.1c` | **8/8 PASS，0 FAIL**：v1 SDK（Java 8 字节码）**4/4**、v2 SDK（JDK 21）**4/4**；覆盖未映射接口无 token 放行、有权限 200、同用户跨系统 403、系统管理员 200；两版示例 fat jar 反解确认内嵌重构后 SDK（含 `RbacEnvelope`，旧 `RbacFeignDecoder`/`RbacResponseDecoder` 已移除） |
 | 2026-10-28 16:20 | `RBAC_M2_REPO=/tmp/rbac-m2repo ./scripts/verify-all.sh`（A22 SDK HTTP 客户端简化后） | **18 项检查全过**：api **219** 单测、SDK v1 **121**（Spring RestTemplate，major=52）、SDK v2 **122**（typed RestClient + `RbacEnvelope<T>`）、前端构建（3262 modules）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20/A21 产物、架构文档齐备、**SDK HTTP 客户端产物（无 Feign/OkHttp/字节级解码器，A22）**、3 平台脚本 |
 | 2026-10-28 14:01 | GitHub Actions `telbank-rbac CI`（commit `13580ca`，架构文档入库） | **6 个 job 全部 success**：权限中心（JDK21）/ SDK v1（JDK17）/ SDK v2（JDK21）/ 前端（Node22）/ Windows 启动脚本 / JDK 8 运行时（[run 40641226497](https://github.com/battleman1994/telbank-rbac/actions/runs/40641226497)） |
