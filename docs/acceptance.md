@@ -258,10 +258,15 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 > **A21 已执行**：全新临时库（01→11）上完成 §9.17（35 项）+ §9.18（24 项），全量验收 159/159 PASS；`verify-all.sh` 17 项全过。A21 页面已做 headless Chrome 联调（时间模板页、角色管理/角色权限/用户角色、业务用户「我的申请」）。
 
+> **架构文档已交付（2026-10-25 起草、2026-10-26 验证、2026-10-28 入库）**：新增 [`docs/architecture.md`](architecture.md)，5 个部分 / 3271 行 / **41 张 Mermaid 图**（系统全景、后端运行时、43 个 `/api` + 9 个 `/openapi` 接口、SDK、前端、启动/部署/CI 与运维）；41 张图用 **Mermaid CLI 11.17 逐图渲染通过（failures=0）**；`verify-all.sh` 新增架构文档门禁（5 部分 / 图数下限 / 代码围栏闭合 / 无 `_drafts` 残留 / 文档总览已索引），一键验证 **18 项全过**（2026-10-26 08:40 首次、2026-10-28 入库前复跑）。文档仅描述现状，不改变代码与验收结论。
+
 > 验证机：macOS arm64（`hellokitty`）· MySQL 26.7（127.0.0.1:3306；v2.0 使用独立库 `telbank_rbac_v2` 按 01→04 初始化）· Redis 8.10.2（`127.0.0.1:6379`，联调后已停止）· Node 22.23.1（nvm） · **JDK 21.0.13（Homebrew）** 为最终验证运行时；JDK 8 运行时由 GitHub Actions 验证；首次集成阶段曾用 JDK 26 `--release 21` 顶替，JDK 21 安装后已全量复跑（见下表 14:16 起）。
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-28 13:48 | `RBAC_M2_REPO=/tmp/rbac-m2repo ./scripts/verify-all.sh`（架构文档入库前复跑） | **18 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建（3262 modules，JS 1,469.77 kB / gzip 462.64 kB）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、**架构文档齐备（5 部分 / 41 张 Mermaid 图 / 无草稿残留）**、3 平台脚本 |
+| 2026-10-26 08:40 | `./scripts/verify-all.sh`（架构文档门禁加入后） | **18 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建（3262 modules）、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、**架构文档齐备（5 部分 / 41 张 Mermaid 图 / 无草稿残留）**、3 平台脚本 |
+| 2026-10-26 08:38 | Mermaid CLI 11.17 渲染 `docs/architecture.md` 全部图 | **41/41 图渲染成功（failures=0）**，产出 41 个 SVG；文档 5 个部分、3271 行 |
 | 2026-10-25 16:27 | `./scripts/verify-all.sh`（A21 后） | **17 项检查全过**：api **219** 单测、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、3 平台脚本 |
 | 2026-10-25 16:26 | 前端 `npm run build`（A21 页面与服务端窗口展示） | `tsc -b` 0 error；3261 modules；JS 1,469.08 kB / gzip 462.50 kB |
 | 2026-10-25 16:20 | `python3 scripts/acceptance.py --base-url http://localhost:28090`（临时 MySQL 3308 + 全新库 01→11 + API 28090 + 前端 5181） | **159/159 PASS，0 FAIL**：含 A21 §9.17 **35/35**、§9.18 **24/24**；多角色模板窗口/包络、模板停用 409、角色权限静态化、admin 绑定模板 400 全过 |

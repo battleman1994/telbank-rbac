@@ -7,7 +7,7 @@
 
 **文档地图**：[`docs/README.md`](docs/README.md) —— 需求基线 / 接口契约 / 验收矩阵 / 各端说明与文档维护规则。
 
-需求基线：[`docs/telbank-rbac.md`](docs/telbank-rbac.md)　接口/实现契约：[`docs/impl/contracts.md`](docs/impl/contracts.md)　验收矩阵：[`docs/acceptance.md`](docs/acceptance.md)
+需求基线：[`docs/telbank-rbac.md`](docs/telbank-rbac.md)　接口/实现契约：[`docs/impl/contracts.md`](docs/impl/contracts.md)　验收矩阵：[`docs/acceptance.md`](docs/acceptance.md)　架构文档：[`docs/architecture.md`](docs/architecture.md)
 
 ---
 
@@ -25,6 +25,7 @@
 telbank-rbac/
 ├── docs/
 │   ├── README.md                  # 文档总览（权威性/维护规则/修订记录）
+│   ├── architecture.md            # 系统架构、运行逻辑与 API 参考（41 张图）
 │   ├── telbank-rbac.md            # 需求基线（含附录 A 实现修订记录）
 │   ├── acceptance.md              # 第 9 节验收矩阵与证据
 │   └── impl/contracts.md          # 三端接口契约 + 偏差口径
@@ -428,15 +429,16 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **121/121 PASS**，产物字节码 **major=52（Java 8）**。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **122/122 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过。
-- **一键验证**：`./scripts/verify-all.sh` → **17 项检查全过**（api 219、SDK v1 121、SDK v2 122、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、3 平台启动脚本）。
+- **一键验证**：`./scripts/verify-all.sh` → **18 项检查全过**（api 219、SDK v1 121、SDK v2 122、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、架构文档齐备、3 平台启动脚本）。
 - **GitHub Actions（6 job 全绿）**：权限中心（JDK21 88 单测）/ SDK v1（JDK17 97 单测）/ SDK v2（JDK21 98 单测）/ 前端（Node22）/ Windows 启动脚本语法 / JDK 8 运行时冒烟全部 success（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)）。
 - **v1 自接入（已被 A11 取代）**：旧的 `rbac` 系统自接入已移除；现由平台系统 `platform` + `superadmin` 数据驱动超管。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
 - 第 9 节全量验收（当前）：**159/159 PASS**（含 JDK8/JDK21 两个 SDK 端到端各 4/4、A21 §9.17 35/35 + §9.18 24/24；v11 全新库 01→11）。
 - **权限时效演示（本机验证，A12 后）**：`demo-temp-permission.sh` 给 `demo-1min` 在 CRM 临时授予通配 `*`（1 分钟），有效期内可访问管理接口，过期后 `permissions=[]`、接口 403。
 - 管理前端：`tsc -b && vite build` 通过（3259 modules），dist 1.4 MB（JS 1,456.05 kB / gzip 459.13 kB）；headless Chrome 对真实后端联调通过（136 仅见「我的申请」、admin 角色权限预览、角色授权树无 `*`），见验收文档。
-- 一键验证：`./scripts/verify-all.sh` → **14 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
-- **A21（角色时间模板）已完成**：`scripts/acceptance.py` §9.17 已按模板窗口改写并新增 §9.18、`scripts/mock-access-approval.py` 已移除 `--valid-from/--valid-until`、`scripts/verify-all.sh` 已增加 11 迁移 / 时间模板页面 / 菜单检查；全新临时库上全量验收 **159/159 PASS**，`verify-all.sh` **17 项全过**。
+- **架构文档（2026-10-28 入库）**：[`docs/architecture.md`](docs/architecture.md) 共 **5 个部分、41 张 Mermaid 图**，覆盖系统全景、后端运行时、43 个 `/api` + 9 个 `/openapi` 接口、SDK、前端、启动/部署/CI 与运维；41 张图已用 Mermaid CLI 11.17 **逐图渲染通过（failures=0）**，并纳入 `verify-all.sh` 门禁（18 项）。
+- 一键验证：`./scripts/verify-all.sh` → **18 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
+- **A21（角色时间模板）已完成**：`scripts/acceptance.py` §9.17 已按模板窗口改写并新增 §9.18、`scripts/mock-access-approval.py` 已移除 `--valid-from/--valid-until`、`scripts/verify-all.sh` 已增加 11 迁移 / 时间模板页面 / 菜单检查；全新临时库上全量验收 **159/159 PASS**，`verify-all.sh` **18 项全过**。
 
 ---
 

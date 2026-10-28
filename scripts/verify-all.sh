@@ -188,6 +188,18 @@ for f in README.md docs/README.md docs/telbank-rbac.md docs/acceptance.md docs/i
   [ -s "$f" ] || die "缺少文档 $f"
 done
 ok "需求/验收/契约/README/文档总览齐备"
+# 架构文档：单文件、五个部分、Mermaid 图可渲染（图数量下限 + 代码围栏成对）
+[ -s docs/architecture.md ] || die "缺少架构文档 docs/architecture.md"
+for part in 第一部分 第二部分 第三部分 第四部分 第五部分; do
+  grep -q "## ${part}" docs/architecture.md || die "架构文档缺少「${part}」"
+done
+MERMAID_COUNT="$(grep -c '^```mermaid' docs/architecture.md || true)"
+[ "$MERMAID_COUNT" -ge 30 ] || die "架构文档 Mermaid 图不足（${MERMAID_COUNT} 张）"
+FENCE_COUNT="$(grep -c '^```' docs/architecture.md || true)"
+[ $((FENCE_COUNT % 2)) -eq 0 ] || die "架构文档代码围栏未闭合"
+[ ! -d docs/architecture/_drafts ] || die "架构文档草稿目录未清理"
+grep -q 'docs/architecture.md' docs/README.md || die "文档总览未索引 docs/architecture.md"
+ok "架构文档齐备（5 部分 / ${MERMAID_COUNT} 张 Mermaid 图 / 无草稿残留）"
 for f in scripts/init-db.sh scripts/gen-demo-jwt.sh scripts/acceptance.py \
          scripts/build-sdk.sh scripts/verify-all.sh scripts/demo-temp-permission.sh; do
   [ -x "$f" ] || die "脚本不可执行或缺失：$f"
