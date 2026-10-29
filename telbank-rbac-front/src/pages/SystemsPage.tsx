@@ -9,6 +9,7 @@ import {
   Card,
   Col,
   Descriptions,
+  Drawer,
   Flex,
   Form,
   Input,
@@ -626,22 +627,16 @@ function BusinessSystemsTab({
         </Form>
       </Modal>
 
-      <Modal
+      <Drawer
         title={viewingKeys ? `密钥信息：${viewingKeys.name}` : '密钥信息'}
+        size={560}
         open={viewingKeys !== null}
-        forceRender
-        onCancel={() => setViewingKeys(null)}
-        footer={
-          <Space>
-            <Button disabled title="密钥重置功能暂未开放">
-              重置密钥（暂未开放）
-            </Button>
-            <Button type="primary" onClick={() => setViewingKeys(null)}>
-              关闭
-            </Button>
-          </Space>
+        onClose={() => setViewingKeys(null)}
+        extra={
+          <Button disabled title="密钥重置功能暂未开放">
+            重置密钥（暂未开放）
+          </Button>
         }
-        width={600}
       >
         {viewingKeys ? (
           <Flex vertical gap={12}>
@@ -708,7 +703,7 @@ function BusinessSystemsTab({
             ) : null}
           </Flex>
         ) : null}
-      </Modal>
+      </Drawer>
     </Flex>
   )
 }

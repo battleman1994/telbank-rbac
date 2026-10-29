@@ -139,7 +139,7 @@ cd telbank-rbac-front && npm run dev
 
 - 列表列：系统编码 / 系统名称 / 区域 / 管理员账号 / 管理员姓名 / **AppKey** / **AppSecret（掩码）** / 状态 / 操作（查看密钥 / 编辑 / 停用）。
 - AppKey 以等宽字体展示并支持一键复制；AppSecret 只展示后端返回的脱敏值（`appSecretMasked`）。
-- 「查看密钥」弹窗打开时调用 `GET /api/system-credentials/{id}`（平台超管专属）获取完整 AppKey/AppSecret 并支持复制，弹窗内提示敏感信息妥善保管；「重置密钥」暂未开放（按钮置灰提示）。
+- 「查看密钥」抽屉打开时调用 `GET /api/system-credentials/{id}`（平台超管专属）获取完整 AppKey/AppSecret 并支持复制，抽屉内提示敏感信息妥善保管；「重置密钥」暂未开放（按钮置灰提示）。
 - 新建 / 编辑表单必填：系统编码（编辑不可改）、系统名称、所属区域、**系统管理员账号（adminExternalUserId）**；可选：管理员姓名（adminName）；另有状态（启用/停用）。
 - 后端在接入时自动为管理员账号创建该系统默认 `admin` 角色并授权（A 方案为通配权限 `*`）；前端只负责提交 `adminExternalUserId` / `adminName`。
 - **手动新建成功后弹出结果弹窗**：展示系统 AppKey + 完整 AppSecret，并提示「完整密钥仅显示一次，请立即复制保存」；关闭后列表只展示掩码。
@@ -237,6 +237,11 @@ cd telbank-rbac-front && npm run dev
 - `/api/me`、`/api/me/systems` 仅要求认证，不带 `X-System-Code`；其余 `/api/**` 均带 `X-System-Code: <currentSystemCode>`。
 - 切换系统（含平台超管）：更新 `currentSystemCode` + `localStorage` → 失效并重拉 `admin-session`（bootstrap 带新系统头）→ 所有数据查询按新 `systemId` 重取；角色权限页清空上一系统所选角色、资源管理页关闭关联弹窗，且授权关系查询仅在「所选角色属于当前系统角色列表」时才发起，杜绝切换瞬间用旧 roleId 跨系统查询。
 - mock 冒烟日志审计：CRM 阶段所有业务查询均为 `systemId=1` + `X-System-Code=crm`，无 `systemId=2`；superadmin 切到 ERP 后仅出现 `systemId=2` + `erp` 请求，权限树/角色/授权记录均为 ERP 数据，无 CRM 残留。
+
+## 查看与表单交互规范
+
+- **查看类交互统一使用右侧 Drawer（抽屉）**：授权记录的「详情」、系统接入的「查看密钥」、我的申请的「申请详情」均为 Drawer，宽度 560；不再使用 Modal 展示详情。
+- **表单/审核/关联类交互使用 Modal（弹窗）**：新建、编辑、审核、驳回、分配角色、关联权限码等仍为 Modal，宽度按字段量统一。
 
 ## 弹窗表单规范
 
@@ -348,7 +353,7 @@ dist/assets/index-DQn7UXyr.js   1,456.05 kB │ gzip: 459.13 kB
   - 请求审计：CRM 阶段所有权限相关查询均为 `systemId=1` + `X-System-Code=crm`；全程无跨系统 `systemId`、无空 systemId 的全系统查询（`/api/me`、`/api/me/systems` 为仅认证接口，按契约不带系统头）。
 - 系统接入页 A16 冒烟（mock 后端 + headless Chrome，零 console 错误）：
   - Tabs「业务系统 / 接入申请」正常切换，接入申请 Tab Badge 显示待审核数量（2 → 审核后 1）。
-  - 业务系统列表展示 AppKey（等宽可复制）与 AppSecret 掩码；「查看密钥」弹窗展示 AppKey + 掩码，「重置密钥」置灰不可用。
+  - 业务系统列表展示 AppKey（等宽可复制）与 AppSecret 掩码；「查看密钥」抽屉展示 AppKey + 掩码，「重置密钥」置灰不可用。
   - 手动新建系统后弹出结果弹窗，展示 `appKey` + 完整 `appSecret`（仅一次提示），关闭后列表新增该系统并只显示掩码。
   - 审核弹窗必填校验（空提交提示「请输入系统管理员账号」）、通过后结果弹窗展示新系统 AppKey/完整 AppSecret，列表状态刷新为「已开通（systemId=4）」、Badge 数量递减。
   - 驳回弹窗必填原因校验（空提交提示「请输入驳回原因」），驳回后「已驳回」筛选展示驳回原因。

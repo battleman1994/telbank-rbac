@@ -6,9 +6,9 @@ import {
   Button,
   Card,
   Descriptions,
+  Drawer,
   Flex,
   Input,
-  Modal,
   Space,
   Table,
   Tag,
@@ -213,12 +213,11 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
         </Flex>
       </Card>
 
-      <Modal
+      <Drawer
         title="审批授权详情"
+        size={560}
         open={detail !== null}
-        onCancel={() => setDetail(null)}
-        footer={<Button onClick={() => setDetail(null)}>关闭</Button>}
-        width={640}
+        onClose={() => setDetail(null)}
       >
         {detail ? (
           <Descriptions
@@ -240,7 +239,7 @@ function ApprovalGrantsContent({ systemId }: { systemId: number }) {
             ]}
           />
         ) : null}
-      </Modal>
+      </Drawer>
     </PageShell>
   )
 }
