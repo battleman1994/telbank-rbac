@@ -268,6 +268,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-29 17:15 | GitHub Actions `telbank-rbac CI`（commit `411b016`，查看详情统一抽屉） | **6 个 job 全部 success**：权限中心（JDK21）/ SDK v1（JDK17 → Java 8 字节码）/ SDK v2（JDK21）/ 前端（Node22）/ Windows 启动脚本 / JDK 8 运行时（[run 40848131986](https://github.com/battleman1994/telbank-rbac/actions/runs/40848131986)） |
 | 2026-10-29 17:14 | 表格「查看详情」交互统一为右侧抽屉（headless Chrome 1440×900，真实后端 + superadmin JWT） | 授权记录「详情」、系统接入「查看密钥」由 Modal 改为右侧 Drawer（宽度 560）；CDP 实测点击后 `.ant-drawer` 数量=1、标题分别为「审批授权详情」「密钥信息：财务系统」，页面无可见 `.ant-modal`；我的申请详情原本已是 Drawer；前端 `tsc -b && vite build` 通过（3262 modules） |
 | 2026-10-29 08:47 | GitHub Actions `telbank-rbac CI`（commit `6ac088a`，A23 声明式 Feign 重构） | **6 个 job 全部 success**：权限中心（JDK21）/ SDK v1（JDK17 → Java 8 字节码，Feign+OkHttp3）/ SDK v2（JDK21，Feign+OkHttp4+Jackson3 编解码器）/ 前端（Node22）/ Windows 启动脚本 / JDK 8 运行时（[run 40796230048](https://github.com/battleman1994/telbank-rbac/actions/runs/40796230048)） |
 | 2026-10-29 08:35 | 真实 MySQL（3307）+ API（8080）+ 两版示例业务系统（8081/8082/8091/8092）：`python3 scripts/acceptance.py --only 9.1b,9.1c` | **8/8 PASS，0 FAIL**：v1 SDK（Feign 声明式接口 + OkHttp 3.14.9）**4/4**、v2 SDK（Feign + OkHttp 4.12.0 + Jackson 3 编解码器）**4/4**；覆盖未映射接口无 token 放行、有权限 200、同用户跨系统 403、系统管理员 200；反解示例 fat jar 确认内嵌 `RbacOpenApiFeignApi`/`RbacSigningClient`/`RbacEnvelope`，无旧解码器 |
