@@ -1,6 +1,6 @@
 # telbank-rbac2-starter（JDK 21 / Spring Boot 4.x 版 SDK）
 
-供 **JDK 21 + Spring Boot 4.x** 业务系统接入的 RBAC SDK 变体。协议、配置键、类名、包名与 JDK 8 版 `telbank-rbac-starter` **完全一致**，仅实现层适配 Boot 4。
+供 **JDK 21 + Spring Boot 4.x** 业务系统接入的 RBAC SDK 变体。协议、配置键、类名、包名与 JDK 8 版 `telbank-rbac-starter` **完全一致**，仅实现层适配 Boot 4：两版均为声明式 Feign `interface` 接口——**一组开放接口一个 `interface` 类**（`RbacOpenApiFeignApi` / `RbacOnboardingFeignApi`，签名头由 `RbacSigningClient` 统一注入，业务层只收发 `RbacEnvelope<T>` POJO，A23）；本模块为 Feign 11.10 + OkHttp 4.12.0 + Jackson 3 编解码器，JDK 8 版为 Feign 11.10 + OkHttp 3.14.9 + Jackson 2。
 
 - 需求基线：[`docs/telbank-rbac.md`](../docs/telbank-rbac.md)
 - 接口契约（§0/§4/§7.9）：[`docs/impl/contracts.md`](../docs/impl/contracts.md)
@@ -62,7 +62,7 @@ v2.0 A 方案下 admin/superadmin 角色只授一条 `*` 权限，openapi user-p
 |---|---|---|
 | 自动配置 | `META-INF/spring.factories` | `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
 | Servlet | `javax.servlet` | `jakarta.servlet` |
-| HTTP 客户端 | Spring `RestTemplate` + Jackson 2 | Spring 7 `RestClient` + Jackson 3 |
+| HTTP 客户端（声明式 `interface` 接口） | Feign 11.10 + OkHttp 3.14.9 + Jackson 2 | Feign 11.10 + OkHttp 4.12.0 + Jackson 3 编解码器 |
 | JSON | Jackson 2 | Jackson 3（`tools.jackson`） |
 | 字节码 | Java 8（major=52） | Java 21（major=65） |
 

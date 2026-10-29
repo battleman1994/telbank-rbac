@@ -1737,10 +1737,10 @@ flowchart LR
 | 编译口径 | `maven.compiler.release=8`（构建机 JDK 17/21 均可） | `release=21` |
 | 字节码 | major 52 | major 65 |
 | Web 栈 | `javax.servlet`（Spring MVC 5） | `jakarta.servlet`（Spring MVC 7） |
-| HTTP 客户端 | Spring `RestTemplate` + Jackson 2 消息转换器（`MappingJackson2HttpMessageConverter`；A22，2026-10-28 移除 Feign 11/OkHttp 3.14.9） | Spring `RestClient` + JDK `HttpClient`（`JdkClientHttpRequestFactory`）+ Jackson 3 消息转换器（`JacksonJsonHttpMessageConverter`） |
+| HTTP 客户端 | 声明式 Feign 11.10（`feign-core` + `feign-jackson` + `feign-okhttp`）+ OkHttp 3.14.9；`RbacSigningClient` 在最终请求注入签名（A23，2026-10-29） | 声明式 Feign 11.10（`feign-core` + `feign-okhttp`）+ OkHttp 4.12.0 + v2 专属 `RbacJacksonEncoder`/`RbacJacksonDecoder`（Jackson 3）；`RbacSigningClient` 注入签名 |
 | JSON | Jackson 2（`com.fasterxml.jackson`） | Jackson 3（`tools.jackson`） |
 | 自动配置注册 | `META-INF/spring.factories`（`EnableAutoConfiguration`） | `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
-| 响应解码 | `RbacEnvelope<T>` 泛型 POJO + Jackson 2 消息转换器（RestTemplate typed `exchange`） | `RbacEnvelope<T>` 泛型 POJO + Jackson 3 消息转换器（RestClient typed `toEntity`） |
+| 响应解码 | `RbacEnvelope<T>` 泛型 POJO + `feign-jackson` `JacksonDecoder`（Feign 声明式接口） | `RbacEnvelope<T>` 泛型 POJO + v2 专属 `RbacJacksonDecoder`（Jackson 3） |
 | Redis 客户端 | spring-data-redis 2.x / Lettuce 6 | spring-data-redis 4.x / Lettuce 7 |
 | 包名/类名 | `com.telbank.rbac.sdk.**` | 完全相同 |
 | 单测 | 121 个（JDK 17 构建机上 `--release 8` 通过） | 122 个（JDK 21） |
@@ -1749,9 +1749,10 @@ flowchart LR
 **同协议约束**：两版对外行为（OpenAPI 调用、签名串、Redis 频道/消息、`/rbac/me/*` 返回结构、配置键名与默认值）逐字节一致；
 差异只存在于**实现层**。因此权限中心不需要感知业务系统接入的是哪一版；SDK 的能力/边界（§13）对两版同样成立。
 
-两版差异仅集中在 6 个类（`diff -rq` 结果）：`RbacSdkAutoConfiguration`、`client/HttpRbacOpenApiClient`、
-`filter/RbacPermissionFilter`、`notify/RbacChangeSubscriber`、`util/RbacRequestUtils`、`web/RbacController`
-（仅 jakarta/javax、Jackson 2/3 与 Spring HTTP 客户端（RestTemplate/RestClient）差异；两版均以 `RbacEnvelope<T>` POJO 收发）。
+两版差异共 8 个文件（`diff -rq` 结果）：6 个共有但实现不同的类 `RbacSdkAutoConfiguration`、`client/HttpRbacOpenApiClient`、
+`filter/RbacPermissionFilter`、`notify/RbacChangeSubscriber`、`util/RbacRequestUtils`、`web/RbacController`，
+加 v2 专属 2 个 `client/RbacJacksonEncoder`、`client/RbacJacksonDecoder`
+（仅 jakarta/javax、Jackson 2/3 与 Feign JSON 编解码器差异；两版均为 `RbacOpenApiFeignApi` 声明式接口 + `RbacSigningClient` 注入签名 + `RbacEnvelope<T>` POJO）。
 
 ---
 
@@ -1765,7 +1766,7 @@ flowchart LR
 |---|---|---|---|
 | `config/RbacSdkProperties` | `@ConfigurationProperties("rbac-sdk")` | 总是 | 配置模型 + 启动期校验 |
 | `client/RbacSigner` | 普通 Bean | 总是 | HMAC-SHA256 签名串生成 |
-| `client/RbacOpenApiClient` | 内部开放接口 | 总是 | 调权限中心 OpenAPI（Spring RestTemplate / RestClient 实现，非业务编程 API） |
+| `client/RbacOpenApiClient` | 内部开放接口 | 总是 | 调权限中心 OpenAPI（声明式 Feign 接口实现，非业务编程 API） |
 | `cache/RbacMappingCache` | 普通 Bean | 总是 | 接口映射快照 + 匹配 |
 | `cache/RbacPageActionCache` | 普通 Bean | 总是 | 页面元素元数据快照 |
 | `cache/RbacUserPermissionCache` | 普通 Bean | 总是 | 用户权限集缓存 + 时效/时钟偏移判定 |
@@ -2334,7 +2335,7 @@ signature = a156b38fb5f966beaf5fc1ce0222990a8dd8ca63b6f07aa525b643ae758a1425
 ```mermaid
 sequenceDiagram
     autonumber
-    participant SDK as SDK 客户端（Spring RestTemplate / RestClient）
+    participant SDK as SDK 客户端（声明式 Feign 接口）
     participant SG as RbacSigner
     participant API as 权限中心 /openapi/sdk/**
 
@@ -2344,7 +2345,7 @@ sequenceDiagram
     SDK->>API: 请求 + X-App-Key/X-Timestamp/X-Nonce/X-Signature
     alt 2xx
         API-->>SDK: 业务数据（JSON）
-        SDK->>SDK: 反序列化 RbacEnvelope<T>（Jackson，POJO）
+        SDK->>SDK: 解码为 RbacEnvelope<T> POJO（Feign Jackson 解码器）
     else 4xx/5xx
         API-->>SDK: 错误响应
         SDK-->>SDK: 抛 RbacRemoteException（含 status/code）
@@ -2353,12 +2354,13 @@ sequenceDiagram
 
 实现差异（协议不变）：
 
-- v1 `client/HttpRbacOpenApiClient`：`RestTemplate`（`SimpleClientHttpRequestFactory`）
-  `exchange(url, method, HttpEntity<byte[]>, ParameterizedTypeReference<RbacEnvelope<T>>)`，Jackson 2 消息转换器反序列化；超时 3s（connect）/ 8s（read）；
-- v2 `client/HttpRbacOpenApiClient`：`RestClient.builder().requestFactory(new JdkClientHttpRequestFactory(httpClient))`
-  `retrieve().toEntity(ParameterizedTypeReference<RbacEnvelope<T>>)`，Jackson 3 消息转换器反序列化；超时同为 3s/8s；
-- 签名所需的请求 JSON 序列化集中在传输层；业务层只处理 POJO；
-- 两版都统一 `User-Agent: telbank-rbac-sdk/{appVersion}`、`Accept: application/json`、`Content-Type: application/json;charset=UTF-8`；
+- 接口声明：`client/RbacOpenApiFeignApi`（mappings/user-permissions/page-actions/connection/endpoints-sync/user-systems 共 6 个开放接口，`@RequestLine`/`@Param`/`@Headers` 声明）+ `client/RbacOnboardingFeignApi`（onboarding 上报，独立 AppKey 签名）；
+- v1 `client/HttpRbacOpenApiClient`：`Feign.builder().client(new RbacSigningClient(okHttpClient, signer, appVersion))`
+  `.encoder(new JacksonEncoder(...)).decoder(new JacksonDecoder(...))`，OkHttp 3.14.9、超时 3s（connect）/ 8s（read）；
+- v2 `client/HttpRbacOpenApiClient`：同款声明式 Feign 组装，编解码器换为 v2 专属 `RbacJacksonEncoder`/`RbacJacksonDecoder`（Jackson 3），OkHttp 4.12.0、超时同为 3s/8s；
+- 两版均由 `RbacSigningClient`（Feign `Client` 装饰器）在 Feign 完成 URL/body 编码后的最终请求上注入签名头；响应由 Feign Jackson 解码器反序列化为 `RbacEnvelope<T>`，`HttpRbacOpenApiClient` 只做代理调用/解包 `data`/异常映射；
+- 业务层只调用接口方法、只收发 POJO；不再手工拼 URL / 构造 `Request` / 处理字节流；
+- 两版都统一 `User-Agent: telbank-rbac-sdk/{appVersion}`、`Accept: application/json`；POST 由 `@Headers("Content-Type: application/json")` 声明请求体类型；
 - 非 2xx/网络异常统一抛 `client/RbacRemoteException`，调用方（缓存刷新/订阅/上报）各自捕获降级，不向业务线程扩散。
 
 #### 9.3 开放接口清单（SDK 消费）
@@ -3174,7 +3176,7 @@ flowchart TB
 | 2/5 SDK v1 | `build-sdk.sh`（JDK 17 工具链）；字节码 `major=52` |
 | 3/5 SDK v2 | `mvn -pl telbank-rbac2-starter clean test`；字节码 `major=65` |
 | 4/5 前端 | nvm Node 22；`npm run build`；`dist/index.html` 存在；`src` 不得再引用 `expiring-grants` |
-| 5/5 产物核对 | 两个 SDK 自动配置注册；`db/manual` 存在、SQL ≥3 且无 Flyway；04–11 迁移与 `PermissionMatcher`/`ManagementContextService`/`PlatformAdminService`/无 `UserSystemController`；MyBatis-Plus（无 JPA/Hibernate）；A18 凭据页/菜单/Controller；A20 申请页/API/审批 Controller/Service/mock 脚本；A21 `11_time_template.sql`/`/api/time-templates`/`RoleTimeWindowService`/时间模板页/菜单更名/契约 v3.0；**架构文档**（`docs/architecture.md` 存在、5 个部分、Mermaid 图 ≥30 张、代码围栏成对、无 `_drafts` 残留、文档总览已索引）；文档与脚本齐备且可执行；3 个平台启动脚本自包含（无分发器/helper）、macOS/Linux `--help` 正常；**A22 SDK HTTP 客户端**（RestTemplate/RestClient + `RbacEnvelope<T>`；无 Feign/OkHttp/字节级解码器） |
+| 5/5 产物核对 | 两个 SDK 自动配置注册；`db/manual` 存在、SQL ≥3 且无 Flyway；04–11 迁移与 `PermissionMatcher`/`ManagementContextService`/`PlatformAdminService`/无 `UserSystemController`；MyBatis-Plus（无 JPA/Hibernate）；A18 凭据页/菜单/Controller；A20 申请页/API/审批 Controller/Service/mock 脚本；A21 `11_time_template.sql`/`/api/time-templates`/`RoleTimeWindowService`/时间模板页/菜单更名/契约 v3.0；**架构文档**（`docs/architecture.md` 存在、5 个部分、Mermaid 图 ≥30 张、代码围栏成对、无 `_drafts` 残留、文档总览已索引）；文档与脚本齐备且可执行；3 个平台启动脚本自包含（无分发器/helper）、macOS/Linux `--help` 正常；**A23 SDK 声明式 Feign 接口**（`RbacOpenApiFeignApi`/`RbacOnboardingFeignApi` + `RbacSigningClient` + `RbacEnvelope<T>`；无旧字节级解码器） |
 
 用法：`./scripts/verify-all.sh`（可选 `RBAC_M2_REPO=/tmp/rbac-m2repo` 隔离 Maven 本地仓库）。**18 项全过**为合并前最低门禁（见 README §11 验证记录）。第 18 项为架构文档门禁；本文 41 张 Mermaid 图已用 Mermaid CLI 11.17 逐图渲染验证（failures=0）。
 

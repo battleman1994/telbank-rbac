@@ -88,19 +88,27 @@ ok "前端类型检查 + 构建通过，dist 产物存在"
 
 # ---------------------------------------------------------------- 5) 产物核对
 say "5/5 产物核对"
-# A22：SDK HTTP 客户端统一为 Spring 官方客户端 + POJO（移除 Feign/OkHttp 与字节级解码器）
-grep -qE 'openfeign|com\.squareup\.okhttp3' telbank-rbac-starter/pom.xml \
-  && die "JDK 8 版 SDK 仍依赖 Feign/OkHttp（A22 已改为 Spring RestTemplate）"
-grep -q 'RestTemplate' telbank-rbac-starter/src/main/java/com/telbank/rbac/sdk/client/HttpRbacOpenApiClient.java \
-  || die "JDK 8 版 SDK 未使用 Spring RestTemplate"
-grep -q 'RbacEnvelope' telbank-rbac2-starter/src/main/java/com/telbank/rbac/sdk/client/HttpRbacOpenApiClient.java \
-  || die "JDK 21 版 SDK 未使用 typed RbacEnvelope<T>"
-if grep -rq 'RbacFeignDecoder\|RbacResponseDecoder' telbank-rbac-starter/src telbank-rbac2-starter/src; then
-  die "SDK 仍存在字节级响应解码器（A22 已改为 POJO 解码）"
+# A23：SDK 开放接口为声明式 Feign 接口（一个 interface 类声明一组 API，签名由 Feign Client 装饰器注入）
+grep -q 'feign-core' telbank-rbac-starter/pom.xml \
+  || die "JDK 8 版 SDK 未使用 Feign 声明式客户端（缺少 feign-core）"
+grep -q 'feign-core' telbank-rbac2-starter/pom.xml \
+  || die "JDK 21 版 SDK 未使用 Feign 声明式客户端（缺少 feign-core）"
+for module in telbank-rbac-starter telbank-rbac2-starter; do
+  for f in RbacOpenApiFeignApi RbacOnboardingFeignApi RbacSigningClient; do
+    [ -f "$module/src/main/java/com/telbank/rbac/sdk/client/$f.java" ] \
+      || die "$module 缺少 Feign 基础设施类 $f"
+  done
+  grep -q 'RbacOpenApiFeignApi' \
+    "$module/src/main/java/com/telbank/rbac/sdk/client/HttpRbacOpenApiClient.java" \
+    || die "$module 客户端未通过 Feign 接口调用"
+done
+if grep -rq 'RestTemplate\|RestClient\|RbacFeignDecoder\|RbacResponseDecoder' \
+    telbank-rbac-starter/src telbank-rbac2-starter/src; then
+  die "SDK 仍存在 RestTemplate/RestClient 或旧解码器（A23 已改为声明式 Feign 接口）"
 fi
 grep -q 'RbacSdkAutoConfiguration' telbank-rbac-starter/src/main/resources/META-INF/spring.factories \
   || die "JDK 8 版 SDK 的 spring.factories 未注册 RbacSdkAutoConfiguration"
-ok "SDK（JDK 8 版）spring.factories 自动配置 + Spring RestTemplate HTTP 客户端存在（A22）"
+ok "SDK（JDK 8 版）spring.factories 自动配置 + 声明式 Feign 接口存在（A23）"
 grep -q 'RbacSdkAutoConfiguration' \
   telbank-rbac2-starter/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports \
   || die "JDK 21 版 SDK 的 AutoConfiguration.imports 未注册 RbacSdkAutoConfiguration"

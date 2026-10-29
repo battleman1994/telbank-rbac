@@ -24,12 +24,12 @@
 4. 验收记录只追加不删除；已完成的历史限制项移入「已完成的补验」，不要从记录里抹掉。
 5. 版本/数量类表述（表数量、接口数量、测试数量、构件版本）必须来自实际构建或代码，禁止手写估计值。
 
-## 3. 当前文档状态（2026-10-28）
+## 3. 当前文档状态（2026-10-29）
 
-- 需求基线：`docs/telbank-rbac.md`（含附录 A 实现修订记录，22 项偏差/新增口径）
+- 需求基线：`docs/telbank-rbac.md`（含附录 A 实现修订记录，23 项偏差/新增口径）
 - 接口契约：`docs/impl/contracts.md` v3.0
 - 验收状态：第 9 节条目均有证据（实测 / 单元测试 / 代码级说明）；SDK JDK 8 运行时兼容由 GitHub Actions 实测；真实 Redis Pub/Sub 已本机联调；**v2.0 系统隔离重构（A11）**：数据驱动超管（`superadmin`）、系统由有效角色推导、系统接入仅超管、用户-系统开通已移除；**v2.7 A20**：业务用户临时权限申请（申请单/审批回调/外链、mock 审批脚本）与角色授权 `*` 过滤；**v3.0 A21**：角色时间模板（全局模板、角色绑定、审批/分配按模板算窗口、角色-权限永久），验收 §9.17 改写 + 新增 §9.18，已完成并通过 159/159
-- 已验证：权限中心 **219 单测**（MyBatis-Plus + A16/A17/A18/A20/A21）、SDK（JDK 8）**121** 单测、SDK（JDK 21）**122** 单测、A21 全量 API 验收 **159/159**（v11 全新库 01→11，含两个 SDK 端到端 4/4+4/4；A21 §9.17 35/35 + §9.18 24/24）、前端构建、JDK 8 运行时 CI、**手动 SQL 初始化（A10，已移除 Flyway）**、权限时效演示（1 分钟过期）、真实浏览器 headless 页面联调（时间模板/角色权限/用户角色/我的申请）；**A22 SDK HTTP 客户端简化**：JDK 8 版 Feign+OkHttp → Spring `RestTemplate`，JDK 21 版 `RestClient` 改 typed `RbacEnvelope<T>`，两版业务层只收发 POJO（v1 121、v2 122 单测；verify-all 18 项；真实 MySQL+API 的 SDK e2e 8/8）
+- 已验证：权限中心 **219 单测**（MyBatis-Plus + A16/A17/A18/A20/A21）、SDK（JDK 8）**121** 单测、SDK（JDK 21）**122** 单测、A21 全量 API 验收 **159/159**（v11 全新库 01→11，含两个 SDK 端到端 4/4+4/4；A21 §9.17 35/35 + §9.18 24/24）、前端构建、JDK 8 运行时 CI、**手动 SQL 初始化（A10，已移除 Flyway）**、权限时效演示（1 分钟过期）、真实浏览器 headless 页面联调（时间模板/角色权限/用户角色/我的申请）；**A23 SDK 声明式 Feign 接口**：一组开放接口由一个 `RbacOpenApiFeignApi` interface 类声明（+ onboarding 独立接口，`RbacSigningClient` 注入签名，`RbacEnvelope<T>` POJO 解包），v1 Feign 11.10 + OkHttp 3.14.9 / v2 Feign 11.10 + OkHttp 4.12.0 + Jackson 3 编解码器（v1 121、v2 122 单测；verify-all 18 项）
 - 待补：生产 HTTPS 链路的真机验证（本机验收为 HTTP demo）；A21 已执行 159/159，verify-all 18 项（含架构文档检查）
 - 架构文档：`docs/architecture.md`（2026-10-25 新增，5 部分 / 41 张 Mermaid 图；已用 Mermaid CLI 11.17 逐图渲染通过 failures=0；已纳入 `verify-all.sh` 门禁，18 项全过）
 
@@ -37,7 +37,8 @@
 
 | 日期 | 修订 |
 |---|---|
-| 2026-10-28 | **A22 SDK HTTP 客户端简化**：JDK 8 版 SDK 由 Feign 11 + OkHttp 3 改为 Spring `RestTemplate` + Jackson 2 消息转换器（移除 feign-core/feign-okhttp/okhttp 依赖与 `RbacFeignDecoder`）；JDK 21 版保持 Spring `RestClient` 并改为 typed `ParameterizedTypeReference<RbacEnvelope<T>>` 反序列化（移除 `RbacResponseDecoder`/手动字节读取）；两版业务层只收发 POJO，签名规则/协议/配置键/公开 API 不变；需求基线附录 A 新增 A22，契约、README、两个 SDK README、架构文档同步；SDK 单测 v1 121/121、v2 122/122，verify-all 18 项全过 |
+| 2026-10-29 | **A23 SDK 声明式 Feign 接口（取代 A22）**：两版 SDK 的开放接口统一由一个 interface 类声明（`RbacOpenApiFeignApi`：mappings/user-permissions/page-actions/connection/endpoints-sync/user-systems；`RbacOnboardingFeignApi`：onboarding 上报），`@RequestLine/@Param/@Headers` 描述协议；`RbacSigningClient`（Feign Client 装饰器）在最终请求上注入 HMAC 签名头；响应由 Feign Jackson 解码器转为 `RbacEnvelope<T>` 泛型 POJO；JDK 8 版依赖 feign-core/feign-jackson/feign-okhttp 11.10 + OkHttp 3.14.9（Jackson 2），JDK 21 版依赖 feign-core/feign-okhttp 11.10 + OkHttp 4.12.0 + 自带 Jackson 3 编解码器；删除 RestTemplate/RestClient 方案与旧解码器；协议/签名/配置键/公开 API 不变；SDK 单测 v1 121/121、v2 122/122 |
+| 2026-10-28 | **A22 SDK HTTP 客户端简化（已被 A23 取代）**：JDK 8 版 SDK 由 Feign 11 + OkHttp 3 改为 Spring `RestTemplate` + Jackson 2 消息转换器（移除 feign-core/feign-okhttp/okhttp 依赖与 `RbacFeignDecoder`）；JDK 21 版保持 Spring `RestClient` 并改为 typed `ParameterizedTypeReference<RbacEnvelope<T>>` 反序列化（移除 `RbacResponseDecoder`/手动字节读取）；两版业务层只收发 POJO，签名规则/协议/配置键/公开 API 不变；需求基线附录 A 新增 A22，契约、README、两个 SDK README、架构文档同步；SDK 单测 v1 121/121、v2 122/122，verify-all 18 项全过 |
 | 2026-10-28 | **架构文档**：新增 [`docs/architecture.md`](architecture.md)（5 部分 / 41 张 Mermaid 图，覆盖系统全景、后端运行时、43 个 `/api` + 9 个 `/openapi` 接口、SDK、前端、启动/部署/CI 与运维；41 张图已用 Mermaid CLI 11.17 逐图渲染通过 failures=0）；`verify-all.sh` 新增架构文档门禁（5 部分 / 图数下限 / 围栏闭合 / 草稿清理 / 文档总览索引），一键验证 **18 项全过**（2026-10-26 08:40、2026-10-28 13:48 两次；后端 219、SDK v1 121、SDK v2 122、前端构建），README 文档地图与验证记录同步 |
 | 2026-10-25 | **v3.0 角色时间模板（A21）**：时间语义上移到「用户-角色」——新增全局 `sys_time_template`（迁移 11，预置夜间/全天模板）、角色绑定 `time_template_id`；审批/直接分配按模板计算绝对窗口（多角色不同、申请级包络），角色-权限改为永久（删逐项时效）；自助申请/审批 decision 不再传窗口；新增「时间模板」页（平台超管）、菜单更名「角色权限」「用户角色」；契约升 v3.0，验收 §9.17 改写 + 新增 §9.18，verify-all 加 11 迁移/模板页面检查；后端 219 单测、全量验收 159/159、verify-all 17 项 |
 | 2026-10-25 | **v2.7 业务用户临时权限申请（A20）**：新增 `sys_access_application` / `sys_access_application_role`（迁移 10）、自助申请/选项/详情 API、外部审批 decision 回调（AppKey、行锁、幂等、多角色原子授权）、顶级「我的申请」、`scripts/mock-access-approval.py`；申请按统一连续窗口写 `sys_user_role`；角色授权树过滤 `*`，非 admin 通配授权后端拒绝；契约升 v2.7，验收新增 §9.17（124/124），后端 192 单测 |

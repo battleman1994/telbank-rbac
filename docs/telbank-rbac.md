@@ -2,7 +2,7 @@
 
 > 本文档为最终执行基线。所有技术栈和需求范围已拍板。权限中心为独立 JDK 21 进程；SDK 以 JDK 8 字节码编译，运行于业务系统后端；两者通过 HTTPS 和区域化 Redis Pub/Sub 通信，运行时完全隔离。业务系统前端只调业务系统后端或 SDK 自动注册的 `/rbac/me/*`，不直接访问权限中心。本文档不包含 OAuth2.0 服务间调用。
 >
-> **实现修订（2026-10-24，A22 于 2026-10-28 追加）**：交付阶段确认的 22 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
+> **实现修订（2026-10-24，A22 于 2026-10-28、A23 于 2026-10-29 追加）**：交付阶段确认的 23 项偏差/新增口径见文末「附录 A 实现修订记录」，与 `docs/impl/contracts.md` §9、`README.md` §9 保持一致；原始需求条目保留以保持可追溯。
 
 **工程名称**：`telbank-rbac` 权限管理系统（多系统 RBAC 权限管理平台）
 
@@ -78,7 +78,7 @@
 │  │  - 端点扫描上报                                             │  │
 │  │  - 映射表缓存、用户权限集缓存（带时效）、页面操作元数据缓存     │  │
 │  │  - Redis Pub/Sub 订阅、兜底短轮询                            │  │
-│  │  - Spring RestTemplate 客户端、AppKey + HMAC-SHA256 签名     │  │
+│  │  - Feign + OkHttp 声明式客户端、AppKey + HMAC-SHA256 签名    │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └───────────────┬─────────────────────────────┬───────────────────┘
                 │ HTTPS + 签名                 │ 订阅
@@ -179,7 +179,7 @@
 | JDK 字节码目标 | **Java 8**（`--release 8`） | 业务系统为 JDK 8 + Spring Boot 2.x |
 | 目标框架 | **Spring Boot 2.7.x** | 使用 `META-INF/spring.factories` 单轨自动配置；不兼容 Boot 3/4 |
 | Servlet | **Servlet 4.0**（Tomcat 9） | 拦截器用 `OncePerRequestFilter` |
-| HTTP 客户端 | **Spring 官方 HTTP 客户端** | JDK 8 版 `RestTemplate` + Jackson 2 `MappingJackson2HttpMessageConverter`；JDK 21 版 Spring 7 `RestClient`；A22 后不再依赖 Feign/OkHttp |
+| HTTP 客户端 | **Feign + OkHttp（声明式接口）** | v1：Feign 11.10（`feign-core`/`feign-jackson`/`feign-okhttp`）+ OkHttp 3.14.9（Jackson 2 编解码）；v2：Feign 11.10（`feign-core`/`feign-okhttp`）+ OkHttp 4.12.0 + 自带 `RbacJacksonEncoder`/`RbacJacksonDecoder`（Jackson 3）；开放接口声明在 `RbacOpenApiFeignApi`/`RbacOnboardingFeignApi`，签名头由 `RbacSigningClient` 注入（A23，取代 A22 的 RestTemplate/RestClient 方案） |
 | Redis 客户端 | Jedis 或 Lettuce（JDK 8 兼容版本） | 订阅 Redis Pub/Sub |
 | 禁止使用 | `var`、`record`、`List.of()`、文本块等 Java 9+ 特性 | 全模块 `--release 8` 编译 |
 
@@ -495,7 +495,7 @@ Header: X-Signature: HMAC-SHA256(...)
 - **可用性优先**：映射表未命中默认放行；保留 `deny` 配置项。
 - **区域化消息通道**：SDK 自动获取本区 Redis 配置。
 - **全链路加密**：HTTPS + AppKey + HMAC-SHA256。
-- **HTTP 客户端用 Spring 官方 HTTP 客户端**：JDK 8 版 `RestTemplate` + Jackson 2 消息转换器，JDK 21 版 Spring 7 `RestClient`；业务层只收发 POJO，HTTP 编解码/状态码交给 Spring（A22，不再依赖 Feign/OkHttp）。
+- **HTTP 客户端用 Feign + OkHttp 声明式接口**：一个 interface（`RbacOpenApiFeignApi`/`RbacOnboardingFeignApi`）声明全部开放接口，签名由 `RbacSigningClient` 装饰器统一注入，响应经 Jackson 解码为 `RbacEnvelope<T>` POJO（A23，取代 A22 的 RestTemplate/RestClient 方案）。
 
 ### 6.2 接入方式
 
@@ -918,7 +918,7 @@ interface AppState {
 ## 8. 交付物
 
 1. **权限中心后端源码**（`telbank-rbac-api`）：Spring Boot 4.1.x + JDK 21，含 Flyway 手动配置、OAuth2 Resource Server 配置、`@perm` Bean、Caffeine + Redis 缓存、区域化 Redis Pub/Sub、自动收回定时任务、SDK 开放接口、审批回调接口、AppKey 签名校验。
-2. **SDK 源码**（`telbank-rbac-starter`）：JDK 8 字节码，Spring Boot 2.7.x `spring.factories` 自动配置，含 `RbacPermissionFilter`、`RbacController`、`RbacClient`、`@RbacPermission`、端点扫描、全量上报、映射表缓存、用户权限集缓存（带时效 + 时钟偏移）、页面操作元数据缓存、Redis Pub/Sub 订阅、降级短轮询、Spring RestTemplate 客户端（JDK 8 版；JDK 21 版用 Spring RestClient）、AppKey 签名。只保留 `rbac-sdk.enabled` 总开关。
+2. **SDK 源码**（`telbank-rbac-starter`）：JDK 8 字节码，Spring Boot 2.7.x `spring.factories` 自动配置，含 `RbacPermissionFilter`、`RbacController`、`RbacClient`、`@RbacPermission`、端点扫描、全量上报、映射表缓存、用户权限集缓存（带时效 + 时钟偏移）、页面操作元数据缓存、Redis Pub/Sub 订阅、降级短轮询、Feign 声明式开放接口客户端（`RbacOpenApiFeignApi`/`RbacOnboardingFeignApi` + `RbacSigningClient` 注入签名）、AppKey 签名。只保留 `rbac-sdk.enabled` 总开关。
 3. **权限中心管理前端源码**（`telbank-rbac-front`）：React 19.2 + Vite 8 + TypeScript + Ant Design 6 + TanStack Query v5 + Zustand v5 + 原生 fetch，含系统管理、角色管理、权限资源管理、角色-权限授权、用户-角色分配（含时效）、用户-系统开通、页面操作元数据管理、SDK 端点上报列表、审批授权记录、即将到期授权列表。
 4. **数据库脚本**：Flyway 管理，含示例系统（CRM/ERP，分属不同 region）、角色、权限码（含 `method`/`api_pattern` 示例和 `is_public` 示例）、页面操作元数据、示例授权记录（含永久和临时授权）、平台超管配置示例。
 5. **README**：环境要求（JDK 21、JDK 8、Node 22.22+、MySQL 8.0+、Redis 多区域部署）、JWT 校验配置、AppKey/AppSecret 配置、启动步骤、SDK 接入示例、审批回调示例、验收操作步骤。
@@ -1062,7 +1062,7 @@ interface AppState {
 | Q24 | SDK 调权限中心开放接口用 AppKey + HMAC-SHA256 签名，全链路 HTTPS |
 | Q25 | 不纳入 OAuth2.0 服务间调用 |
 | Q26 | 不使用 `spring-boot-starter-flyway`，Flyway 手动配置 |
-| Q27 | SDK 使用 Spring 官方 HTTP 客户端（JDK 8 版 `RestTemplate`、JDK 21 版 `RestClient`，A22 起不再依赖 Feign/OkHttp）；前端使用原生 fetch，不用 Axios |
+| Q27 | SDK 使用 Feign + OkHttp（声明式 Feign 接口 `RbacOpenApiFeignApi`/`RbacOnboardingFeignApi`，A23）；前端使用原生 fetch，不用 Axios |
 | Q28 | 权限支持时效性，审批系统回调授权，到期自动收回 |
 | Q29 | 权限中心不管理菜单结构；菜单和路由由业务系统前端维护 |
 | Q30 | 业务系统前端只调业务系统后端或 SDK 自动注册的 `/rbac/me/*` |
@@ -1100,7 +1100,8 @@ interface AppState {
 | A13 | §3.1/§4 持久层技术选型 | **JPA/Hibernate → MyBatis-Plus 3.5.17**（Boot4 starter + jsqlparser）：实体改 `@TableName/@TableId`、删除 Spring Data Repository、改 `BaseMapper` + 注解 SQL、MP `Page` 分页；数据库表结构/REST 契约不变 | 用户要求；契约 v2.2 §2、README §11 |
 | A20 | §5 权限申请与审批 | **业务用户临时权限申请**：新增顶级「我的申请」（所有登录用户，不占管理权限），仅能申请当前系统内已有有效角色之外的非 `admin` 角色；申请单 `RA-...` + PENDING/APPROVED/REJECTED，点击单号跳外部审批 URL；新增 `sys_access_application` / `sys_access_application_role`（迁移 10），自助 API 不要求管理权限；外部审批通过/驳回走 `POST /openapi/approval/access-applications/decision`（审批 AppKey、行锁、多角色原子、同窗口幂等），批准按统一连续有效期写 `sys_user_role`，不新增用户-权限表；权限中心不实现审批流，提供 `scripts/mock-access-approval.py` 模拟；角色授权树过滤 `*`，非 admin 手工授 `*` 后端 400 | 用户确认；契约 v2.7 §5.1/§8.1/§10、README §11 |
 | A21 | §5 权限时效模型 | **角色时间模板**：时间语义从「角色-权限」上移到「用户-角色」。新增全局 `sys_time_template`（迁移 11，预置「夜间窗口」「全天窗口」演示模板，不自动绑定），`sys_role` 增加 `time_template_id`（空=永久角色）；审批通过/管理员直接分配时按角色模板计算绝对窗口写入 `sys_user_role`（多角色可不同，申请单级取包络），角色-权限改为永久（删除 `sys_role_permission.valid_from/valid_until`）；自助申请与审批 decision 不再接收/回传窗口字段，旧审批 `grant` 对绑定模板的角色以模板为准；新增平台超管专属「时间模板」页，菜单「角色授权→角色权限」「用户授权→用户角色」，角色权限页去掉逐项时效、用户角色/我的申请去掉日期选择 | 用户确认；契约 v3.0 §3.3.1/§3.5/§3.6/§4.3/§5/§5.1/§10、README §11 |
-| A22 | §3.2/§4 SDK HTTP 客户端 | **简化 SDK HTTP 客户端**：JDK 8 版由 Feign 11 + OkHttp 3 改为 Spring `RestTemplate` + Jackson 2 消息转换器（移除 feign-core/feign-okhttp/okhttp 依赖与 `RbacFeignDecoder`）；JDK 21 版保持 Spring `RestClient` 并改为 typed `ParameterizedTypeReference<RbacEnvelope<T>>` 反序列化（移除 `RbacResponseDecoder` 与手写字节读取）；两版业务层只收发 POJO，HTTP 编解码/状态码交给 Spring，仅签名所需的请求 JSON 序列化保留在传输层一处；协议、签名规则、配置键、公开 API 与两版一致性不变 | 用户要求（2026-10-28，去 byte[] 级编解码复杂度）；README §11、SDK README、docs/architecture.md |
+| A22 | §3.2/§4 SDK HTTP 客户端 | **简化 SDK HTTP 客户端**：JDK 8 版由 Feign 11 + OkHttp 3 改为 Spring `RestTemplate` + Jackson 2 消息转换器（移除 feign-core/feign-okhttp/okhttp 依赖与 `RbacFeignDecoder`）；JDK 21 版保持 Spring `RestClient` 并改为 typed `ParameterizedTypeReference<RbacEnvelope<T>>` 反序列化（移除 `RbacResponseDecoder` 与手写字节读取）；两版业务层只收发 POJO，HTTP 编解码/状态码交给 Spring，仅签名所需的请求 JSON 序列化保留在传输层一处；协议、签名规则、配置键、公开 API 与两版一致性不变 | 用户要求（2026-10-28，去 byte[] 级编解码复杂度）；README §11、SDK README、docs/architecture.md（已被 A23 取代） |
+| A23 | §3.2/§6.1/§8 SDK HTTP 客户端 | **声明式 Feign 接口（取代 A22 的 RestTemplate/RestClient 方案）**：两版 SDK 的开放接口改为 interface 声明——`RbacOpenApiFeignApi`（mappings/user-permissions/page-actions/connection/endpoints-sync/user-systems，用 `@RequestLine`/`@Param`/`@Headers` 描述协议）与 `RbacOnboardingFeignApi`（onboarding 上报，独立 AppKey 签名）；`RbacSigningClient`（Feign `Client` 装饰器）在最终请求上注入 `X-App-Key`/`X-Timestamp`/`X-Nonce`/`X-Signature` 与 Accept/User-Agent；业务方法只收发 POJO，响应经 Feign Jackson 解码器反序列化为 `RbacEnvelope<T>` 泛型 POJO，`HttpRbacOpenApiClient` 只做代理调用 + 解包 `data` + `RbacRemoteException` 映射；依赖：v1 `feign-core`/`feign-jackson`/`feign-okhttp` 11.10 + OkHttp 3.14.9（Jackson 2，恢复需求基线 Feign+OkHttp），v2 `feign-core`/`feign-okhttp` 11.10 + OkHttp 4.12.0 + 自带 `RbacJacksonEncoder`/`RbacJacksonDecoder`（Jackson 3）；已删除 `RbacFeignDecoder`/`RbacResponseDecoder` 与 RestTemplate/RestClient 实现；协议、签名规则、配置键、公开 API 与两版一致性不变 | 用户要求（2026-10-29，恢复需求基线 Feign+OkHttp，改声明式接口去手写 HTTP/字节解码）；README §11、SDK README、docs/architecture.md |
 | A12 | §2/§5 权限粒度与管理上下文 | **A 方案通配权限**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再逐条短码；**严格上下文**：`06` 清理 admin 角色残留业务授权（角色授权只剩一条 `*`，公共权限除外）；所有权限/角色/资源查询限定当前 `X-System-Code` 系统，列表缺省 systemId 收敛上下文、by-id 校验实体 systemId，平台超管也禁止单请求跨系统 | 用户确认；契约 v2.1 §1.5/§3/§10、README §1.1 |
 | A11 | §2/§5 权限管理模型：系统隔离、超管定义、用户-系统开通未明确 | **系统作为隔离边界**：系统管理员只管理本系统角色/权限，跨系统 403；平台超管改为**数据驱动**（平台系统 `platform` + `super-admin` + `platform:admin`，种子账号 `superadmin`），删除配置文件；**删除 `sys_user_system` 与用户-系统开通**，系统访问由有效角色推导；管理上下文 `X-System-Code=当前业务系统`；管理权限码改为系统内短码（`role:manage` 等）；**系统接入仅超管**且必须录入系统管理员，服务端自动创建默认 `admin` 角色 + 6 个短权限码并授权；菜单重构为「权限管理」组 + 顶级「系统接入」 | 用户确认的新设计（v2.0，取代 A8）；契约 v2.0 §1.5/§3/§10、README §1.1 |
 
