@@ -270,6 +270,7 @@ cd telbank-rbac-front && npm install --no-audit --no-fund && npm run build
 
 | 时间（2026-10-24 +08） | 命令 | 结果 |
 |---|---|---|
+| 2026-10-30 15:31 | GitHub Actions `telbank-rbac CI`（commit `f49a7ad`，A24 standalone 模式） | **6 个 job 全部 success**：权限中心（JDK21，**223** 单测）/ SDK v1（JDK17 → Java 8 字节码）/ SDK v2（JDK21）/ 前端（Node22）/ Windows 启动脚本（含 `-Standalone` 解析）/ JDK 8 运行时（[run 41020562503](https://github.com/battleman1994/telbank-rbac/actions/runs/41020562503)） |
 | 2026-10-30 15:27 | `RBAC_M2_REPO=/tmp/rbac-m2repo ./scripts/verify-all.sh`（A24 standalone 叠加后） | **18 项检查全过**：api **223** 单测（含 `RbacApiApplicationTest` 4 个 `--standalone` 用例）、SDK v1 **121**、SDK v2 **122**、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20/A21 产物、架构文档齐备、**standalone 产物（application-standalone.yml / db/standalone schema+data / H2 依赖 / `--standalone` / 三平台脚本）**、3 平台脚本 |
 | 2026-10-30 15:26 | `API_PORT=18082 FRONT_PORT=5174 ./scripts/start-all-macos.sh --standalone`（H2 + 无 Redis） | 脚本正常就绪：API `/api/me` 401、前端 200；superadmin JWT 下 `/api/me` 200；全程未连接 MySQL/Redis；脚本退出后 18082/5174 端口释放 |
 | 2026-10-30 15:26 | `mvn -pl telbank-rbac-api spring-boot:run -Dspring-boot.run.arguments="--standalone --server.port=18081"` | 日志 `profiles are active: "standalone", "demo"`、Hikari 连接 `jdbc:h2:mem:telbank_rbac`；`/api/me` 200（superadmin）——验证字面量 `--standalone` 参数生效 |
