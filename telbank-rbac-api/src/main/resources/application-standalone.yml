@@ -1,0 +1,40 @@
+# =====================================================================
+# standalone 模式：H2 内存数据库 + 本地缓存（无需 MySQL / Redis）
+#
+# 启动方式（任选其一）：
+#   java -jar telbank-rbac-api.jar --standalone
+#   ./scripts/start-all-macos.sh --standalone
+#   --spring.profiles.active=standalone
+#
+# 实现要点：
+#   - H2 以 MySQL 兼容模式运行，schema/data 来自 db/standalone/*.sql
+#     （由 db/manual/01~11 的最终态转换，仅 standalone 使用；MySQL 部署仍用 db/manual）
+#   - 复用 demo profile 的 HS256 演示 JWT（application.yml 中 profile group: standalone -> demo）
+#   - Redis 关闭：nonce 防重放降级为本地 Caffeine，变更通知降级为本地实现，
+#     管理端查询缓存本就是本地 Caffeine（rbac.redis.enabled=false）
+#   - 数据仅存在于内存：进程退出即丢失，重启自动重新初始化演示数据
+# =====================================================================
+spring:
+  datasource:
+    url: "jdbc:h2:mem:telbank_rbac;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 4
+      # H2 会话时区固定 UTC，等价于 MySQL 的 SET time_zone='+00:00'
+      connection-init-sql: "SET TIME ZONE 'UTC'"
+  sql:
+    init:
+      mode: always
+      encoding: UTF-8
+      schema-locations: classpath:db/standalone/schema.sql
+      data-locations: classpath:db/standalone/data.sql
+
+rbac:
+  redis:
+    enabled: false   # 不连接 Redis：本地 Caffeine Nonce + 本地变更通知降级
+
+logging:
+  level:
+    org.springframework.jdbc.datasource.init: INFO

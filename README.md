@@ -16,7 +16,7 @@
 | 工程 | 目录 | 说明 | 技术栈 |
 |---|---|---|---|
 | 聚合工程 | 仓库根 `pom.xml` | Maven reactor 聚合三个后端模块（api + 两个 SDK 变体） | Maven 3.6.3+ |
-| **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway）、MyBatis-Plus 3.5.17（Boot4 starter）、Caffeine + Redis |
+| **权限中心后端** | `telbank-rbac-api/` | 权限码/角色/授权/页面元数据/接口映射的唯一数据源；管理端 `/api/**` + SDK 开放接口 `/openapi/**` + 审批回调 | JDK 21、Spring Boot 4.1.2、Spring Security 7.1、MySQL 8（手动 SQL 初始化，无 Flyway；A24 standalone 可选 H2 内存库）、MyBatis-Plus 3.5.17（Boot4 starter）、Caffeine + Redis |
 | **业务系统 SDK** | `telbank-rbac-starter/` | 业务系统后端引入即用：接口权限拦截、`/rbac/me/*`、端点扫描上报、映射/权限集缓存（用户-角色窗口 + 时钟偏移）、Redis Pub/Sub + 兜底轮询、声明式 Feign 接口 + OkHttp（业务层只处理 `RbacEnvelope<T>` POJO，A23）、AppKey 签名 | JDK 8 字节码（构建工具链 JDK 17+）、Spring Boot 2.7.18 |
 | **JDK 21 业务系统 SDK** | `telbank-rbac2-starter/` | 与 JDK 8 版同协议/同配置键/同类名，供 JDK 21 + Boot 4 业务系统接入（同一系统只能二选一） | JDK 21、Spring Boot 4.x、Feign 11.10 + OkHttp 4.12.0、Jackson 3 |
 | **权限中心管理前端** | `telbank-rbac-front/` | 权限中心自己的 Web 管理界面 | React 19.2、Vite 8、TypeScript 5、Ant Design 6、TanStack Query v5、Zustand v5、原生 fetch |
@@ -79,8 +79,8 @@ telbank-rbac/
 | JDK（SDK） | JDK 8 版：构建 17+ → 产物 Java 8 / 运行 8+；JDK 21 版：JDK 21 → 产物 Java 21 / 运行 21+ | 构建 SDK；按业务系统 JDK/Boot 版本选择变体 |
 | Maven | 3.6.3+ | 构建两个后端模块 |
 | Node.js | **22.22+**（推荐用 nvm 管理） | 构建/运行管理前端 |
-| MySQL | 8.0+ | 权限中心数据存储 |
-| Redis | 6+（按区域各一套） | 权限变更 Pub/Sub（本地验收可临时关闭，见 §5.2） |
+| MySQL | 8.0+ | 权限中心数据存储（**demo/生产需要**；A24 standalone 模式不需要，改用 H2 内存库） |
+| Redis | 6+（按区域各一套） | 权限变更 Pub/Sub（demo/standalone 可关闭；standalone 降级为本地缓存，见 §4.1） |
 | 浏览器 | Chrome/Edge/Safari 最新版 | 管理前端 |
 
 本仓库在 macOS 上使用如下方式管理工具链（其他平台等价即可）：
@@ -93,9 +93,38 @@ export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
 java -version
 ```
 
+> **A24 standalone 模式**：只需 JDK 21（以及构建用 Maven/Node.js），**无需安装 MySQL、无需 Redis**——后端用 H2 内存库 + 本地缓存降级，一条命令即可本地跑起，见 §4.1。
+
 ---
 
-## 4. 快速开始（本地 demo）
+## 4. 快速开始（standalone / 本地 demo）
+
+### 4.1 standalone 一键本地体验（A24，无需 MySQL / Redis）
+
+一条命令本地跑起，**不需要 MySQL、不需要 Redis**：后端使用 H2 内存库（MySQL 兼容模式）+ 本地缓存降级，profile group `standalone -> demo` 自动复用 HS256 演示 JWT。
+
+| 平台 | 命令 |
+|---|---|
+| macOS | `./scripts/start-all-macos.sh --standalone` |
+| Linux | `./scripts/start-all-linux.sh --standalone` |
+| Windows | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 -Standalone` |
+
+也可手动启动后端（等价于 `--spring.profiles.active=standalone`）：
+
+```bash
+# Maven
+mvn -pl telbank-rbac-api spring-boot:run -Dspring-boot.run.arguments="--standalone"
+# 或打包后直接运行
+java -jar telbank-rbac-api/target/telbank-rbac-api-1.0.0.jar --standalone
+```
+
+- 访问地址：后端 <http://localhost:8080>、管理前端 <http://localhost:5173>（Unix 可用 `API_PORT`/`FRONT_PORT` 调整端口，日志在 `logs/`）。
+- 演示 JWT：`TOKEN=$(./scripts/gen-demo-jwt.sh superadmin)`，在 <http://localhost:5173> 登录页粘贴即可；示例账号 `superadmin`（平台超管）/ `crm-admin-001` / `erp-admin-001`。
+- 数据：启动时执行 `telbank-rbac-api/src/main/resources/db/standalone/schema.sql` + `data.sql`（由 `db/manual/01~11` 最终态生成，11 表 / 55 行，与 MySQL 干净库一致）；**进程退出数据即丢失，重启自动恢复演示数据**。
+- 已知差异（仅 standalone，MySQL 部署不受影响）：JSON 两列用 VARCHAR、自增起始为 MAX(id)+1、索引名全局唯一、H2 默认大小写敏感排序。
+- MySQL demo/生产部署仍按 4.2–4.6 的步骤。
+
+### 4.2 初始化数据库（MySQL）
 
 > **一键启动（推荐，按平台）**：
 >
@@ -107,9 +136,7 @@ java -version
 >
 > - `--temp-db`：**零依赖**——自动启动一次性临时 MySQL（默认 3307）并创建 `telbank_rbac`、导入 `db/manual/*.sql`（表结构 + 示例数据），后端就绪后再启动前端；`Ctrl+C` 同时停止前后端并清理临时库。
 > - 已有 MySQL：去掉 `--temp-db`；首次建库用 `MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/start-all-macos.sh --init-db`（Linux 换成 `start-all-linux.sh`；Windows 用 `-InitDb` + 环境变量）；脚本会自动把 `MYSQL_*` 映射为后端 `RBAC_DB_*`。
-> - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.1–4.5 为分步说明。
-
-### 4.1 初始化数据库
+> - 端口：Unix 用 `API_PORT=18080 FRONT_PORT=5174`；Windows 用 `-ApiPort 18080 -FrontPort 5174`。日志在 `logs/`。以下 4.2–4.6 为分步说明。
 
 ```bash
 export MYSQL_USER=root MYSQL_PASSWORD='你的密码'
@@ -122,7 +149,9 @@ export MYSQL_USER=root MYSQL_PASSWORD='你的密码'
 > 用平台一键脚本时无需再单独导出：脚本会把 `MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/RBAC_DB_NAME` 自动映射为后端的 `RBAC_DB_*`（含 `RBAC_DB_URL`）；`--temp-db` 会自动执行上述导入。
 > 如果本机已有 MySQL 且 root 密码未知，直接用平台一键脚本的 `--temp-db`（自动起一次性 MySQL 3307，root 无密码并在退出时清理）。
 
-### 4.2 启动权限中心后端（demo profile）
+> **standalone 模式（A24）不执行本节**：后端使用 H2 内存库，启动时自动执行 `telbank-rbac-api/src/main/resources/db/standalone/schema.sql` + `data.sql`（由 `db/manual/01~11` 最终态生成，11 表 / 55 行，与 MySQL 干净库一致）；**MySQL demo/生产部署仍以 `db/manual` 为权威**，本节与 `init-db.sh` 保持不变。
+
+### 4.3 启动权限中心后端（demo profile）
 
 ```bash
 # 推荐直接用平台一键脚本（自动探测 JDK21，会连同前端一起启动）：
@@ -134,7 +163,7 @@ JAVA_HOME=<JDK21> mvn -pl telbank-rbac-api -am spring-boot:run -Dspring-boot.run
 
 demo profile 特点：`rbac.security.jwt.mode=hs256`（演示 JWT）、`rbac.redis.enabled=false`（无 Redis 也能跑；变更发布降级为 no-op，nonce 用本地缓存），默认端口 `8080`。
 
-### 4.3 生成演示 JWT 并登录管理前端
+### 4.4 生成演示 JWT 并登录管理前端
 
 ```bash
 # 生成 token（外部认证系统在生产环境负责签发；demo 用 HS256 脚本模拟）
@@ -164,7 +193,7 @@ cd telbank-rbac-front && npm run dev
 | `13600136000` | CRM 运营 + ERP 采购员 | 跨系统隔离验收：CRM 有临时角色窗口（`order:delete`），ERP 没有 |
 | `13700137000` | 已过期用户 | 角色分配窗口已过期 → 无可访问系统、无有效权限 |
 
-### 4.4 时间权限演示（1 分钟过期）
+### 4.5 时间权限演示（1 分钟过期）
 
 `demo-temp-permission.sh` 给指定账号创建一个临时角色，并写入一条 N 分钟（默认 1 分钟）的**用户-角色窗口**（A21 模型：时效在用户-角色上，角色-权限为永久），用于验证「刷新后权限消失、点击提示无权限」：
 
@@ -180,7 +209,7 @@ MYSQL_USER=root MYSQL_PASSWORD='***' ./scripts/demo-temp-permission.sh 137001370
 - **1 分钟后**：刷新页面菜单消失，直接访问 `/approval-grants` 显示无权限页（后端返回 403）；
 - 重新计时：再执行一次脚本；清理演示角色：`./scripts/demo-temp-permission.sh --clean`。
 
-### 4.5 生产 profile
+### 4.6 生产 profile
 
 ```bash
 export RBAC_JWK_SET_URI=https://auth.example.com/.well-known/jwks.json
@@ -316,6 +345,8 @@ python3 scripts/mock-access-approval.py reject --application-no RA-20261025-A1B2
 | `rbac.redis.enabled` | `false` 时用于无 Redis 的本地联调（变更发布 no-op、nonce 本地缓存） |
 | `rbac.expiry-scan-cron` | 过期授权自动收回任务 cron，默认每分钟 |
 
+> **standalone（A24）配置差异**：`spring.datasource.*` 指向 **H2 内存库**（MySQL 兼容模式），启动时执行 `db/standalone/*.sql`（由 `db/manual/01~11` 最终态生成）；`rbac.redis.enabled=false`——nonce 用本地 Caffeine、变更通知本地降级、无需 Redis 连接。MySQL 部署仍以 `db/manual/*.sql` + 上表 MySQL/Redis 配置为准（standalone 仅可选运行模式，配置权威不变）。
+
 ### 7.2 安全约束
 
 - 生产必须 HTTPS（SDK ↔ 权限中心、审批系统 ↔ 权限中心），只在 HTTPS 通道内传输 Redis 连接配置与权限数据。
@@ -385,7 +416,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 7. **A7 · SDK「JDK 8 字节码」的构建方式**：字节码目标保持 Java 8（major=52），但构建工具链为 **JDK 17+**（`--release 8`）——Apple Silicon 无官方 JDK 8；运行时仍兼容 JDK 8+（GitHub Actions 已用真实 JDK 8 运行时验证）。
 8. **A8 · 权限中心自身接入方式（v2.0 已被 A11 取代）**：v1 实现为 `rbac` 系统自接入；v2.0 系统隔离重构后删除，改为平台系统 + 数据驱动超管（见 A11）。
 9. **A9 · SDK 的 JDK 版本覆盖**：需求只定义 JDK 8 版 SDK；实现新增 JDK 21 + Spring Boot 4 变体（协议/配置一致、同包名不可共存），供 JDK 21 业务系统接入。
-10. **A10 · 移除 Flyway**：按用户要求去掉 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `telbank-rbac-api/src/main/resources/db/manual/*.sql` 手动初始化（`scripts/init-db.sh` 建库并按序导入，`--temp-db` 自动执行），后端启动前库表须已存在。
+10. **A10 · 移除 Flyway**：按用户要求去掉 `flyway-core/flyway-mysql` 依赖与 `FlywayConfig`；数据库改由 `telbank-rbac-api/src/main/resources/db/manual/*.sql` 手动初始化（`scripts/init-db.sh` 建库并按序导入，`--temp-db` 自动执行），后端启动前库表须已存在（A24 standalone 模式另用 `db/standalone/*.sql` 初始化 H2 内存库；MySQL 部署仍以 `db/manual` 为权威）。
 11. **A11 · 系统隔离重构（v2.0）**：删除用户-系统开通（表/接口/页面），系统访问由有效角色推导；平台超管改为数据驱动（platform 系统 + super-admin + platform:admin，删除 `rbac.platform-admin-ids` 配置）；管理上下文改为 `X-System-Code=当前业务系统`，非超管跨系统 403；管理权限改为系统内短码（role:manage 等）；系统接入仅超管且必须录入系统管理员，自动创建默认 admin 角色并授权；菜单统一收在「权限管理」组，新增「系统接入」。
 12. **A12 · A 方案通配权限 + 严格上下文**：admin/超管角色只授一条 `*`（支持 `*`/`前缀:*` 匹配），不再写 6 条短码；`06_cleanup_admin_redundant_grants.sql` 清理 admin 角色残留业务授权，使角色授权只剩一条 `*`（`common:profile` 等 `is_public=1` 公共权限仍对所有登录用户生效，不计入角色授权）；所有权限/角色/资源查询严格限定当前 `X-System-Code` 系统，列表缺省 `systemId` 收敛上下文、by-id 校验实体 systemId，**超管也不能单请求跨系统**。
 13. **A13 · 持久层替换为 MyBatis-Plus**：移除 JPA/Hibernate 与 Spring Data Repository；改为 MyBatis-Plus 3.5.17（Boot4 starter + jsqlparser）实体注解/BaseMapper/注解 SQL/MP 分页；REST 契约与数据库表结构不变。
@@ -422,14 +453,14 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 
 ## 11. 本次交付验证记录（摘要）
 
-- 权限中心后端：`clean test` **219/219 PASS**（JDK 21.0.13，含 A16/A17/A18/A20/A21）。
+- 权限中心后端：`clean test` **223/223 PASS**（JDK 21.0.13，含 A16/A17/A18/A20/A21/A24 standalone 参数）。
 - **A16/A17/A18/A20**：SDK 上报→待审核→审批创建系统/分配 appKey/secret、凭据查看、admin 授权保护；业务用户「我的申请」→外部审批 decision→临时角色→过期回收全链路；真实 SDK 启动上报验证通过；全量验收 **159/159 PASS**（含两版 SDK e2e 8/8、A21 §9.17 35/35 + §9.18 24/24）。
 - **持久层（A13）**：JPA/Hibernate 全部移除，改用 MyBatis-Plus 3.5.17（Boot4 starter + `mybatis-plus-jsqlparser`）；实体 `@TableName/@TableId`、7 个 `BaseMapper`、复杂时效 SQL 注解化、MP 分页；真库 v4 验收 **88/88 PASS**（含两版 SDK e2e 8/8）。
 - **系统隔离重构（A11）**：当前业务表 7 张（含平台系统共 3 个系统：crm/erp/platform）；全量 API 验收 **81/81 PASS**（含 JDK8/JDK21 两个 SDK e2e 各 4/4）；覆盖系统由有效角色推导、数据驱动超管、bootstrap `currentSystemCode`、跨系统 403/超管跨系统、系统接入自动创建管理员角色、用户-系统开通接口 404。
 - **数据库初始化（A10：已移除 Flyway，历史记录）**：`scripts/init-db.sh` 按序导入 `db/manual/01_schema.sql → 02_seed_data.sql → 03_rbac_self_onboarding.sql`；全新库验证 **8 张表**（无 `flyway_schema_history`）、API 验收 **59/59 PASS**（跳过示例业务系统）；`--temp-db` 自动导入并启动成功。
 - SDK（JDK 8 版）：`./scripts/build-sdk.sh`（**JDK 17 工具链**）→ **121/121 PASS**，产物字节码 **major=52（Java 8）**。
 - SDK（JDK 21 版）：`mvn -pl telbank-rbac2-starter clean test`（JDK 21）→ **122/122 PASS**，字节码 **major=65**；JDK 21 示例业务系统端到端 **4/4 PASS**；真实 Redis Pub/Sub 联调通过。
-- **一键验证**：`./scripts/verify-all.sh` → **18 项检查全过**（api 219、SDK v1 121、SDK v2 122、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、架构文档齐备、3 平台启动脚本）。
+- **一键验证**：`./scripts/verify-all.sh` → **18 项检查全过**（api 223、SDK v1 121、SDK v2 122、前端构建、MyBatis-Plus/无 JPA、08/09/10/11 迁移、凭据/admin 保护、A20 申请产物、A21 时间模板产物、A24 standalone 产物、架构文档齐备、3 平台启动脚本）。
 - **GitHub Actions（6 job 全绿）**：权限中心（JDK21 88 单测）/ SDK v1（JDK17 97 单测）/ SDK v2（JDK21 98 单测）/ 前端（Node22）/ Windows 启动脚本语法 / JDK 8 运行时冒烟全部 success（[run 40094016169](https://github.com/battleman1994/telbank-rbac/actions/runs/40094016169)）。
 - **v1 自接入（已被 A11 取代）**：旧的 `rbac` 系统自接入已移除；现由平台系统 `platform` + `superadmin` 数据驱动超管。
 - **真实 Redis Pub/Sub（本机实测）**：Redis 8.10.2 + 两区域频道（`rbac:change:region_a:crm` / `region_b:erp`）；变更后 API 发布日志 `receivers=1`，CRM/ERP SDK 各自收到 `PAGE_ACTION_CHANGED` / `PERMISSION_CHANGED` 并刷新缓存；过期收回任务同样经 Redis 发布。
@@ -440,6 +471,7 @@ RBAC_DEMO_JDK21_CRM_URL=http://localhost:8091 RBAC_DEMO_JDK21_ERP_URL=http://loc
 - 一键验证：`./scripts/verify-all.sh` → **18 项检查全过**；已知限制见 [`docs/acceptance.md`](docs/acceptance.md)。
 - **A21（角色时间模板）已完成**：`scripts/acceptance.py` §9.17 已按模板窗口改写并新增 §9.18、`scripts/mock-access-approval.py` 已移除 `--valid-from/--valid-until`、`scripts/verify-all.sh` 已增加 11 迁移 / 时间模板页面 / 菜单检查；全新临时库上全量验收 **159/159 PASS**，`verify-all.sh` **18 项全过**。
 - **SDK 开放接口改为声明式 Feign 接口（A23，2026-10-29）**：两版 SDK 用 `interface` 声明协议、一组开放接口一个 `interface` 类——`RbacOpenApiFeignApi`（mappings / user-permissions / page-actions / connection / endpoints-sync / user-systems）+ `RbacOnboardingFeignApi`（onboarding），以 `@RequestLine/@Param/@Headers` 描述 HTTP 方法与路径；`RbacSigningClient`（Feign `Client` 装饰器）在最终请求上注入 AppKey + HMAC-SHA256 签名头，响应统一反序列化为 `RbacEnvelope<T>`；业务层只处理 POJO，不拼 URL、不构造请求、不处理字节流；依赖 v1 = Feign 11.10 + OkHttp 3.14.9 + Jackson 2，v2 = Feign 11.10 + OkHttp 4.12.0 + Jackson 3 编解码器；SDK 单测 v1 **121/121**、v2 **122/122** 通过，真实 MySQL+API SDK e2e **8/8 PASS**。
+- **standalone 模式（A24，2026-10-30）**：新增「一条命令本地跑起」的 `standalone` profile——`--standalone`（等价 `--spring.profiles.active=standalone`；profile group `standalone -> demo` 自动复用 HS256 演示 JWT），macOS/Linux/Windows 三个启动脚本、`mvn spring-boot:run` 与 `java -jar ... --standalone` 均支持；后端改用 **H2 内存库（MySQL 兼容模式）**，启动时执行 `db/standalone/schema.sql` + `data.sql`（由 `db/manual/01~11` 最终态生成，11 表 / 55 行与 MySQL 干净库一致）；`rbac.redis.enabled=false`——nonce 降级本地 Caffeine、变更通知本地降级、管理端查询缓存本就本地 Caffeine，**无需 MySQL / 无需 Redis**；数据仅存内存，进程退出即丢失、重启自动恢复演示数据；`--standalone` 参数 4 个用例纳入 `RbacApiApplicationTest`，standalone 全量 API 验收 **159/159 PASS**，`verify-all.sh` **18 项全过**（后端 **223/223** 单测、SDK v1 121/121、v2 122/122）。已知差异（仅 standalone，MySQL 部署不变）：JSON 两列用 VARCHAR、自增起始 MAX+1、索引名全局唯一、H2 排序默认大小写敏感。
 
 ---
 

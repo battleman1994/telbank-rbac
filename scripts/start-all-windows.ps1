@@ -20,6 +20,7 @@
 param(
     [switch]$TempDb,
     [switch]$InitDb,
+    [switch]$Standalone,
     [int]$ApiPort = 8080,
     [int]$FrontPort = 5173,
     [int]$TempMysqlPort = 3307,
@@ -39,14 +40,22 @@ $TempDbStarted = $false
 $Running = $false
 $TempDir = Join-Path $env:TEMP 'telbank-rbac-mysql'
 
+if ($Standalone) {
+    $TempDb = $false
+    $InitDb = $false
+    Write-Host "==> standalone 模式：H2 内存库 + 本地缓存（无需 MySQL / Redis）"
+}
+$ApiProfile = if ($Standalone) { 'standalone' } else { 'demo' }
+
 function Show-Usage {
     Write-Host @"
-用法: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 [-TempDb] [-InitDb]
+用法: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1 [-TempDb] [-InitDb] [-Standalone]
 
-  --temp-db   自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac，退出时清理
-  --init-db   针对已有 MySQL 先执行 scripts/init-db.sh（需 MYSQL_* 环境变量）
+  --temp-db    自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac，退出时清理
+  --init-db    针对已有 MySQL 先执行 scripts/init-db.sh（需 MYSQL_* 环境变量）
+  --standalone 使用 H2 内存库 + 本地缓存启动（不需要 MySQL / Redis，重启即重置演示数据）
 
-PowerShell 参数：-TempDb -InitDb -ApiPort 8080 -FrontPort 5173 -TempMysqlPort 3307
+PowerShell 参数：-TempDb -InitDb -Standalone -ApiPort 8080 -FrontPort 5173 -TempMysqlPort 3307
 "@
 }
 
@@ -347,7 +356,7 @@ try {
     @(
         '@echo off',
         "cd /d `"$Root`"",
-        "mvn -pl telbank-rbac-api -am spring-boot:run -Dspring-boot.run.profiles=demo -Dspring-boot.run.arguments=--server.port=$ApiPort > `"$ApiLog`" 2>&1"
+        "mvn -pl telbank-rbac-api -am spring-boot:run -Dspring-boot.run.profiles=$ApiProfile -Dspring-boot.run.arguments=--server.port=$ApiPort > `"$ApiLog`" 2>&1"
     ) | Set-Content -Path $apiRunner -Encoding ASCII
     $script:ApiProc = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', ('"{0}"' -f $apiRunner)) -PassThru -WindowStyle Hidden
     $script:Running = $true

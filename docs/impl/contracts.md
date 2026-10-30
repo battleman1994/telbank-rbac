@@ -539,6 +539,7 @@ rbac:
 ## 9. 偏差与实现口径（需求文档未明确/自相矛盾处，已锁定）
 
 > 与需求文档「附录 A 实现修订记录」的对应：A1 = §9.2、A2 = §9.1、A3 = §9.3、A4 = §9.4、A5 = §3.4/§7.7、A6 = §4.2、A7 = §0；A8（权限中心自接入，v2.0 已被 A11 取代）= §1.5/§3；A9（JDK 21 SDK 变体）= §0/§7.9；A11（系统隔离重构）= §1.5/§3/§3.2/§10；A12（A 方案通配权限 + 严格上下文）= §1.5/§3/§10；A13（MyBatis-Plus 持久层）= §2；A14（前端移除到期提醒菜单 + 布局优化）= §10；A15（页面元素管理简化）= §3.8/§10；A16（系统接入双通道 + 审核）= §3.2.1/§4.5；A17（系统 appKey/appSecret）= §3.2/§4.1；A18（凭据查看 + admin 授权保护）= §3.2.2/§3.5/§10；A19（表格内容优先展示）= §10；A20（业务用户临时权限申请）= §5.1/§8.1/§10；A21（角色时间模板）= §3.3/§3.3.1/§3.5/§3.6/§4.3/§5/§5.1/§10；A22（简化 SDK HTTP 客户端：JDK 8 `RestTemplate` + Jackson 2 / JDK 21 typed `RestClient`，`RbacEnvelope<T>` POJO；已被 A23 取代）= §7.1/§7.9；A23（声明式 Feign 接口：`RbacOpenApiFeignApi`/`RbacOnboardingFeignApi` 接口声明 + `RbacSigningClient` 注入签名，v1 Feign 11.10 + OkHttp 3.14.9 + Jackson 2 / v2 Feign 11.10 + OkHttp 4.12.0 + 自带 Jackson 3 编解码器，响应 `RbacEnvelope<T>`）= §7.1/§7.9。
+> A24（standalone 可选运行模式：H2 内存库 + 本地缓存，无 MySQL/Redis；启动参数/启动脚本 `--standalone`，协议/接口不变）= 无接口变更（运行方式与 README/架构文档对应）。
 
 1. **重新提权的落库方式**：需求要求“旧记录标记 status=0，新记录插入”，但 `sys_user_role`/`sys_role_permission` 的唯一键 `(system_id,external_user_id,role_id)`/`(role_id,permission_id)` 不允许同一关系存在两条记录，两者不可同时满足。**实现口径：同关系重新授权时更新原行的 `valid_from/valid_until/source_approval_id/grant_reason/status=1`（不新增行）；已过期的旧授权保留 status=0 直到再次被授权时复用同一行。** 该偏差必须在 README「与需求文档的偏差」一节列明。
 2. **SDK 端点上报需要持久化**：需求“共 7 张表”中没有存端点上报的表，但 §5.7 要求端点上报列表与关联权限码。**实现口径：新增第 8 张表 `sys_sdk_endpoint`**（见 `V1__schema.sql`），其余 7 张严格按需求。README 偏差清单列明。

@@ -180,7 +180,7 @@ flowchart TB
 
 - 管理前端**只**直连权限中心；业务系统前端不直连权限中心，权限判断由业务后端 SDK 完成。
 - SDK 与权限中心可跨进程/跨网络部署；SDK 构建产物按 JDK 8 或 JDK 21 二选一，同一业务系统不能同时引入两版。
-- MySQL 是唯一持久化数据源；Redis 只做变更通知，属于可降级组件（不可用时 SDK 依赖兜底轮询）。
+- MySQL 是唯一持久化数据源；Redis 只做变更通知，属于可降级组件（不可用时 SDK 依赖兜底轮询）。**例外**：`standalone` 演示/本地模式（A24）使用 H2 内存库 + 本地缓存，无 MySQL/Redis 且数据不持久化（见 §B.1）。
 - 外部审批平台不保存权限数据；通过 `/openapi/approval/access-applications/decision` 将结果写回。
 
 ### 3. 代码模块与依赖
@@ -269,21 +269,23 @@ flowchart TB
 |---|---|---|
 | 权限中心 `server.port` | `8080` | 启动脚本用 `API_PORT` 覆盖 |
 | 管理前端 Vite | `5173` | `FRONT_PORT`；CORS 默认只允许 `localhost:5173` |
-| MySQL | `3306` | `--temp-db` 时用一次性实例 `3307`（`TEMP_MYSQL_PORT`） |
-| Redis | `6379` | `RBAC_REDIS_ENABLED=false` 可关闭，demo 默认关闭 |
+| MySQL | `3306` | `--temp-db` 时用一次性实例 `3307`（`TEMP_MYSQL_PORT`）；`standalone` 模式不需要 MySQL（H2 内存库） |
+| Redis | `6379` | `RBAC_REDIS_ENABLED=false` 可关闭，demo 默认关闭；`standalone` 固定关闭（`rbac.redis.enabled=false`） |
 | 示例业务系统 | 见各自 `application.yml` | 验收脚本使用 `8081`（JDK 8）/ `8082`（JDK 21） |
 
 **关键环境变量**
 
 | 变量 | 作用 |
 |---|---|
-| `RBAC_DB_URL / RBAC_DB_USER / RBAC_DB_PASSWORD` | 数据库连接（启动脚本可从 `MYSQL_*` 映射） |
+| `RBAC_DB_URL / RBAC_DB_USER / RBAC_DB_PASSWORD` | 数据库连接（启动脚本可从 `MYSQL_*` 映射）；standalone 模式被 H2 内存库覆盖，无需设置 |
 | `RBAC_JWT_HS256_SECRET` / `RBAC_JWK_SET_URI` / `RBAC_JWT_ISSUER` | JWT 校验参数；模式由配置 `rbac.security.jwt.mode` 决定（demo=hs256 / prod=jwk） |
 | `RBAC_APPROVAL_SECRET` | 审批回调 AppSecret（AppKey 固定 `approval-system`） |
 | `RBAC_ONBOARDING_ENABLED` / `RBAC_ONBOARDING_APP_KEY` / `RBAC_ONBOARDING_SECRET` | SDK 系统接入上报凭据 |
 | `RBAC_ACCESS_APPROVAL_URL_TEMPLATE` | 申请单跳转外部审批平台的 URL 模板（含 `{applicationNo}`） |
 | `RBAC_REDIS_ENABLED` / `RBAC_REDIS_REGION_*` | 变更通知开关与区域 Redis 连接 |
 | `VITE_API_BASE_URL` | 前端请求后端地址（默认 `http://localhost:8080`） |
+
+**运行形态（A24）**：`demo`（一键脚本，MySQL + Redis 可选）/ `standalone`（H2 内存库 + 本地缓存，**无需 MySQL/Redis**；启动脚本 `--standalone` 或 `java -jar ... --standalone`，数据重启重置，见 §B.1）/ `prod`（MySQL 8 + 按区域 Redis，多实例，见 §B.2）。`standalone` 仅为本地/演示/离线验收形态，**不用于生产**。
 
 ### 5. 认证、系统上下文与权限模型
 
@@ -2976,18 +2978,19 @@ sequenceDiagram
 
 | 平台 | 入口 | 参数 |
 |---|---|---|
-| macOS | `./scripts/start-all-macos.sh` | `--temp-db`、`--init-db`、`-h/--help`；端口检测用 `lsof` |
+| macOS | `./scripts/start-all-macos.sh` | `--temp-db`、`--init-db`、`--standalone`、`-h/--help`；端口检测用 `lsof` |
 | Linux | `./scripts/start-all-linux.sh` | 同上；端口检测依次尝试 `lsof` → `ss` → `fuser` |
-| Windows | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1` | `-TempDb`、`-InitDb`、`-ApiPort 8080`、`-FrontPort 5173`、`-TempMysqlPort 3307`、`-Help` |
+| Windows | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-all-windows.ps1` | `-TempDb`、`-InitDb`、`-Standalone`、`-ApiPort 8080`、`-FrontPort 5173`、`-TempMysqlPort 3307`、`-Help` |
 
 **脚本执行顺序（与健康检查）**
 
 1. **预检**：`--temp-db` 与显式 `RBAC_DB_URL` 冲突报错；端口占用直接失败（提示可改 `API_PORT/FRONT_PORT`）；探测 JDK 21+（`JAVA_HOME_21`、SDKMAN、Homebrew、`/usr/libexec/java_home`）。
 2. **数据库准备**：
+   - `--standalone`：**跳过本步**——后端使用 H2 内存库，schema/data 由 `application-standalone.yml` 的 `spring.sql.init` 自动执行，无需 MySQL。
    - `--temp-db`：启动一次性 MySQL（默认 `3307`，datadir 默认 `/tmp/telbank-rbac-mysql/data`，可用 `RBAC_TEMP_MYSQL_DATADIR` 覆盖）→ 创建 `telbank_rbac` → 执行 `scripts/init-db.sh` 导入 `db/manual/*.sql`；脚本退出时停库并 `rm -rf` 数据目录。
    - `--init-db`：针对已有 MySQL 执行 `init-db.sh`（`MYSQL_HOST/PORT/USER/PASSWORD`、`RBAC_DB_NAME`；已有 `sys_system` 表则跳过导入）。
    - 未启动临时库时把 `MYSQL_*` 映射为后端 `RBAC_DB_*`（避免只传密码导致 `Access denied`）。
-3. **启动后端**：`mvn -pl telbank-rbac-api -am spring-boot:run -Dspring-boot.run.profiles=demo --server.port=${API_PORT}`，日志 `logs/api.log`；轮询 `GET /api/me`，**HTTP 401 或 200 视为就绪**，最多等待 **180s**；失败打印日志尾部并退出。
+3. **启动后端**：`mvn -pl telbank-rbac-api -am spring-boot:run -Dspring-boot.run.profiles=demo --server.port=${API_PORT}`（`--standalone` 时脚本改用 `API_PROFILE=standalone`），日志 `logs/api.log`；轮询 `GET /api/me`，**HTTP 401 或 200 视为就绪**，最多等待 **180s**；失败打印日志尾部并退出。
 4. **启动前端**：nvm 切 Node 22（缺失 `node_modules` 时先 `npm install`），`VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:${API_PORT}} npm run dev -- --port ${FRONT_PORT}`，日志 `logs/front.log`；轮询 `GET /`，**200 视为就绪**，最多等待 **120s**。
 5. **打印访问信息**：后端/前端 URL、`--temp-db` 时的临时库、演示 JWT 命令（`./scripts/gen-demo-jwt.sh superadmin`）、演示账号（`superadmin` 平台超管 / `crm-admin-001` / `erp-admin-001`），随后 `wait`。
 6. **退出清理**（Ctrl+C / kill / EXIT trap）：停 `logs` 中进程 → `kill_port` 释放后端/前端端口 → 若本脚本启动了临时库则停库并清理 datadir；端口释放后退出。
@@ -3013,23 +3016,49 @@ flowchart TD
     READY -->|"Ctrl+C / kill"| CLEAN["停止前后端 + kill_port<br/>停临时 MySQL 并 rm -rf datadir"]
 ```
 
+> 上图为 demo/MySQL 主路径；`--standalone` 分支**跳过数据库准备**（步骤 2），直接以 H2 内存库启动（见下文「standalone 模式」）。
+
 **端口与依赖（本地）**
 
 | 组件 | 默认端口 | 说明 |
 |---|---|---|
 | 权限中心后端 | `8080` | `server.port`，脚本 `API_PORT` 覆盖 |
 | 管理前端 dev server | `5173` | `FRONT_PORT`；`strictPort`；demo CORS 仅允许 `localhost:5173` / `127.0.0.1:5173` |
-| MySQL | `3306` | `--temp-db` 时用一次性实例 `3307`（`TEMP_MYSQL_PORT`） |
-| Redis | `6379` | demo profile **关闭**（`rbac.redis.enabled=false`）；生产启用心跳/发布 |
+| MySQL | `3306` | `--temp-db` 时用一次性实例 `3307`（`TEMP_MYSQL_PORT`）；standalone 模式不需要 MySQL |
+| Redis | `6379` | demo/standalone profile **关闭**（`rbac.redis.enabled=false`）；生产启用心跳/发布 |
 | 示例业务系统（SDK v1） | `8081`（CRM）/ `8082`（ERP） | `samples/business-demo`，验收 §9.1b 用 |
 | 示例业务系统（SDK v2/JDK21） | `8091` / `8092` | `samples/business-demo-jdk21`，验收 §9.1c 用 |
 
-**demo 降级行为（无 MySQL/Redis 场景）**
+**demo 降级行为**
 
-- **MySQL 必需**：持久层 MyBatis-Plus 不自动建表，库/表须由 `init-db.sh` 或 `--temp-db` 准备；后端不会自动迁移。
+- **MySQL 必需（demo/prod）**：持久层 MyBatis-Plus 不自动建表，库/表须由 `init-db.sh` 或 `--temp-db` 准备；后端不会自动迁移。`standalone` 模式例外（H2 内存库，见下）。
 - **Redis 可缺席**：`application-demo.yml` 设 `rbac.redis.enabled=false`，nonce 校验用本地 Caffeine 兜底、变更发布为 no-op（只打 warn）；但**区域 Redis 连接配置仍会通过 `/openapi/sdk/connection` 下发给 SDK**（SDK 侧可降级短轮询）。
 - **JWT 用 HS256**：demo profile 使用 `rbac.security.jwt.mode=hs256` + `RBAC_JWT_HS256_SECRET`（默认 `telbank-rbac-demo-secret-please-change`，`issuer=demo-auth`）；`scripts/gen-demo-jwt.sh` 必须使用同一 secret/issuer，否则 401。
 - **日志**：`logs/api.log`、`logs/front.log`、`logs/temp-mysql.log`、`logs/temp-mysql-init.log`（`logs/` 已被 `.gitignore` 忽略）。
+
+**standalone 模式（A24：H2 内存库 + 本地缓存，无需 MySQL/Redis）**
+
+启动方式（三选一，均等价于 `--spring.profiles.active=standalone`）：
+
+| 方式 | 命令 / 参数 | 说明 |
+|---|---|---|
+| 一键脚本 | `./scripts/start-all-macos.sh --standalone`（Linux 同名；Windows `start-all-windows.ps1 -Standalone`） | 跳过 MySQL 初始化/临时库，直接以 standalone 启动后端 + 前端 |
+| 启动参数 | `java -jar telbank-rbac-api/target/telbank-rbac-api-*.jar --standalone` | `RbacApiApplication.prepareArgs` 把 `--standalone` 转为 `--spring.profiles.active=standalone`，其它 Spring 参数照常透传 |
+| 显式 profile | `--spring.profiles.active=standalone` | 等价写法 |
+
+- **profile group**：`application.yml` 的 `spring.profiles.group.standalone: demo`——复用 demo 的 HS256 演示 JWT/CORS 与本地降级，只额外叠加 standalone 的数据源与初始化配置；
+- **数据源与初始化**：`application-standalone.yml` 使用 H2 内存库 `jdbc:h2:mem:telbank_rbac;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE`（Hikari `connection-init-sql: SET TIME ZONE 'UTC'`，等价 MySQL 的 UTC 会话），`spring.sql.init.mode=always` 依次执行 `classpath:db/standalone/schema.sql`（11 张表）与 `classpath:db/standalone/data.sql`（55 条 INSERT）；两份 SQL 由 `db/manual/01~11` 最终态转换生成、与 MySQL 干净库逐行一致，MySQL 部署仍走 `db/manual`；
+- **Redis 降级**：`rbac.redis.enabled=false` → nonce 用本地 `CaffeineNonceStore`、变更通知用本地 `ChangeEventPublisher`（不连 Redis）；管理端查询缓存本就是 Caffeine；`/openapi/sdk/connection` 仍按 `rbac.regions` 返回连接信息，SDK 自行降级短轮询；
+- **数据生命周期**：数据仅在内存，**进程退出即丢失、重启自动重新初始化演示数据**；不写盘、无需 MySQL，脚本跳过 MySQL 初始化与临时库；
+- **与 MySQL 部署的选择关系**：standalone 用于本地演示/无 MySQL 环境/快速验收，**不是生产形态**；生产用 `prod` profile（MySQL 8 + 按区域 Redis，数据持久化、多实例，见 §B.2）。
+
+**已知差异（仅 standalone；MySQL 模式行为不变）**
+
+- 类型：`sys_page_action.config` / `sys_permission.meta` 在 H2 用 `VARCHAR`，保持 String 行为；
+- 主键/索引：自增起始为 `MAX(id)+1`；索引名全局唯一（如 `idx_role_perm_system`）；H2 默认大小写敏感（MySQL 为 `ai_ci` 不敏感）；
+- DDL：H2 MySQL 兼容模式下生成列去掉 `STORED`、唯一键保留、`ON UPDATE` 生效；
+- 兼容改造：MyBatis-Plus 分页方言自动识别 MySQL/H2（不再固定 `DbType.MYSQL`）；`SysUserRoleMapper.findEffectivePermissionValidity` 去掉 MySQL 专用 `DATE_FORMAT`，`PermissionValidityRow` 时间字段改为驱动原生类型、服务层统一转 UTC ISO；
+- 仅用于本地/演示：未做生产级持久化与并发验证，重启即重置。
 
 **手动启动（等价步骤）**
 
@@ -3046,6 +3075,13 @@ cd telbank-rbac-front && npm install && npm run dev -- --port 5173
 
 # 4) 演示 JWT（另开终端）
 TOKEN=$(./scripts/gen-demo-jwt.sh superadmin)
+```
+
+standalone 等价启动（A24，无需 MySQL/Redis；前端步骤同上）：
+
+```bash
+java -jar telbank-rbac-api/target/telbank-rbac-api-*.jar --standalone
+# 或一键脚本：./scripts/start-all-macos.sh --standalone（Linux 同名；Windows 用 -Standalone）
 ```
 
 其他辅助脚本：`scripts/demo-temp-permission.sh`（给 `demo-1min` 临时授予通配 `*`，1 分钟后过期演示）；`scripts/mock-access-approval.py`（模拟外部审批平台：`list / show / approve / reject`，走 `/openapi/approval/access-applications/decision`，AppKey `approval-system`，默认 `RBAC_BASE_URL=http://localhost:8080`）；`scripts/sign-request.py`（手动构造 OpenAPI HMAC 签名）；`scripts/build-sdk.sh`（JDK 17 → Java 8 字节码）。
@@ -3094,6 +3130,8 @@ flowchart TB
     REDIS -.->|"订阅区域频道"| CRM & ERP
 ```
 
+**与 standalone 模式的关系（A24）**：上述为**生产形态**（MySQL 8 + 按区域 Redis、应用无状态可多实例）。`standalone` 模式（§B.1）仅用于本地/演示/离线验收，用 H2 内存库 + 本地缓存替代 MySQL/Redis，数据重启重置，**不用于生产部署**。
+
 **前端部署要点**
 
 1. 构建期注入后端地址：`VITE_API_BASE_URL=https://rbac-api.example.com npm run build`；产物为纯静态 `dist/`（`index.html` + `assets/`）。
@@ -3112,7 +3150,7 @@ flowchart TB
 | `RBAC_JWT_ISSUER` | JWT `iss` 校验值 | 可空（不校验 issuer） |
 | `RBAC_JWT_HS256_SECRET` | demo HS256 密钥 | 仅 demo；生产 `mode=jwk` |
 | `RBAC_CORS_ALLOWED_ORIGINS` | 生产允许的跨域来源（逗号分隔） | prod profile 默认空 |
-| `RBAC_REDIS_ENABLED` | 是否启用 Redis（变更发布/nonce） | prod 默认 `true` |
+| `RBAC_REDIS_ENABLED` | 是否启用 Redis（变更发布/nonce） | prod 默认 `true`；demo/standalone 固定关闭 |
 | `RBAC_REDIS_HOST/PORT/PASSWORD` | 生产 Redis 连接 | `127.0.0.1:6379` |
 | `RBAC_REDIS_REGION_A_HOST/PORT/PASSWORD`、`..._REGION_B_...` | 各区域 Redis（下发给 SDK） | `127.0.0.1:6379` |
 | `RBAC_CRM_SECRET` / `RBAC_ERP_SECRET` | 业务系统 AppSecret（AppKey=crm/erp） | demo 默认 `*-dev-secret` |
@@ -3123,6 +3161,8 @@ flowchart TB
 | `API_PORT` / `FRONT_PORT` / `TEMP_MYSQL_PORT` | 启动脚本端口 | `8080` / `5173` / `3307` |
 
 > 说明：`rbac.security.jwt.mode` 是 **yml 配置项**（`application.yml` 默认 `jwk`，`application-demo.yml` 覆盖 `hs256`，`application-prod.yml` 显式 `jwk`），当前代码**没有** `RBAC_JWT_MODE` 环境变量映射（见 §B.5 未确认点）。
+>
+> `standalone` profile（A24）会覆盖数据源为 H2 内存库（`application-standalone.yml`）并固定 `rbac.redis.enabled=false`；上表 `RBAC_DB_*` 与 Redis 相关变量在该 profile 下不生效。
 
 ##### B.2.3 数据库迁移顺序（手动 SQL，无 Flyway）
 
@@ -3144,10 +3184,13 @@ flowchart TB
 
 **生产升级规则**：新增变更**不改历史文件**，新增 `12_xxx.sql` 并登记到 README/验收文档；升级前备份数据库；`init-db.sh` 对已存在库会跳过导入，**已有库必须手工按顺序执行新增迁移**；回滚以应用镜像回退 + 数据库逻辑备份恢复为主（SQL 无 down 脚本，未在仓库提供自动回滚）。
 
+**standalone 模式的数据初始化（A24）**：不经过 `init-db.sh`/`db/manual` 导入流程——`application-standalone.yml` 的 `spring.sql.init.mode=always` 在启动时依次执行 `classpath:db/standalone/schema.sql`（11 表、234 行）与 `classpath:db/standalone/data.sql`（55 条 INSERT）；两份 SQL 由 `db/manual/01~11` 的最终态转换生成，与 MySQL 干净库逐行一致（H2 以 MySQL 兼容模式运行：生成列去 `STORED`、唯一键保留、`ON UPDATE` 生效）。MySQL 部署仍用 `db/manual`，不受影响。
+
 ##### B.2.4 JWT 与 Redis
 
 - **JWT**：生产 `mode=jwk`，由 OAuth2 Resource Server 按 `jwk-set-uri` 拉取 JWKS 校验签名，校验 `exp/nbf`，按配置校验 `iss`；`sub` 即 `external_user_id`，权限中心不建用户表、不签发 token。demo 用 HS256（`gen-demo-jwt.sh`）仅供本地。401 语义：未认证/验签失败/过期。
 - **Redis**：生产 `rbac.redis.enabled=true`，写操作提交后按区域频道发布变更通知（`rbac:change:region_a:*` / `region_b:*`），SDK 订阅并失效本地缓存；同时用于 OpenAPI nonce 防重放（demo 用 Caffeine 兜底）。SDK 侧 Redis 不可用时降级短轮询（契约 §6/§9）。
+- **standalone（A24）**：`spring.profiles.group.standalone: demo` 复用 demo 的 HS256 演示 JWT；`rbac.redis.enabled=false` → nonce 用 `CaffeineNonceStore`、变更发布用本地 `ChangeEventPublisher`（不连 Redis）；数据源为 H2 内存库（无 MySQL），数据重启重置。
 
 ---
 
@@ -3176,13 +3219,13 @@ flowchart TB
 | 2/5 SDK v1 | `build-sdk.sh`（JDK 17 工具链）；字节码 `major=52` |
 | 3/5 SDK v2 | `mvn -pl telbank-rbac2-starter clean test`；字节码 `major=65` |
 | 4/5 前端 | nvm Node 22；`npm run build`；`dist/index.html` 存在；`src` 不得再引用 `expiring-grants` |
-| 5/5 产物核对 | 两个 SDK 自动配置注册；`db/manual` 存在、SQL ≥3 且无 Flyway；04–11 迁移与 `PermissionMatcher`/`ManagementContextService`/`PlatformAdminService`/无 `UserSystemController`；MyBatis-Plus（无 JPA/Hibernate）；A18 凭据页/菜单/Controller；A20 申请页/API/审批 Controller/Service/mock 脚本；A21 `11_time_template.sql`/`/api/time-templates`/`RoleTimeWindowService`/时间模板页/菜单更名/契约 v3.0；**架构文档**（`docs/architecture.md` 存在、5 个部分、Mermaid 图 ≥30 张、代码围栏成对、无 `_drafts` 残留、文档总览已索引）；文档与脚本齐备且可执行；3 个平台启动脚本自包含（无分发器/helper）、macOS/Linux `--help` 正常；**A23 SDK 声明式 Feign 接口**（`RbacOpenApiFeignApi`/`RbacOnboardingFeignApi` + `RbacSigningClient` + `RbacEnvelope<T>`；无旧字节级解码器） |
+| 5/5 产物核对 | 两个 SDK 自动配置注册；`db/manual` 存在、SQL ≥3 且无 Flyway；04–11 迁移与 `PermissionMatcher`/`ManagementContextService`/`PlatformAdminService`/无 `UserSystemController`；MyBatis-Plus（无 JPA/Hibernate）；A18 凭据页/菜单/Controller；A20 申请页/API/审批 Controller/Service/mock 脚本；A21 `11_time_template.sql`/`/api/time-templates`/`RoleTimeWindowService`/时间模板页/菜单更名/契约 v3.0；**架构文档**（`docs/architecture.md` 存在、5 个部分、Mermaid 图 ≥30 张、代码围栏成对、无 `_drafts` 残留、文档总览已索引）；文档与脚本齐备且可执行；3 个平台启动脚本自包含（无分发器/helper）、macOS/Linux `--help` 正常；**A23 SDK 声明式 Feign 接口**（`RbacOpenApiFeignApi`/`RbacOnboardingFeignApi` + `RbacSigningClient` + `RbacEnvelope<T>`；无旧字节级解码器）；**A24 standalone 模式**（`application-standalone.yml` + H2 依赖 + `db/standalone/schema.sql`/`data.sql` + `--standalone` 参数与三平台脚本） |
 
 用法：`./scripts/verify-all.sh`（可选 `RBAC_M2_REPO=/tmp/rbac-m2repo` 隔离 Maven 本地仓库）。**18 项全过**为合并前最低门禁（见 README §11 验证记录）。第 18 项为架构文档门禁；本文 41 张 Mermaid 图已用 Mermaid CLI 11.17 逐图渲染验证（failures=0）。
 
 ##### B.3.3 端到端验收 `scripts/acceptance.py`
 
-- 仅依赖 Python 3 标准库；前置：MySQL 已初始化（`init-db.sh`）+ demo profile 后端监听 `8080`（示例业务系统可选）。
+- 仅依赖 Python 3 标准库；前置：MySQL 已初始化（`init-db.sh`）+ demo profile 后端监听 `8080`（示例业务系统可选）。**standalone 模式（A24）可免 MySQL**：以 `--standalone` 启动 H2 内存库后端即可跑全量验收（standalone 下 159/159 PASS）。
 - 用法：`python3 scripts/acceptance.py [--base-url ...] [--only 9.1,9.12]`；SDK 端到端环境变量 `RBAC_DEMO_CRM_URL`（默认 8081）/ `RBAC_DEMO_ERP_URL`（默认 8082）。
 - 章节矩阵（按执行顺序）：
 
@@ -3207,6 +3250,7 @@ flowchart TB
 | 17 | §9.18 | 角色时间模板（A21 CRUD/绑定/窗口/停用） |
 
 - 交付记录（README §11，`main@16278a2` 时点）：全量验收 **159/159 PASS**（§9.17 35/35、§9.18 24/24，两版 SDK e2e 各 4/4，v11 全新库 01→11）；`verify-all.sh` **18 项**（2026-10-28 13:48 入库前复跑，含架构文档门禁）；后端单测 **219/219**；CI 6 job 全绿（历史 run 40094016169）。
+- 当前态（A24，2026-10-30）：后端单测 **223/223**（新增 `RbacApiApplicationTest` 4 个 `--standalone` 用例）、SDK v1 **121/121**、v2 **122/122**；standalone 模式下全量验收 **159/159 PASS**，`--standalone` 参数与三平台脚本实测启动（后端 `18082` / 前端 `5174`）；`verify-all.sh` 已并入 A24 产物检查（同 18 项口径）。
 
 ```mermaid
 flowchart LR
@@ -3239,6 +3283,8 @@ flowchart LR
 | 前端页面提示「无法连接权限中心后端」 | 后端未启动 / `VITE_API_BASE_URL` 指向错误 | 启动后端；检查 `VITE_API_BASE_URL`（构建期）或反代 `/api` |
 | 前端连接后端被 CORS 拒绝 | 跨域且来源不在 `rbac.cors.allowed-origins` | demo 用 5173；生产配置 `RBAC_CORS_ALLOWED_ORIGINS` 或同源反代 |
 | `--temp-db` 启动报找不到 `mysqld` | 未安装 MySQL 或路径未识别 | 安装 MySQL / 设置 `MYSQLD` 与 `MYSQL_BIN` |
+| `--standalone` 启动报 H2/schema 初始化失败 | `db/standalone/schema.sql`/`data.sql` 缺失或与实体不一致 | 检查 classpath 资源与 A24 产物；`spring.sql.init.mode=always` 会在启动期直接报错 |
+| standalone 重启后数据回到初始状态 | **预期行为**：H2 内存库随进程重建 | 需要持久化请改用 MySQL（demo/prod）；standalone 仅用于本地/演示 |
 | 前端刷新 404（生产） | 静态服务器未做 SPA 回退 | Nginx `try_files $uri $uri/ /index.html` |
 | 401 后一直跳登录 | token 被清、未重新登录；或 401 处理器被跳过 | 重新粘贴 JWT；检查 `skipUnauthorizedHandler` 仅用于登录校验场景 |
 
@@ -3258,7 +3304,7 @@ flowchart LR
 **巡检/健康检查**
 
 - 本地：`curl -o /dev/null -w '%{http_code}' http://localhost:8080/api/me` 返回 **401** 即后端存活（未带 token 属正常）；`curl -I http://localhost:5173/` 返回 200 即前端存活。
-- 生产：`application-prod.yml` 仅暴露 `management.endpoints.web.exposure.include=health`，用 `/actuator/health` 做存活/就绪探针（demo profile 未开启 actuator，本地用 `/api/me` 探测）。
+- 生产：`application-prod.yml` 仅暴露 `management.endpoints.web.exposure.include=health`，用 `/actuator/health` 做存活/就绪探针（demo/standalone profile 未开启 actuator，本地用 `/api/me` 探测）。
 - 变更发布后：核对 Redis 区域频道发布是否成功（后端日志）与 SDK 缓存刷新；审批/授权窗口类功能建议回归 acceptance §9.17/§9.18。
 
 ---
@@ -3267,8 +3313,9 @@ flowchart LR
 
 1. **生产部署产物缺失**：仓库没有 Dockerfile、K8s manifest、Nginx 配置样例；上文拓扑为推荐形态，非仓库已验证部署脚本。
 2. **JWT 模式切换方式**：`rbac.security.jwt.mode` 是 yml 配置项（`application.yml` 默认 `jwk`，`-demo.yml` 覆盖 `hs256`，`-prod.yml` 显式 `jwk`），没有 `RBAC_JWT_MODE` 环境变量映射；切换模式需改配置或使用 profile。是否补一个环境变量映射待后端 owner 确认。
-3. **数量类表述**：219/121/122 单测、159/159 验收、18 项 verify-all（含架构文档检查）、CI 6 job 全绿均取自 `README.md` §11 与 `docs/README.md` 的交付记录（`main@16278a2` 时点）；本文未重新执行 `acceptance.py` 全量验收，`verify-all.sh` 18 项已于 2026-10-26 08:40 复跑通过。
+3. **数量类表述**：当前态为后端 **223** / SDK v1 **121** / v2 **122** 单测（A24；`main@16278a2` 时点为 219/121/122）、159/159 验收、18 项 verify-all（含架构文档检查）、CI 6 job 全绿；分别取自 `README.md` §11 与 `docs/README.md` 的交付记录。本文未重新执行 `acceptance.py` 全量验收，`verify-all.sh` 18 项已于 2026-10-26 08:40 复跑通过（A24 后同口径）。
 4. **Windows 启动脚本**：CI `windows-scripts` job 只做 PowerShell 语法解析与脚本数量断言，无 Windows 真机运行证据；本地已验证路径为 macOS 脚本。
 5. **生产 HTTPS 链路**：本机验收为 HTTP demo；JWKS 缓存策略、时钟偏移容忍、TLS 终止细节以外部认证系统/网关为准，仓库未固化。
 6. **Redis 故障演练**：降级行为见契约 §6（SDK 短轮询、nonce 兜底），但仓库无对应故障注入测试记录。
 7. **已初始化的旧库升级**：`init-db.sh` 对已有库跳过导入，需人工按新增 SQL 顺序执行；本文档未提供自动迁移工具，迁移脚本无 down 版本。
+8. **standalone 模式的边界（A24）**：H2 内存库数据随进程重置，仅用于本地/演示/离线验收；H2 MySQL 兼容模式与 MySQL 并非逐位等价（已知差异见 §B.1「standalone 模式」小节），未做生产级持久化与并发验证。

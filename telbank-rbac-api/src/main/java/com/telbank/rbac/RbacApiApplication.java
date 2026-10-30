@@ -1,6 +1,8 @@
 package com.telbank.rbac;
 
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.TimeZone;
 
 import org.springframework.boot.SpringApplication;
@@ -25,6 +27,31 @@ public class RbacApiApplication {
 
     public static void main(String[] args) {
         TimeZone.setDefault(TimeZone.getTimeZone(ZoneOffset.UTC));
-        SpringApplication.run(RbacApiApplication.class, args);
+        SpringApplication.run(RbacApiApplication.class, prepareArgs(args));
+    }
+
+    /**
+     * 支持 {@code --standalone} 启动参数：H2 内存数据库 + 本地缓存（无 MySQL / 无 Redis）。
+     *
+     * <p>等价于 {@code --spring.profiles.active=standalone}；仍可继续传其它 Spring 参数
+     * （如 {@code --server.port=18080}）。</p>
+     */
+    static String[] prepareArgs(String[] args) {
+        if (args == null || args.length == 0) {
+            return args;
+        }
+        List<String> effective = new ArrayList<String>(args.length + 1);
+        boolean standalone = false;
+        for (String arg : args) {
+            if ("--standalone".equals(arg)) {
+                standalone = true;
+            } else {
+                effective.add(arg);
+            }
+        }
+        if (standalone) {
+            effective.add("--spring.profiles.active=standalone");
+        }
+        return effective.toArray(new String[0]);
     }
 }

@@ -233,7 +233,26 @@ for f in scripts/start-all-macos.sh scripts/start-all-linux.sh; do
 done
 [ -f scripts/start-all-windows.ps1 ] || die "缺少 Windows 启动脚本 scripts/start-all-windows.ps1"
 grep -q 'Invoke-InitSchema' scripts/start-all-windows.ps1 || die "Windows 启动脚本未实现数据库初始化"
-ok "3 个平台启动脚本齐备且自包含（macOS/Linux/Windows）"
+# A24：standalone 模式（H2 内存库 + 本地缓存，无需 MySQL/Redis）
+[ -f telbank-rbac-api/src/main/resources/application-standalone.yml ] \
+  || die "缺少 application-standalone.yml（standalone 模式配置）"
+[ -s telbank-rbac-api/src/main/resources/db/standalone/schema.sql ] \
+  || die "缺少 H2 standalone schema.sql"
+[ -s telbank-rbac-api/src/main/resources/db/standalone/data.sql ] \
+  || die "缺少 H2 standalone data.sql"
+grep -q 'com.h2database' telbank-rbac-api/pom.xml || die "pom 缺少 H2 依赖"
+grep -q 'classpath:db/standalone/schema.sql' telbank-rbac-api/src/main/resources/application-standalone.yml \
+  || die "standalone 未配置 H2 schema 初始化"
+grep -q 'standalone: demo' telbank-rbac-api/src/main/resources/application.yml \
+  || die "application.yml 缺少 standalone profile group（-> demo）"
+grep -qE 'enabled: false' telbank-rbac-api/src/main/resources/application-standalone.yml \
+  || die "standalone 未关闭 Redis（rbac.redis.enabled=false）"
+grep -q '\-\-standalone' telbank-rbac-api/src/main/java/com/telbank/rbac/RbacApiApplication.java \
+  || die "启动类未支持 --standalone 参数"
+for script in start-all-macos.sh start-all-linux.sh start-all-windows.ps1; do
+  grep -qi 'standalone' "scripts/$script" || die "启动脚本未支持 --standalone：$script"
+done
+ok "3 个平台启动脚本齐备且自包含（macOS/Linux/Windows，含 --standalone）"
 [ ! -e scripts/start-all.sh ] || die "不应再有 start-all.sh 分发器"
 [ ! -e scripts/start-all.cmd ] || die "不应再有 start-all.cmd 包装器"
 [ ! -e scripts/start-api.sh ] || die "不应再有 start-api.sh helper"

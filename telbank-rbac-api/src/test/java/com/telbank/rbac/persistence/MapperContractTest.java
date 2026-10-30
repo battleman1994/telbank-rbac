@@ -128,7 +128,9 @@ class MapperContractTest {
                 .contains("p.status = 1")
                 .contains("UNION ALL")
                 .contains("is_public = 1")
-                .contains("DATE_FORMAT")
+                // 跨库（MySQL / H2 standalone）：不依赖 MySQL 专有 DATE_FORMAT，时间由服务层统一转 UTC
+                .doesNotContain("DATE_FORMAT")
+                .contains("MIN(g.valid_from)", "MAX(g.valid_until)")
                 // A21：角色-权限不再带时效，生效窗口只取用户-角色关系
                 .doesNotContain("rp.valid_from")
                 .doesNotContain("rp.valid_until");

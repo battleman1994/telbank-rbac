@@ -38,6 +38,7 @@ TEMP_MYSQL_PORT="${TEMP_MYSQL_PORT:-3307}"
 API_LOG="$ROOT/logs/api.log"
 FRONT_LOG="$ROOT/logs/front.log"
 INIT_DB=0
+STANDALONE=0
 TEMP_DB=0
 TEMP_DB_STARTED=0
 TEMP_DB_DATADIR="${RBAC_TEMP_MYSQL_DATADIR:-/tmp/telbank-rbac-mysql/data}"
@@ -46,10 +47,11 @@ RUNNING=0
 
 usage() {
   cat <<'USAGE'
-用法：./scripts/start-all-linux.sh [--temp-db] [--init-db]
+用法：./scripts/start-all-linux.sh [--temp-db] [--init-db] [--standalone]
 
   --temp-db   自动启动一次性临时 MySQL（默认 3307）并创建 telbank_rbac，退出时清理
   --init-db   针对已有 MySQL 先执行 scripts/init-db.sh（需 MYSQL_* 环境变量）
+  --standalone 使用 H2 内存库 + 本地缓存启动（不需要 MySQL / Redis，重启即重置演示数据）
 
 环境变量：
   API_PORT=8080  FRONT_PORT=5173  TEMP_MYSQL_PORT=3307  VITE_API_BASE_URL=...
@@ -60,9 +62,10 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --temp-db) TEMP_DB=1 ;;
     --init-db) INIT_DB=1 ;;
+    --standalone) STANDALONE=1 ;;
     -h|--help) usage; exit 0 ;;
     *)
-      echo "未知参数：$1（可用：--temp-db、--init-db）" >&2
+      echo "未知参数：$1（可用：--temp-db、--init-db、--standalone）" >&2
       exit 1
       ;;
   esac
@@ -200,13 +203,13 @@ start_backend() {
   if [ -n "${RBAC_M2_REPO:-}" ]; then
     ( cd "$ROOT" && exec mvn "-Dmaven.repo.local=${RBAC_M2_REPO}" \
         -pl telbank-rbac-api -am spring-boot:run \
-        -Dspring-boot.run.profiles=demo \
+        -Dspring-boot.run.profiles=${API_PROFILE} \
         -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
         "-Dspring-boot.run.arguments=--server.port=${API_PORT}" ) >"$API_LOG" 2>&1 &
   else
     ( cd "$ROOT" && exec mvn \
         -pl telbank-rbac-api -am spring-boot:run \
-        -Dspring-boot.run.profiles=demo \
+        -Dspring-boot.run.profiles=${API_PROFILE} \
         -Dspring-boot.run.jvmArguments="-Dfile.encoding=UTF-8" \
         "-Dspring-boot.run.arguments=--server.port=${API_PORT}" ) >"$API_LOG" 2>&1 &
   fi
@@ -253,6 +256,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ---------- 预检 ----------
+if [ "$STANDALONE" = "1" ]; then
+  TEMP_DB=0
+  INIT_DB=0
+  echo "==> standalone 模式：H2 内存库 + 本地缓存（无需 MySQL / Redis）"
+fi
 if [ "$TEMP_DB" = "1" ] && [ -n "${RBAC_DB_URL:-}" ]; then
   echo "❌ --temp-db 与 RBAC_DB_URL 冲突：临时库由脚本自动配置，请二选一。" >&2
   exit 1
@@ -272,6 +280,8 @@ if port_in_use "$FRONT_PORT"; then
   exit 1
 fi
 
+# ---------- 数据库准备（standalone 模式跳过：使用 H2 内存库） ----------
+if [ "$STANDALONE" != "1" ]; then
 # ---------- 数据库准备 ----------
 if [ "$TEMP_DB" = "1" ]; then
   echo "==> 准备临时 MySQL（端口 ${TEMP_MYSQL_PORT}，脚本退出时自动清理）"
@@ -312,10 +322,13 @@ if [ "$TEMP_DB" != "1" ]; then
   fi
 fi
 
+fi
+
 JDK21="$(find_jdk21)" || { echo "❌ 未找到 JDK 21+（设置 JAVA_HOME_21 或安装 openjdk@21）" >&2; exit 1; }
 echo "使用 JAVA_HOME=${JDK21}"
 
 # ---------- 启动后端 ----------
+if [ "$STANDALONE" = "1" ]; then API_PROFILE="standalone"; else API_PROFILE="demo"; fi
 echo "==> 启动权限中心后端（端口 ${API_PORT}，日志 logs/api.log）"
 start_backend
 API_PID=$BACKEND_PID

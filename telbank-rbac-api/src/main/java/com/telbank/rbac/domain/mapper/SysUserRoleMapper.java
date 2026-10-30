@@ -61,14 +61,15 @@ public interface SysUserRoleMapper extends RbacMapper<SysUserRole> {
     /**
      * 用户当前生效的权限码及其时效包络（时效过滤，含 is_public=1 公共权限）。
      * A21：角色-权限不再带时效，生效窗口直接取 {@code sys_user_role} 的窗口。
-     * 时间用 DATE_FORMAT 输出 ISO-8601 字符串，避免 JDBC 时区二次转换。
+     * 时间由驱动返回原生类型（LocalDateTime/Timestamp），服务层统一转 UTC ISO；
+     * 不使用 DATE_FORMAT，兼容 MySQL 与 H2（standalone）。
      */
     @Select("""
             SELECT p.code AS code,
                    CASE WHEN SUM(CASE WHEN g.valid_from IS NULL THEN 1 ELSE 0 END) > 0 THEN NULL
-                        ELSE DATE_FORMAT(MIN(g.valid_from), '%Y-%m-%dT%H:%i:%s') END AS valid_from,
+                        ELSE MIN(g.valid_from) END AS valid_from,
                    CASE WHEN SUM(CASE WHEN g.valid_until IS NULL THEN 1 ELSE 0 END) > 0 THEN NULL
-                        ELSE DATE_FORMAT(MAX(g.valid_until), '%Y-%m-%dT%H:%i:%s') END AS valid_until
+                        ELSE MAX(g.valid_until) END AS valid_until
             FROM sys_permission p
             JOIN (
                 SELECT rp.permission_id AS permission_id,
